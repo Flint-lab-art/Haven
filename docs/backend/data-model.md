@@ -17,7 +17,7 @@
 - 搜索依赖 `pg_trgm` 扩展，数据库初始化时必须执行 `CREATE EXTENSION IF NOT EXISTS pg_trgm;`。
 - 不安装任何中文分词扩展（`zhparser` / `pg_jieba` / `pg_bigm` 等）。搜索走 PostgreSQL 自带的模糊匹配，理由见第八节。
 - **所有业务数据表都带 `user_id` 归属字段**，即使本期单人自用。这是技术预留：注册功能本期不实现，`users` 表只放唯一账号，但数据模型从第一天就按“未来可能有第二个账号”设计，避免以后改表。
-- **数据表之间的依赖顺序**：`users` → `notes` / `tags` / `portfolio_items`，migration 必须按此顺序创建。
+- **数据表之间的依赖顺序**：`users` → `sessions` / `pending_logins` / `trusted_devices` / `tokens` / `audit_events` → `notes` / `tags` / `portfolio_items` → `note_tags` / `portfolio_repos`。migration 必须按此顺序创建。
 
 ## 二、枚举值汇总
 
@@ -193,16 +193,15 @@ CREATE UNIQUE INDEX idx_portfolio_repos_primary ON portfolio_repos (portfolio_it
 - 标签搜索结果返回标签列表，点进去看该标签下的笔记。
 - 搜索本身是一个接口还是两个接口，由 `api.md` 定义，本文件不规定。
 
-## 九、待补：鉴权与审计相关表
+## 九、鉴权与审计相关表
 
-以下表的完整字段与规则见 docs/backend/auth.md 与 docs/backend/audit.md：
+以下表的完整字段与规则见 `docs/backend/auth.md` 与 `docs/backend/audit.md`：
 
-- users — 用户账号（见 auth.md 第九节）
-- sessions — 登录会话（见 auth.md 第三节）
-- trusted_devices — 可授信浏览器设备（见 auth.md 第四节）
-- tokens — 长期 API Token（见 auth.md 第五节）
-- audit_events — 审计事件（见 audit.md）
+- `users` — 用户账号（见 auth.md 第九节）
+- `sessions` — 正式登录会话（见 auth.md 第三节）
+- `pending_logins` — 待验证登录（账密已过、TOTP 待验，见 auth.md 第 3.1 节）
+- `trusted_devices` — 可授信浏览器设备（见 auth.md 第四节）
+- `tokens` — 长期 API Token（见 auth.md 第五节）
+- `audit_events` — 审计事件（见 audit.md 第二节）
 
-migration 顺序：users 必须最先创建；sessions、trusted_devices、tokens 依赖 users；notes、tags、portfolio_items 也依赖 users。
-
-
+**migration 顺序：**users 必须最先创建；sessions、pending_logins、trusted_devices、tokens、audit_events 依赖 users；notes、tags、portfolio_items 也依赖 users。

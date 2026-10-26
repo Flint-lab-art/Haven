@@ -24,8 +24,9 @@ Haven 是一套自托管的个人综合知识中台：以 PostgreSQL 为唯一�
 | Web 前端 | 一等主入口 | 登录、写作、公开浏览、作品集、设置 |
 | Go 后端 | 唯一 API 出口 | 所有客户端经由它读写 PostgreSQL |
 | PostgreSQL | 唯一真值源 | 不引入其他存储作为真值源 |
-| TUI 客户端 | 次级客户端 | 只覆盖读写笔记 + 检索主路径 |
-| Neovim 插件 | 次级客户端 | 同上，走 API Token 鉴权 |
+| TUI 客户端 | 次级客户端（第二版） | 只覆盖读写笔记 + 检索主路径 |
+| Neovim 插件 | 次级客户端（第二版） | 同上，走 API Token 鉴权 |
+
 
 三类客户端的分工原则：**Web 是功能全集，TUI 与 Neovim 只覆盖主路径，不做功能对等。**
 
@@ -35,7 +36,7 @@ Haven 是一套自托管的个人综合知识中台：以 PostgreSQL 为唯一�
 - 新建笔记一律 private，公开是显式动作；
 - 未登录只能访问 public 内容；
 - 鉴权分层：账号密码 → TOTP → 可授信浏览器设备；
-- 长期 API Token 供 TUI / Neovim / 脚本使用，可单独撤销，与登录会话解耦。
+- 长期 API Token 供脚本、TUI / Neovim（第二版）使用，可单独撤销，与登录会话解耦。本期 Token 机制完整实现，只是消费方暂时只有脚本。
 
 细节见 `docs/backend/auth.md` 与 `docs/backend/data-model.md`。
 

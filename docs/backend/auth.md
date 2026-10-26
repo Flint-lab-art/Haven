@@ -15,27 +15,34 @@ Haven 的鉴权分三个独立维度，共同决定一次请求能否通过：
 
 ## 二、登录流程
 
-### 2.1 普通登录（未授信设备）
+登录分两步。第一步校验账密，第二步校验 TOTP。只有两步都通过（或该用户未启用 TOTP、或授信设备有效）才下发正式会话。
+
+### 2.1 第一步：账密校验
 
 1. 用户提交 `username + password`；
-2. 服务端校验密码哈希；
-3. 若该用户已启用 TOTP，要求输入 6 位动态码，校验 TOTP；
-4. 校验通过，创建会话（写 `sessions` 表），下发会话 cookie；
-5. 若用户在登录时勾选“信任此设备”，额外创建一条 `trusted_devices` 记录，下发授信设备 cookie。
+2. 服务端校验密码哈希，失败返回 401；
+3. 若用户未启用 TOTP，直接创建正式会话，下发会话 cookie，登录完成；
+4. 若用户启用了 TOTP：
+    - 若请求携带的授信设备 cookie 有效（未过期、哈希匹配、属于该用户），跳过 TOTP，直接创建正式会话；
+    - 否则，不创建会话，创建一条 `pending_logins` 记录，返回临时 token，要求进入第二步。
 
-### 2.2 授信设备登录（跳过 TOTP）
+### 2.2 第二步：TOTP 校验
 
-1. 用户提交 `username + password`；
-2. 服务端校验密码哈希；
-3. 服务端检查请求携带的授信设备 cookie：存在、未过期、哈希匹配、属于该用户；
-4. 匹配成功则跳过 TOTP，直接创建会话；
-5. 匹配失败则回退到普通登录流程（要求 TOTP）。
-
-**关键点**：授信设备**不免除密码**，只免除 TOTP。密码始终要输。授信设备 cookie 单独存放，与会话 cookie 独立。
+1. 用户提交 `temp_token + code`；
+2. 服务端按 `token_hash` 查 `pending_logins`，校验未过期、属于该用户；
+3. 校验 code 对 `users.totp_secret` 是否正确；
+4. 校验通过：删除 `pending_logins` 记录，创建正式会话，下发会话 cookie；若第一步请求了 `trust_device`，同时创建授信设备；
+5. 校验失败：返回 401，`pending_logins` 记录保留至过期（5 分钟），期间可重试。
 
 ### 2.3 TOTP 未启用
 
-`users.totp_enabled = false` 时，登录只校验密码，不要求 TOTP。这是首次登录的默认状态——用户登录后在设置页绑定 TOTP，绑定成功后 `totp_enabled` 置为 true。
+`users.totp_enabled = false` 时，登录只走第一步，不要求 TOTP。首次登录即此状态，用户在设置页绑定 TOTP 后才启用。
+
+**关键点**：
+- 正式会话只在第一步（未启用 TOTP 或授信设备有效）或第二步（TOTP 通过）成功后创建；
+- `pending_logins` 记录不是会话，授权中间件不认，只能用于第二步；
+- 授信设备**不免除密码**，只免除 TOTP。
+
 
 ## 三、会话（sessions）
 
@@ -54,11 +61,33 @@ Haven 的鉴权分三个独立维度，共同决定一次请求能否通过：
 **规则**：
 
 1. **会话 token 为随机 32 字节**，base64url 编码后下发到 cookie。数据库只存哈希，明文不落库。
-2. **cookie 属性**：`HttpOnly`、`Secure`（HTTPS 下）、`SameSite=Lax`。生产环境若为 HTTP（自用局域网），`Secure` 可配为 false，但要在 `architecture.md` 里注明风险。
-3. **有效期 7 天**，不做滑动续期（避免会话无限延长）。过期后需重新登录。
-4. **每次请求更新 `last_used_at`**，但不延长 `expires_at`。
-5. **用户可在设置页列出自己的所有会话并单独撤销**——这是网吧环境离开后的兜底手段。
-6. **撤销会话 = 删除记录**，硬删除。
+2. **cookie 属性**：`HttpOnly`、`Secure`（HTTPS 下）、`SameSite=Lax`、`Domain=app.example.com`。生产环境若为 HTTP（自用局域网），`Secure` 可配为 false，但要在 `architecture.md` 里注明风险。
+3. **cookie `Domain` 固定为私有域**（`app.example.com`），不设 `.example.com`。公开域（`example.com`）收不到任何 cookie，公开域的请求天然无凭证，减少 CSRF 面。详见 `frontend.md` 第二节。
+4. **有效期 7 天**，不做滑动续期（避免会话无限延长）。过期后需重新登录。
+5. **每次请求更新 `last_used_at`**，但不延长 `expires_at`。
+6. **用户可在设置页列出自己的所有会话并单独撤销**——这是网吧环境离开后的兜底手段。
+7. **撤销会话 = 删除记录**，硬删除。
+8. **本表只存正式会话**。待验证的登录请求不在本表，见 3.1 节 `pending_logins`。授权中间件查询会话时，本表所有记录均视为有效会话（仍要校验 `expires_at`）。
+
+### 3.1 pending_logins — 待验证登录
+
+**用途**：暂存“账密已通过、TOTP 待验证”的登录请求。生命周期极短，验证完成或过期即删除。
+
+| 字段 | 类型 | 约束 | 说明 |
+|---|---|---|---|
+| `id` | uuid | PK | |
+| `user_id` | uuid | NOT NULL, FK → users(id) ON DELETE CASCADE | |
+| `token_hash` | text | NOT NULL, UNIQUE | 临时 token 的 SHA-256 哈希 |
+| `expires_at` | timestamptz | NOT NULL | 创建后 5 分钟 |
+| `created_at` | timestamptz | NOT NULL | |
+
+**规则**：
+
+1. 临时 token 为随机 32 字节，base64url 编码后返回给前端，数据库只存哈希。
+2. 有效期固定 5 分钟，不续期。
+3. 验证成功即删除记录；过期后由定时清理任务或下次登录时顺手删除。
+4. **授权中间件不认 `pending_logins`**。它只能用于 `POST /api/auth/login/totp`。
+5. 不做失败计数。5 分钟内 code 错几次都允许重试，5 分钟后记录过期，需重新登录。
 
 ## 四、授信设备（trusted_devices）
 
@@ -77,7 +106,7 @@ Haven 的鉴权分三个独立维度，共同决定一次请求能否通过：
 **规则**：
 
 1. **授信设备 token 为随机 32 字节**，存哈希，明文只在 cookie 里。
-2. **cookie 独立于会话 cookie**，名如 `haven_trusted_device`。
+2. **cookie 独立于会话 cookie**，名如 `haven_trusted_device`，`Domain` 与会话 cookie 一致（`app.example.com`）。
 3. **有效期 30 天**，到期不自动续期。
 4. **不做设备指纹**：不用 UA + IP 做绑定校验，避免网吧环境不稳定导致误判。安全性靠“token 随机 + HttpOnly + 可撤销”，不靠指纹。
 5. **用户可在设置页列出所有授信设备并单独撤销**，撤销即删除记录。
@@ -119,6 +148,8 @@ Haven 的鉴权分三个独立维度，共同决定一次请求能否通过：
 所有 API 请求（除了公开接口白名单）必须经过授权中间件。中间件按以下顺序执行：
 
 ### 6.1 身份识别
+
+身份识别只认 `sessions` 表与 `tokens` 表。`pending_logins` 记录不参与身份识别。
 
 1. 若请求携带 `Authorization: Bearer <token>`：
    - 查 `tokens` 表，按 `token_hash` 匹配；
