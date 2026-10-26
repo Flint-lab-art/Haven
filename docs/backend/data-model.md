@@ -195,9 +195,14 @@ CREATE UNIQUE INDEX idx_portfolio_repos_primary ON portfolio_repos (portfolio_it
 
 ## 九、待补：鉴权与审计相关表
 
-以下四张表的字段和规则依赖 `auth.md` 与 `audit.md` 定稿，本文件暂不展开，等那两个文件定稿后补入本节：
+以下表的完整字段与规则见 docs/backend/auth.md 与 docs/backend/audit.md：
 
-- `users` — 用户账号。本期只有一条记录（当前使用者），注册功能不实现。
-- `trusted_devices` — 可授信浏览器设备。
-- `tokens` — 长期 API Token。
-- `audit_events` — 审计事件。
+- users — 用户账号（见 auth.md 第九节）
+- sessions — 登录会话（见 auth.md 第三节）
+- trusted_devices — 可授信浏览器设备（见 auth.md 第四节）
+- tokens — 长期 API Token（见 auth.md 第五节）
+- audit_events — 审计事件（见 audit.md）
+
+migration 顺序：users 必须最先创建；sessions、trusted_devices、tokens 依赖 users；notes、tags、portfolio_items 也依赖 users。
+
+
