@@ -21,7 +21,7 @@
 - 永远：`docs/overview.md`、`docs/architecture.md`、`docs/conventions.md`（第四节是硬性禁令清单）
 - 后端：再加 `docs/api.md`、`docs/backend/{data-model,auth,audit}.md`
 - 前端：再加 `docs/api.md`、`docs/frontend/frontend.md`
-- `README.md` 只是索引，具体规则以它指向的文档为准；README 里写的 `deploy/` 目录当前不存在。
+- `AGENTS.md` 已落初版，措辞可复核；根 `opencode.json` 只把 `docs/conventions.md` 与 `docs/overview.md` 作为常驻 instructions，其余文档按任务读。
 
 ## 硬性禁令（全部来自 `docs/conventions.md` 第四节，只摘最容易违反的）
 
@@ -35,12 +35,13 @@
 
 ## 当前代码状态（先看这里再动手，别假设已实现）
 
-仓库处于脚手架阶段：
+仓库处于脚手架阶段（TODO.md 第 0 章）：
 
-- `backend/cmd/haven/main.go` 只有 `GET /api/health` 和硬编码 `r.Run(":8080")`，与文档要求的 `HAVEN_LISTEN_ADDR` 等环境变量配置不符——按 `docs/architecture.md` 第四节重写，不要参考现有写法。
-- `backend/internal/*` 全是空目录；`backend/migrations/` 为空。
-- `frontend/` 是 Vite `create-vue` 模板（`HelloWorld.vue`、`src/views|router|stores|api` 空目录）；缺 `vue-router`、`pinia` 的实际接线。
-- `frontend/dist/` 是上次构建产物，被 gitignore，不要手改、不要提交。
+- `backend/cmd/haven/` 已有可启动入口：`main.go` / `config.go` / `logger.go`，读 `HAVEN_*` 环境变量、缺失即拒绝启动，只注册了 `GET /api/health`。**暂未接入 `internal/config`**（第 1 章会迁移）。
+- `backend/internal/*` 全是空目录；`backend/migrations/` 为空；`deploy/` 尚不存在。
+- `frontend/` 是清理过的 Vite 模板：`main.ts` 已接 `vue-router`（History，路由表暂空）与 `pinia`，`App.vue` 只渲染 `RouterView`；`src/{api,views,stores}` 是空目录。
+- `frontend/src/style.css` 只剩全局基础样式，页面样式未开始。
+- `frontend/dist/` 是构建产物，已被 gitignore，不要手改、不要提交。
 
 ## 常用命令
 

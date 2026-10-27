@@ -3,7 +3,7 @@
 > 执行清单，不是事实来源。所有实现细节以 `docs/` 为准；本文件与 `docs/` 冲突时以 `docs/` 为准。
 > `docs/` 只读，需求变更请先改文档，再勾选这里的条目。
 
-当前阶段：**脚手架已建，业务代码未开始**（`main.go` 只有 `/api/health`，`internal/*` 为空目录，前端仍是 Vite 模板）。
+当前阶段：**第 0 章（脚手架清理）已完成**，下一步进入第 1 章（配置与数据库基座）。
 
 图例：`[ ]` 未做 · `[x]` 已完成 · `[~]` 部分完成
 
@@ -11,15 +11,15 @@
 
 ## 0. 清理脚手架（最先做，避免旧写法被模仿）
 
-- [ ] `backend/cmd/haven/main.go` 重写为读环境变量的入口（见 `architecture.md` 第四节、5.2/5.3）：删除硬编码 `:8080`，改用 `HAVEN_LISTEN_ADDR`，接 `log/slog`
-- [ ] 删除 `frontend/src/components/HelloWorld.vue` 与模板样式（`style.css` 里的 demo 变量、`src/assets/{vue.svg,vite.svg,hero.png}`）
-- [ ] 删除 `frontend/README.md`（Vite 模板说明）与 `frontend/public/icons.svg` 等模板残留，保留 `favicon.svg` 或替换
-- [ ] `frontend/index.html`：`lang="zh-CN"`，标题改为 Haven
-- [ ] 接入 `vue-router`（History 模式）与 `pinia` 到 `main.ts`
-- [ ] 根目录 `.gitignore`（当前只有子目录里的，`backend/.gitignore` 里 `/backend/...` 这类路径是按仓库根写的，实际匹配不到）
+- [x] `backend/cmd/haven/main.go` 重写为读环境变量的入口（见 `architecture.md` 第四节、5.2/5.3）：删除硬编码 `:8080`，改用 `HAVEN_LISTEN_ADDR`，接 `log/slog`
+- [x] 删除 `frontend/src/components/HelloWorld.vue` 与模板样式（`style.css` 里的 demo 变量、`src/assets/{vue.svg,vite.svg,hero.png}`）
+- [x] 删除 `frontend/README.md`（Vite 模板说明）与 `frontend/public/icons.svg` 等模板残留，保留 `favicon.svg` 或替换
+- [x] `frontend/index.html`：`lang="zh-CN"`，标题改为 Haven
+- [x] 接入 `vue-router`（History 模式）与 `pinia` 到 `main.ts`
+- [x] 根目录 `.gitignore`（当前只有子目录里的，`backend/.gitignore` 里 `/backend/...` 这类路径是按仓库根写的，实际匹配不到）
 
-- [ ] 根目录 `AGENTS.md`：写文档驱动规则、Git 规范、TODO 边界、技术栈锁定（**已有初版**，剩余是人工复核：重点核对“AI 只读不写 docs”和“禁止自动提交”两条措辞没被软化，并补上 TODO 边界）
-- [ ] 根目录 `opencode.json`：`instructions` 只加载 `docs/conventions.md` 和 `docs/overview.md`，其余文档按需手动喂，不全量加载（**尚未创建**）
+- [x] 根目录 `AGENTS.md`：写文档驱动规则、Git 规范、TODO 边界、技术栈锁定（已含“AI 只读不写 docs”“禁止自动提交”“按 TODO 顺序执行”三条）
+- [x] 根目录 `opencode.json`：`instructions` 只加载 `docs/conventions.md` 和 `docs/overview.md`，其余文档按需手动喂，不全量加载
 
 ## 1. 配置与数据库基座
 
