@@ -27,7 +27,8 @@
 |---|---|---|
 | `note_visibility` | `private` / `public` | 笔记可见性 |
 | `repo_platform` | `gogs` / `github` | 作品集仓库托管平台 |
-| `token_scope` | `read` / `read_write` | API Token 权限档位（用于 tokens 表，待补） |
+| `token_scope` | `read` / `read_write` | API Token 权限档位 |
+
 
 ## 三、notes — 笔记
 
@@ -186,6 +187,8 @@ CREATE UNIQUE INDEX idx_portfolio_repos_primary ON portfolio_repos (portfolio_it
 - 笔记标题 + 正文：通过 `notes.search_text` 生成列合并，对合并字段建 `pg_trgm` GIN 索引，查询 `WHERE user_id = ? AND search_text ILIKE '%关键词%'`。
 - 标签名：对 `tags.name` 建 `pg_trgm` GIN 索引，查询 `WHERE user_id = ? AND name ILIKE '%关键词%'`。
 - 不安装中文分词扩展。1–2 个字的查询会退化为全表扫描，接受这一代价（数据量小，且实际使用中很少只搜一两个字）。
+
+**已知限制**：本期搜索为子串匹配，只处理“包含”语义。不处理同义词（如“知识中台”搜不到“知识管理平台”）、不处理繁体与简体互通、不纠正错别字。这是刻意的取舍：自用场景、数据量小，子串匹配足够日常检索；语义检索与分词留到第二版评估。
 
 **返回**：
 
