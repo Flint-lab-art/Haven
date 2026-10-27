@@ -83,7 +83,7 @@ Haven 的鉴权分三个独立维度，共同决定一次请求能否通过：
 
 **规则**：
 
-1. 临时 token 为随机 32 字节，base64url 编码后返回给前端，数据库只存哈希。
+1. 临时 token 为随机 32 字节，base64url 编码后返回给前端，数据库只存哈希。trust_device 请求位拼接在明文末尾（如 <随机串>:1），不单独落库；校验时先剥离后缀再哈希。
 2. 有效期固定 5 分钟，不续期。
 3. 验证成功即删除记录；过期后由定时清理任务或下次登录时顺手删除。
 4. **授权中间件不认 `pending_logins`**。它只能用于 `POST /api/auth/login/totp`。
@@ -240,7 +240,7 @@ Haven 的鉴权分三个独立维度，共同决定一次请求能否通过：
 | 字段 | 类型 | 约束 | 默认值 | 说明 |
 |---|---|---|---|---|
 | `id` | uuid | PRIMARY KEY | `gen_random_uuid()` | |
-| `username` | text | NOT NULL, UNIQUE | — | 登录名，本期只有一条记录 |
+| `username` | text | NOT NULL（唯一性见规则 3） | — | 登录名，本期只有一条记录 |
 | `password_hash` | text | NOT NULL | — | bcrypt 哈希 |
 | `totp_secret` | text | NULL | NULL | TOTP 密钥，未绑定为 NULL |
 | `totp_enabled` | boolean | NOT NULL | `false` | 是否已启用 TOTP |
@@ -251,4 +251,4 @@ Haven 的鉴权分三个独立维度，共同决定一次请求能否通过：
 
 1. 本期只有一条 `users` 记录，由部署时的初始化脚本创建（见 `architecture.md`）。
 2. **不提供注册接口**。第二个账号如需创建，只能通过命令行脚本或直接操作数据库，不在 API 层暴露。
-3. `username` 不区分大小写唯一（用 `lower(username)` 唯一索引），避免 `Admin` / `admin` 混淆。
+3. username 不区分大小写唯一（用 lower(username) 唯一索引），避免 Admin / admin 混淆。
