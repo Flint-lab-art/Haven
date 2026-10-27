@@ -80,9 +80,14 @@ pnpm build                      # = vue-tsc -b && vite build → frontend/dist/
 
 ## Git 规范
 
+- **两个远程仓库，每次都要同时推送**：`origin`（GitHub `github.com:Flint-lab-art/Haven.git`）和 `gogs`（自建 `git.vorin.ibicu:kairo/Haven.git`）。只推一个视为未完成。
+- push 时显式对两个 remote 各推一次，不要依赖单条 `git push`：
+  `git push origin dev && git push gogs dev`（不要写成 `git push --all`，那会连 `main` 一起推）。
+- **开发分支是 `dev`，`main` 受保护。绝对不要 push、提交或合并到 `main`（两个 remote 都一样）、不要 force-push 任何分支。** 合并到 `main` 只由人类操作。
+- 只在 `dev`（或人类指定的其他分支）上提交；当前分支不是 `dev` 时，先停下确认，不要自行切换。
 - 提交信息沿用现有风格：`feat(backend): ...` / `fix(frontend): ...` / `doc(docs): ...`，**中文描述**，不加 AI 署名或 `Co-Authored-By`。
 - 只提交自己本次改动的文件；不要 `git add -A` / `git commit -a`，以免带上别人未完成的改动。
 - **未经用户明确要求，不要 commit / amend / push / rebase / reset**；不要改写已有提交历史。
 - `docs/` 只读，因此任何 AI 发起的提交都不应包含 `docs/` 变更；若 `git status` 里 `docs/` 有改动，视为人类未提交的编辑，必须原样保留。
 - 提交前先跑与改动范围对应的验证（`go build ./...` + `go test ./...`，或 `pnpm build`）；`node_modules/`、`frontend/dist/` 已在 `.gitignore` 中，不要强制添加。
-- 不创建 PR、不推送到 `main`、不擅自切换或创建分支，除非用户要求。
+- 不创建 PR、不擅自切换或创建分支，除非用户要求。
