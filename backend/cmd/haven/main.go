@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/gin-gonic/gin"
-
+	"github.com/kairo/haven/internal/audit"
+	"github.com/kairo/haven/internal/auth"
 	"github.com/kairo/haven/internal/config"
 	"github.com/kairo/haven/internal/db"
 )
@@ -14,8 +14,8 @@ import (
 // main 是后端入口。
 //
 // 配置全部来自环境变量，见 docs/architecture.md 第四节；
-// 本期只完成启动骨架：读取配置、初始化日志、注册健康检查。
-// 数据库连接、鉴权中间件与各领域路由按 TODO.md 后续条目接入。
+// 当前已接入：配置、日志、数据库、认证与授权（docs/api.md 第二至五、十一节）。
+// 静态托管与其余领域路由按 TODO.md 后续条目接入。
 func main() {
 	if err := run(); err != nil {
 		slog.Error("服务启动失败", "err", err)
@@ -39,13 +39,14 @@ func run() error {
 	defer conn.Close()
 	logger.Info("数据库连接就绪")
 
-	gin.SetMode(gin.ReleaseMode)
-	r := gin.New()
-	r.Use(gin.Recovery())
+	store := auth.NewSQLStore(conn)
+	svc := auth.NewService(conn)
+	handler := auth.NewHandler(svc, store, cfg.TotpIssuer, cfg.CookieDomain, cfg.CookieSecure)
 
-	r.GET("/api/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{"status": "ok"})
-	})
+	// 审计事件在业务成功后写，失败只记日志（audit.md 第五节）
+	auth.UseAudit(handler, audit.NewWriter(conn))
+
+	r := newRouter(handler, store)
 
 	logger.Info("后端启动", "listen_addr", cfg.ListenAddr)
 	return r.Run(cfg.ListenAddr)

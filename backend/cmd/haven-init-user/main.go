@@ -26,14 +26,15 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/term"
 
+	"github.com/kairo/haven/internal/auth"
 	"github.com/kairo/haven/internal/db"
 )
 
-// bcryptCost 固定 12，见 docs/backend/auth.md 8.1 与 architecture.md 第四节常量表。
-const bcryptCost = 12
-
-// minPasswordLen 见 docs/api.md 2.7：新密码 ≥ 12 位。
-const minPasswordLen = 12
+// 与认证包保持一致：bcrypt cost 与密码最小长度只在一个地方定义。
+const (
+	bcryptCost     = auth.BcryptCost
+	minPasswordLen = auth.MinPasswordLen
+)
 
 func main() {
 	if err := run(); err != nil {

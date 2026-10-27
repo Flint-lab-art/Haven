@@ -3,7 +3,7 @@
 > 执行清单，不是事实来源。所有实现细节以 `docs/` 为准；本文件与 `docs/` 冲突时以 `docs/` 为准。
 > `docs/` 只读，需求变更请先改文档，再勾选这里的条目。
 
-当前阶段：**第 1 章（配置与数据库基座）基本完成**，仅剩 migration 执行脚本（依赖第 7 章的 `deploy/`）。下一步进入第 2 章（鉴权核心）。
+当前阶段：**第 2 章（鉴权核心）已完成**。第 1 章仅剩 migration 执行脚本（依赖第 7 章的 `deploy/`）。下一步进入第 3 章（审计）。
 
 图例：`[ ]` 未做 · `[x]` 已完成 · `[~]` 部分完成
 
@@ -32,15 +32,18 @@
 
 ## 2. 鉴权核心（`internal/auth`，按 `auth.md`）
 
-- [ ] 凭证生成与哈希工具：32 字节随机 + base64url，落库只存 SHA-256
-- [ ] 身份识别（auth.md 6.1）：`Authorization: Bearer` 优先于 cookie；`sessions` / `tokens` 两张表；`pending_logins` 不参与
-- [ ] 授权中间件（auth.md 6.2–6.4）：`anonymous_ok` / `login_required` / `write` / `totp_verified` 四档，并把可见性条件注入 context
-- [ ] cookie 下发：`haven_session` / `haven_trusted_device`，`HttpOnly`、`SameSite=Lax`、`Domain=HAVEN_COOKIE_DOMAIN`、`Secure` 跟随 `HAVEN_COOKIE_SECURE`
-- [ ] 登录两步：账密 → （未启用 TOTP / 授信设备有效则直接建会话）→ 否则 `pending_logins` + `temp_token`（5 分钟）
-- [ ] 每次请求更新 `sessions.last_used_at`，不延长 `expires_at`
-- [ ] TOTP：setup 不落库、verify 通过才落库并置 `totp_enabled`；disable 同时删除该用户全部授信设备
-- [ ] 改密码：同事务内删全部 `sessions` + `trusted_devices`，**不删** `tokens`，当前会话也失效
-- [ ] bcrypt cost 12；密码 ≥12 位且不能与旧密码相同
+- [x] 凭证生成与哈希工具：32 字节随机 + base64url，落库只存 SHA-256
+- [x] 身份识别（auth.md 6.1）：`Authorization: Bearer` 优先于 cookie；`sessions` / `tokens` 两张表；`pending_logins` 不参与
+- [x] 授权中间件（auth.md 6.2–6.4）：`anonymous_ok` / `login_required` / `write` / `totp_verified` 四档，并把可见性条件注入 context
+- [x] cookie 下发：`haven_session` / `haven_trusted_device`，`HttpOnly`、`SameSite=Lax`、`Domain=HAVEN_COOKIE_DOMAIN`、`Secure` 跟随 `HAVEN_COOKIE_SECURE`
+- [x] 登录两步：账密 → （未启用 TOTP / 授信设备有效则直接建会话）→ 否则 `pending_logins` + `temp_token`（5 分钟）
+- [x] 每次请求更新 `sessions.last_used_at`，不延长 `expires_at`
+- [x] TOTP：setup 不落库、verify 通过才落库并置 `totp_enabled`；disable 同时删除该用户全部授信设备
+- [x] 改密码：同事务内删全部 `sessions` + `trusted_devices`，**不删** `tokens`，当前会话也失效
+- [x] bcrypt cost 12；密码 ≥12 位且不能与旧密码相同
+
+> 补充实现（在章节内一并完成）：会话/授信设备/Token 的 `internal/auth` 业务与 handler、`internal/httpx` 统一错误响应、`cmd/haven` 路由装配。
+> 会话「是否通过过 TOTP」用 token 后缀 `:totp` 承载（`auth.md` 6.2 需要、`sessions` 表无该列），与 `pending_logins` 的 `trust_device` 后缀手法一致。
 
 ## 3. 审计（`internal/audit`，按 `audit.md`）
 
