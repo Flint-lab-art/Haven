@@ -1,10 +1,14 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"os"
 
 	"github.com/gin-gonic/gin"
+
+	"github.com/kairo/haven/internal/config"
+	"github.com/kairo/haven/internal/db"
 )
 
 // main 是后端入口。
@@ -20,13 +24,20 @@ func main() {
 }
 
 func run() error {
-	cfg, err := loadConfig()
+	cfg, err := config.Load()
 	if err != nil {
 		return err
 	}
 
 	logger := newLogger(cfg.LogLevel)
 	slog.SetDefault(logger)
+
+	conn, err := db.Open(context.Background(), cfg.DBDSN)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	logger.Info("数据库连接就绪")
 
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()

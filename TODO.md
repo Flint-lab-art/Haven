@@ -3,7 +3,7 @@
 > 执行清单，不是事实来源。所有实现细节以 `docs/` 为准；本文件与 `docs/` 冲突时以 `docs/` 为准。
 > `docs/` 只读，需求变更请先改文档，再勾选这里的条目。
 
-当前阶段：**第 0 章（脚手架清理）已完成**，下一步进入第 1 章（配置与数据库基座）。
+当前阶段：**第 1 章（配置与数据库基座）基本完成**，仅剩 migration 执行脚本（依赖第 7 章的 `deploy/`）。下一步进入第 2 章（鉴权核心）。
 
 图例：`[ ]` 未做 · `[x]` 已完成 · `[~]` 部分完成
 
@@ -23,12 +23,12 @@
 
 ## 1. 配置与数据库基座
 
-- [ ] `internal/config`：读取并校验全部 `HAVEN_*` 变量，缺必填项拒绝启动；常量（cookie 名、有效期、bcrypt cost）写死不走配置
-- [ ] `internal/db`：`database/sql` + `pgx` 连接池，启动时 ping
-- [ ] `migrations/0001_init.up.sql` / `.down.sql`：按 `data-model.md` 依赖顺序建表（`users` → `sessions`/`pending_logins`/`trusted_devices`/`tokens`/`audit_events` → `notes`/`tags`/`portfolio_items` → `note_tags`/`portfolio_repos`），含全部索引与 CHECK
-- [ ] migration 要求 `CREATE EXTENSION IF NOT EXISTS pg_trgm;`；确认 `gen_random_uuid()` 可用
-- [ ] 初始化脚本：创建唯一用户（bcrypt cost 12）——**不暴露注册接口**
-- [ ] 后端启动**不**跑 migration（由脚本执行）；在 `deploy/` 或文档待定处补执行方式
+- [x] `internal/config`：读取并校验全部 `HAVEN_*` 变量，缺必填项拒绝启动；常量（cookie 名、有效期、bcrypt cost）写死不走配置
+- [x] `internal/db`：`database/sql` + `pgx` 连接池，启动时 ping
+- [x] `migrations/0001_init.up.sql` / `.down.sql`：按 `data-model.md` 依赖顺序建表（`users` → `sessions`/`pending_logins`/`trusted_devices`/`tokens`/`audit_events` → `notes`/`tags`/`portfolio_items` → `note_tags`/`portfolio_repos`），含全部索引与 CHECK
+- [x] migration 要求 `CREATE EXTENSION IF NOT EXISTS pg_trgm;`；确认 `gen_random_uuid()` 可用
+- [x] 初始化脚本：创建唯一用户（bcrypt cost 12）——**不暴露注册接口**（`backend/cmd/haven-init-user`）
+- [~] 后端启动**不**跑 migration（由脚本执行）；在 `deploy/` 或文档待定处补执行方式（已确认启动不迁移；执行方式待 `deploy/` 建立后补，见第 7 章）
 
 ## 2. 鉴权核心（`internal/auth`，按 `auth.md`）
 

@@ -1,4 +1,10 @@
-package main
+// Package config 负责从环境变量加载并校验后端配置。
+//
+// 依据 docs/architecture.md 第四节：所有配置通过环境变量提供，
+// 不引入配置文件；缺失必填项时拒绝启动。
+//
+// cookie 名、有效期、bcrypt cost 等常量不在此暴露，直接写在代码里。
+package config
 
 import (
 	"fmt"
@@ -7,12 +13,8 @@ import (
 	"strings"
 )
 
-// config 是后端启动所需的全部配置。
-//
-// 来源见 docs/architecture.md 第四节：全部通过环境变量提供，
-// 缺失必填项则拒绝启动。cookie 名、有效期、bcrypt cost 等常量
-// 不在配置里暴露，直接写在代码中。
-type config struct {
+// Config 是后端启动所需的全部配置。
+type Config struct {
 	// 必填
 	ListenAddr   string // HAVEN_LISTEN_ADDR
 	DBDSN        string // HAVEN_DB_DSN
@@ -26,10 +28,10 @@ type config struct {
 	LogLevel     string // HAVEN_LOG_LEVEL，默认 info
 }
 
-// loadConfig 从环境变量读取并校验配置。
+// Load 从环境变量读取并校验配置。
 // 任一必填项缺失或取值非法都返回错误，由调用方拒绝启动。
-func loadConfig() (config, error) {
-	var cfg config
+func Load() (Config, error) {
+	var cfg Config
 	var missing []string
 
 	cfg.ListenAddr = strings.TrimSpace(os.Getenv("HAVEN_LISTEN_ADDR"))
@@ -58,14 +60,14 @@ func loadConfig() (config, error) {
 	}
 
 	if len(missing) > 0 {
-		return config{}, fmt.Errorf("缺少必填环境变量: %s", strings.Join(missing, ", "))
+		return Config{}, fmt.Errorf("缺少必填环境变量: %s", strings.Join(missing, ", "))
 	}
 
 	cfg.CookieSecure = true
 	if raw := strings.TrimSpace(os.Getenv("HAVEN_COOKIE_SECURE")); raw != "" {
 		v, err := strconv.ParseBool(raw)
 		if err != nil {
-			return config{}, fmt.Errorf("HAVEN_COOKIE_SECURE 取值非法 %q，应为 true 或 false", raw)
+			return Config{}, fmt.Errorf("HAVEN_COOKIE_SECURE 取值非法 %q，应为 true 或 false", raw)
 		}
 		cfg.CookieSecure = v
 	}
@@ -82,7 +84,7 @@ func loadConfig() (config, error) {
 	switch cfg.LogLevel {
 	case "debug", "info", "warn", "error":
 	default:
-		return config{}, fmt.Errorf("HAVEN_LOG_LEVEL 取值非法 %q，应为 debug / info / warn / error", cfg.LogLevel)
+		return Config{}, fmt.Errorf("HAVEN_LOG_LEVEL 取值非法 %q，应为 debug / info / warn / error", cfg.LogLevel)
 	}
 
 	return cfg, nil

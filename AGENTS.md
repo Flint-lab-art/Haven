@@ -37,8 +37,10 @@
 
 仓库处于脚手架阶段（TODO.md 第 0 章）：
 
-- `backend/cmd/haven/` 已有可启动入口：`main.go` / `config.go` / `logger.go`，读 `HAVEN_*` 环境变量、缺失即拒绝启动，只注册了 `GET /api/health`。**暂未接入 `internal/config`**（第 1 章会迁移）。
-- `backend/internal/*` 全是空目录；`backend/migrations/` 为空；`deploy/` 尚不存在。
+- `backend/cmd/haven/` 已有可启动入口：`main.go` / `logger.go`，读 `HAVEN_*` 环境变量、缺失即拒绝启动，启动时连库并 ping，只注册了 `GET /api/health`。
+- `backend/internal/config` 与 `backend/internal/db` 已可用；`backend/internal/{auth,notes,tags,search,portfolio,audit,httpx,llm}` 仍是空目录。
+- `backend/migrations/0001_init.up.sql` 已建全部表与索引；`cmd/haven-init-user` 用于创建唯一账号。
+- `deploy/` 尚不存在（migration 执行方式待第 7 章补）。
 - `frontend/` 是清理过的 Vite 模板：`main.ts` 已接 `vue-router`（History，路由表暂空）与 `pinia`，`App.vue` 只渲染 `RouterView`；`src/{api,views,stores}` 是空目录。
 - `frontend/src/style.css` 只剩全局基础样式，页面样式未开始。
 - `frontend/dist/` 是构建产物，已被 gitignore，不要手改、不要提交。
@@ -48,10 +50,18 @@
 后端（在 `backend/` 下执行）：
 
 ```bash
-go build ./...                  # 编译
+go build ./...
 go vet ./...
 go test ./...                   # 单包：go test ./internal/auth/...
 go test ./internal/auth -run TestLoginTotp -v
+go test ./internal/db -v        # 需要 HAVEN_TEST_DB_DSN，见下
+```
+
+集成测试（目前只有 `internal/db`）在未设置 `HAVEN_TEST_DB_DSN` 时自动 skip。手动初始化本地库：
+
+```bash
+psql "$HAVEN_DB_DSN" -f migrations/0001_init.up.sql        # 建表（启动时不会自动跑）
+HAVEN_DB_DSN=... HAVEN_INIT_PASSWORD='至少12位' go run ./cmd/haven-init-user -username kairo
 ```
 
 前端（在 `frontend/` 下执行）：包管理器是 **pnpm**（有 `pnpm-lock.yaml`，不要用 npm/yarn 生成新 lockfile）。
@@ -69,7 +79,8 @@ pnpm build                      # = vue-tsc -b && vite build → frontend/dist/
 ## 容易踩的约定
 
 - **module 路径**是 `github.com/kairo/haven`；`go.mod` 用 `go 1.27.3`，`pgx` 是 v5。
-- **migration** 用 `golang-migrate` 命名 `0001_init.up.sql` / `.down.sql`，放 `backend/migrations/`；顺序为 `users` → `sessions`/`pending_logins`/`trusted_devices`/`tokens`/`audit_events` → `notes`/`tags`/`portfolio_items` → `note_tags`/`portfolio_repos`。**后端启动时不跑 migration**。
+- **migration** 用 `golang-migrate` 命名 `0001_init.up.sql` / `.down.sql`，放 `backend/migrations/`；顺序为 `users` → `sessions`/`pending_logins`/`trusted_devices`/`tokens`/`audit_events` → `notes`/`tags`/`portfolio_items` → `note_tags`/`portfolio_repos`。**后端启动时不跑 migration**。表结构以 `docs/backend/data-model.md` + `auth.md` 第九节 + `audit.md` 为准；`users` 表只在 `auth.md` 里定义。
+- **加 PostgreSQL 权限**：若用 `postgres` 超级用户跑 migration，之后必须 `GRANT ALL ON ALL TABLES IN SCHEMA public TO haven;`，否则应用连接会报 `permission denied for table users`。
 - **后端分包按领域**（`notes`、`tags`、`search`、`portfolio`、`audit`），禁止建 `handlers/`、`services/`、`repositories/`；跨领域公共代码只放 `httpx` / `auth` / `config`。
 - **搜索**只查生成列 `notes.search_text`，应用层不写该字段；`ILIKE '%q%'`，无中文分词。
 - **公开可见条件唯一**：`visibility = 'public' AND published_at IS NOT NULL`；撤回 public→private 时保留 `published_at`。
