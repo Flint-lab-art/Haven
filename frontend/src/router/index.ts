@@ -50,8 +50,9 @@ const privateRoutes: RouteRecordRaw[] = [
     meta: { title: '笔记' },
   },
   {
+    // 新建：标题与标签由弹窗通过 query 带进来（title / tag_ids），正文在编辑页写
     path: '/notes/new',
-    name: 'note-new',
+    name: 'note-create',
     component: () => import('@/views/private/NoteEditView.vue'),
     meta: { title: '新建笔记' },
   },

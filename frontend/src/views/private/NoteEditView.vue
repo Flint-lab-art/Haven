@@ -1,13 +1,18 @@
 <script setup lang="ts">
 /**
- * 笔记详情 / 编辑（docs/frontend/frontend.md 第四节 /notes/:id 与 /notes/new）。
+ * 笔记详情 / 编辑 / 新建。
  *
- * 默认是阅读模式（正文优先）；点「编辑」进入编辑状态，
- * 顶栏保留公开/撤回与删除等次要操作。
+ * 三种模式：
+ *   - /notes/:id     已有笔记，默认阅读态，点「编辑」进入所见即所得编辑
+ *   - /notes/new?title=&tag_ids=   刚在弹窗里定好标题与标签，正文从这里开始写，
+ *                                  首次保存才真正创建笔记
+ *
+ * 正文以 Markdown 原文存储（docs/backend/data-model.md 的 notes.content）。
  */
-import { computed, nextTick, onMounted, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import PrivateHeader from '@/components/PrivateHeader.vue'
+import MarkdownEditor from '@/components/MarkdownEditor.vue'
 import { ApiError } from '@/api/client'
 import {
   createNote,
@@ -19,6 +24,7 @@ import {
   type Note,
 } from '@/api/notes'
 import { listTags, type Tag } from '@/api/tags'
+import { renderMarkdown, decorateLinks } from '@/utils/markdown'
 import { formatDateTime, formatRelative } from '@/utils/format'
 
 const route = useRoute()
@@ -37,23 +43,61 @@ const loading = ref(true)
 const saving = ref(false)
 const error = ref('')
 const notice = ref('')
-/** 新建时一进来就是编辑态；已有笔记默认阅读态。 */
-const editing = ref(isNew.value)
+const editing = ref(false)
 
-const titleInput = ref<HTMLInputElement | null>(null)
+/** 首次保存前的临时草稿：标题与标签来自弹窗，正文在这里写。 */
+const draftTitle = ref('')
+const editorRef = ref<InstanceType<typeof MarkdownEditor> | null>(null)
+
+const renderedHtml = computed(() => decorateLinks(renderMarkdown(content.value)))
+
+/** 有未保存改动时离开要确认（新建模式尤其重要，否则会丢草稿）。 */
+const dirty = ref(false)
+function markDirty(): void {
+  if (!dirty.value) dirty.value = true
+}
+
+watch([title, content, selectedTagIds], markDirty, { deep: true })
+
+onBeforeRouteLeave(() => {
+  if (!dirty.value) return true
+  return window.confirm('还有未保存的改动，确定离开？')
+})
+
+onBeforeUnmount(() => {
+  dirty.value = false
+})
 
 async function load(): Promise<void> {
   loading.value = true
   error.value = ''
   try {
     tags.value = (await listTags()).items
-    if (noteId.value) {
-      const loaded = await getNote(noteId.value)
-      note.value = loaded
-      title.value = loaded.title
-      content.value = loaded.content
-      selectedTagIds.value = loaded.tags.map((t) => t.id)
+
+    if (isNew.value) {
+      // 标题与标签来自新建弹窗（路由 query），正文留空
+      draftTitle.value = String(route.query.title ?? '')
+      title.value = draftTitle.value
+      const rawTagIds = route.query.tag_ids
+      selectedTagIds.value = typeof rawTagIds === 'string' && rawTagIds ? rawTagIds.split(',') : []
+      content.value = ''
+      editing.value = true
+      // 初始填充不算改动
+      requestAnimationFrame(() => {
+        dirty.value = false
+      })
+      return
     }
+
+    const loaded = await getNote(noteId.value)
+    note.value = loaded
+    title.value = loaded.title
+    content.value = loaded.content
+    selectedTagIds.value = loaded.tags.map((t) => t.id)
+    editing.value = false
+    requestAnimationFrame(() => {
+      dirty.value = false
+    })
   } catch (err) {
     error.value = err instanceof ApiError && err.isNotFound ? '这篇笔记不存在' : '笔记加载失败'
   } finally {
@@ -63,35 +107,29 @@ async function load(): Promise<void> {
 
 function toggleTag(id: string): void {
   const index = selectedTagIds.value.indexOf(id)
-  if (index >= 0) {
-    selectedTagIds.value.splice(index, 1)
-  } else {
-    selectedTagIds.value.push(id)
-  }
+  if (index >= 0) selectedTagIds.value.splice(index, 1)
+  else selectedTagIds.value.push(id)
 }
 
 function handleError(err: unknown): void {
   if (err instanceof ApiError) {
-    if (err.fields) {
-      error.value = Object.values(err.fields).join('；')
-    } else if (err.isForbidden) {
-      error.value = '当前身份只能阅读，不能编辑笔记'
-    } else {
-      error.value = err.message
-    }
+    if (err.fields) error.value = Object.values(err.fields).join('；')
+    else if (err.isForbidden) error.value = '当前身份只能阅读，不能编辑笔记'
+    else error.value = err.message
   } else {
     error.value = '操作失败，请稍后重试'
   }
 }
 
-async function startEditing(): Promise<void> {
-  editing.value = true
-  await nextTick()
-  titleInput.value?.focus()
-}
-
 async function save(): Promise<void> {
   if (saving.value) return
+
+  // 先把编辑器的最新内容同步回 content，避免存到上一拍的值
+  if (editing.value) {
+    editorRef.value?.sync()
+    await nextTick()
+  }
+
   saving.value = true
   error.value = ''
   notice.value = ''
@@ -104,6 +142,8 @@ async function save(): Promise<void> {
         tag_ids: selectedTagIds.value,
       })
       note.value = created
+      dirty.value = false
+      editing.value = false // 保存后进入阅读态，避免看起来像没保存
       // 换成详情地址，刷新不会重复创建
       await router.replace({ name: 'note-detail', params: { id: created.id } })
       notice.value = '已保存'
@@ -114,14 +154,26 @@ async function save(): Promise<void> {
         tag_ids: selectedTagIds.value,
       })
       note.value = updated
+      dirty.value = false
       notice.value = '已保存'
+      editing.value = false
     }
-    editing.value = false
   } catch (err) {
     handleError(err)
   } finally {
     saving.value = false
   }
+}
+
+function cancelEditing(): void {
+  if (dirty.value && !window.confirm('放弃未保存的改动？')) return
+  if (note.value) {
+    title.value = note.value.title
+    content.value = note.value.content
+    selectedTagIds.value = note.value.tags.map((t) => t.id)
+  }
+  dirty.value = false
+  editing.value = false
 }
 
 async function toggleVisibility(): Promise<void> {
@@ -130,10 +182,9 @@ async function toggleVisibility(): Promise<void> {
   notice.value = ''
   try {
     note.value =
-      note.value.visibility === 'public'
-        ? await unpublishNote(note.value.id)
-        : await publishNote(note.value.id)
-    notice.value = note.value.visibility === 'public' ? '已公开，任何人通过公开链接都能看到' : '已撤回为私有'
+      note.value.visibility === 'public' ? await unpublishNote(note.value.id) : await publishNote(note.value.id)
+    notice.value =
+      note.value.visibility === 'public' ? '已公开，任何人通过公开链接都能看到' : '已撤回为私有'
   } catch (err) {
     handleError(err)
   }
@@ -144,6 +195,7 @@ async function remove(): Promise<void> {
   if (!window.confirm('删除后无法恢复，确定删除这篇笔记？')) return
 
   try {
+    dirty.value = false
     await deleteNote(note.value.id)
     await router.push({ name: 'workbench' })
   } catch (err) {
@@ -168,20 +220,15 @@ onMounted(load)
         <div class="skeleton skeleton--line" style="width: 76%"></div>
       </div>
 
-      <!-- 编辑态 -->
-      <form v-else-if="editing" class="panel panel--pad" @submit.prevent="save">
-        <div class="row" style="justify-content: space-between; margin-bottom: var(--sp-5)">
-          <span class="field__label">{{ isNew ? '新建笔记' : '编辑笔记' }}</span>
+      <!-- 编辑态：标题 + 所见即所得正文 + 标签 -->
+      <section v-else-if="editing" class="panel panel--pad">
+        <div class="row row--wrap" style="justify-content: space-between; margin-bottom: var(--sp-5)">
+          <span class="field__label">{{ isNew ? '新笔记' : '编辑中' }}</span>
           <div class="row">
-            <button
-              v-if="!isNew"
-              class="btn btn--sm"
-              type="button"
-              @click="editing = false"
-            >
+            <button class="btn btn--sm" type="button" @click="isNew ? router.push({ name: 'workbench' }) : cancelEditing()">
               取消
             </button>
-            <button class="btn btn--primary" type="submit" :disabled="saving">
+            <button class="btn btn--primary" type="button" :disabled="saving" @click="save">
               {{ saving ? '保存中…' : '保存' }}
             </button>
           </div>
@@ -191,46 +238,36 @@ onMounted(load)
           <label class="field__label" for="note-title">标题</label>
           <input
             id="note-title"
-            ref="titleInput"
             v-model="title"
             class="input"
             type="text"
             placeholder="给这篇笔记起个名字"
-            required
+            style="font: var(--text-title3)"
           />
         </div>
 
         <div class="field" style="margin-bottom: var(--sp-4)">
-          <label class="field__label" for="note-content">正文</label>
-          <textarea
-            id="note-content"
-            v-model="content"
-            class="textarea"
-            placeholder="随便写点什么…"
-            spellcheck="false"
-          />
+          <span class="field__label">正文（支持 Markdown：**粗体**、`代码`、列表、表格、引用）</span>
+          <MarkdownEditor ref="editorRef" v-model="content" :autofocus="isNew" />
         </div>
 
         <div class="field">
           <span class="field__label">标签</span>
-          <p v-if="tags.length === 0" class="field__hint">
-            还没有标签，去「标签」页创建后再回来。
-          </p>
+          <p v-if="tags.length === 0" class="field__hint">还没有标签，去「标签」页创建后再回来。</p>
           <div v-else class="tag-row">
             <button
               v-for="tag in tags"
               :key="tag.id"
-              type="button"
               class="tag"
+              type="button"
               :aria-pressed="selectedTagIds.includes(tag.id)"
               @click="toggleTag(tag.id)"
             >
               {{ tag.name }}
             </button>
           </div>
-          <span class="field__hint">点选切换；保存时按当前选择全量替换。</span>
         </div>
-      </form>
+      </section>
 
       <!-- 阅读态 -->
       <article v-else-if="note" class="panel panel--pad">
@@ -250,7 +287,7 @@ onMounted(load)
               {{ note.visibility === 'public' ? '撤回' : '公开' }}
             </button>
             <button class="btn btn--sm btn--danger" type="button" @click="remove">删除</button>
-            <button class="btn btn--primary btn--sm" type="button" @click="startEditing">编辑</button>
+            <button class="btn btn--primary btn--sm" type="button" @click="editing = true">编辑</button>
           </div>
         </div>
 
@@ -263,13 +300,15 @@ onMounted(load)
           </div>
         </header>
 
-        <div class="article__body">{{ note.content }}</div>
+        <!-- eslint-disable-next-line vue/no-v-html -- 已经过 DOMPurify 过滤 -->
+        <div v-if="note.content" class="md-body" v-html="renderedHtml"></div>
+        <p v-else class="field__hint">这篇笔记还没有正文。</p>
       </article>
 
       <div v-else class="panel empty">
         <p class="empty__title">这篇笔记不存在</p>
         <p class="empty__text">它可能已经被删除了。</p>
-        <RouterLink to="/" class="btn">返回笔记列表</RouterLink>
+        <button class="btn" type="button" @click="router.push({ name: 'workbench' })">返回笔记列表</button>
       </div>
     </main>
   </div>

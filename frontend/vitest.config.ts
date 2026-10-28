@@ -8,7 +8,8 @@ export default defineConfig({
     },
   },
   test: {
-    environment: 'node',
+    // DOMPurify 需要 DOM（浏览器与 jsdom 都行），因此用 jsdom
+    environment: 'jsdom',
     include: ['src/**/*.test.ts'],
   },
 })

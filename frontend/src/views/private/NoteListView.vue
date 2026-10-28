@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /** 工作台首页：私有笔记列表。 */
-import { computed, onMounted, ref, watch } from 'vue'
-import { RouterLink } from 'vue-router'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import PrivateHeader from '@/components/PrivateHeader.vue'
+import NewNoteModal from '@/components/NewNoteModal.vue'
 import NoteCard from '@/components/NoteCard.vue'
 import { listNotes, type NoteSummary } from '@/api/notes'
 import { formatRelative } from '@/utils/format'
@@ -16,6 +16,16 @@ const total = ref(0)
 const loading = ref(true)
 const error = ref('')
 const filter = ref<Filter>('all')
+
+// 新建笔记：先弹窗定标题与标签，再进编辑页
+const showNew = ref(false)
+const modal = ref<InstanceType<typeof NewNoteModal> | null>(null)
+
+async function openModal(): Promise<void> {
+  showNew.value = true
+  await nextTick()
+  void modal.value?.focusTitle()
+}
 
 const filters = [
   { value: 'all', label: '全部' },
@@ -61,7 +71,7 @@ onMounted(() => load())
           <h1 class="page-title">笔记</h1>
           <p class="page-sub">{{ subtitle }}</p>
         </div>
-        <RouterLink :to="{ name: 'note-new' }" class="btn btn--primary btn--lg">新建笔记</RouterLink>
+        <button class="btn btn--primary btn--lg" type="button" @click="openModal">新建笔记</button>
       </header>
 
       <div class="segmented" role="group" aria-label="筛选">
@@ -93,7 +103,7 @@ onMounted(() => load())
       <div v-else-if="notes.length === 0" class="panel empty" style="margin-top: var(--sp-4)">
         <p class="empty__title">{{ filter === 'all' ? '还没有笔记' : '这个筛选下没有笔记' }}</p>
         <p class="empty__text">新建一篇，记录今天学到的东西。</p>
-        <RouterLink :to="{ name: 'note-new' }" class="btn btn--primary">新建笔记</RouterLink>
+        <button class="btn btn--primary" type="button" @click="openModal">新建笔记</button>
       </div>
 
       <div v-else class="panel rows" style="margin-top: var(--sp-4)">
@@ -113,5 +123,7 @@ onMounted(() => load())
         <button class="btn" type="button" @click="load(notes.length)">加载更多</button>
       </div>
     </main>
+
+    <NewNoteModal ref="modal" :open="showNew" @close="showNew = false" />
   </div>
 </template>

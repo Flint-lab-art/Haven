@@ -54,6 +54,17 @@
 
 > `note_published` / `note_unpublished` 已在第 4 章接入 `notes.Handler` 的钩子（`audit.UseNoteHooks`）。
 
+### 6.1 追加：Markdown 编辑（用户后续要求，2026-10-28）
+
+- [x] 正文以 Markdown 原文存储（`notes.content` 不变，后端零改动）
+- [x] 阅读态渲染：`marked` + `DOMPurify`（`utils/markdown.ts`），过滤脚本与内联事件
+- [x] 所见即所得编辑器：Milkdown 7.23（MIT），`components/MarkdownEditor.vue`，路由懒加载
+- [x] 新建笔记改为「弹窗定标题+标签 → 进编辑页」，草稿只在内存，首次保存才创建
+- [x] 保存前 `sync()` 编辑器内容，避免异步回写导致的空正文
+- [x] 离开页面有未保存改动时确认
+
+> 注意：`docs/` 里 `content` 字段仍写作「正文 text」，未声明 Markdown。若要把「Markdown 格式」定为正式需求，需由人类补 `data-model.md` / `api.md`。
+
 ## 4. 领域接口（按 `api.md` 逐条实现）
 
 - [x] `/api/me`（11.1）：匿名/会话/Token 三种响应

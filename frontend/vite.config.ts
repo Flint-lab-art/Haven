@@ -20,4 +20,8 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    // 编辑器只在编辑页用到，已经通过路由懒加载单独成块
+    chunkSizeWarningLimit: 600,
+  },
 })
