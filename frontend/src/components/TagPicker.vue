@@ -9,9 +9,12 @@
  *
  * 数据层面不做物理删除（docs/api.md 第八节已有 DELETE 接口，但本组件不调用）。
  */
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ApiError } from '@/api/client'
 import { createTag, type Tag } from '@/api/tags'
+
+onMounted(() => document.addEventListener('pointerdown', onDocumentPointerDown))
+onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocumentPointerDown))
 
 const props = defineProps<{
   /** 父组件加载的全部标签（含未被使用的）。 */
@@ -26,6 +29,7 @@ const emit = defineEmits<{
   changed: []
 }>()
 
+const root = ref<HTMLElement | null>(null)
 const input = ref('')
 const creating = ref(false)
 const error = ref('')
@@ -38,6 +42,12 @@ const selectedTags = computed(() =>
     .map((id) => props.tags.find((tag) => tag.id === id))
     .filter((tag): tag is Tag => Boolean(tag)),
 )
+
+/** 未选中、且有笔记在用的标签：平铺展示。 */
+const visibleUnselected = computed(() => {
+  const chosen = new Set(props.selected)
+  return props.tags.filter((tag) => tag.note_count > 0 && !chosen.has(tag.id))
+})
 
 /**
  * 输入时的匹配结果：按名称包含过滤，范围是**所有**标签
@@ -92,6 +102,13 @@ function onBackspace(): void {
   }
 }
 
+/** 平铺标签点选：加入本篇。 */
+function addTag(id: string): void {
+  if (!props.selected.includes(id)) {
+    emit('update:selected', [...props.selected, id])
+  }
+}
+
 /** 从匹配列表点选：加入后保持输入框，方便连续添加。 */
 function pickFromMatches(id: string): void {
   if (!props.selected.includes(id)) {
@@ -102,16 +119,15 @@ function pickFromMatches(id: string): void {
 }
 
 /**
- * 焦点移出整个组件时收起输入框。
+ * 点击组件外部时收起输入框。
  *
- * 用 focusout + 组合内判断，而不是 input 的 blur：
- * 点匹配列表里的项会先让 input 失焦，用 blur 会把列表立刻关掉。
+ * 不能用 `focusout`：点击「+ 标签」时焦点会从按钮转到刚渲染出来的输入框，
+ * focusout 在重渲染期间判定为「移出组件」，把输入框立刻关掉。
  */
-function onFocusOut(event: FocusEvent): void {
-  const root = event.currentTarget as HTMLElement
-  const next = event.relatedTarget as Node | null
-  if (next && root.contains(next)) return
-  if (creating.value) return
+function onDocumentPointerDown(event: PointerEvent): void {
+  if (!editing.value) return
+  const target = event.target as Node | null
+  if (target && root.value?.contains(target)) return
   if (input.value.trim()) {
     void create()
   } else {
@@ -168,7 +184,7 @@ defineExpose({
 </script>
 
 <template>
-  <div class="tag-picker" @focusout="onFocusOut">
+  <div ref="root" class="tag-picker">
     <div class="tag-row">
       <!-- 已选：点 × 只解除本篇笔记的关联 -->
       <button
@@ -183,28 +199,50 @@ defineExpose({
         {{ tag.name }}<span class="tag__x" aria-hidden="true">×</span>
       </button>
 
+      <!-- 未选、且有笔记在用的标签：平铺展示，点一下即加入 -->
+      <button
+        v-for="tag in visibleUnselected"
+        :key="tag.id"
+        class="tag tag--pick"
+        type="button"
+        :title="`${tag.note_count} 篇笔记在用`"
+        @click="addTag(tag.id)"
+      >
+        {{ tag.name }}
+      </button>
+
+      <!-- 末尾的加号：展开输入框 -->
+      <button
+        v-if="!editing"
+        class="tag tag--add"
+        type="button"
+        aria-label="新建标签"
+        title="新建标签"
+        @click="toggleEditing"
+      >
+        +
+      </button>
+
       <!-- 内联输入：回车确认，空值退格关闭 -->
       <input
-        v-if="editing"
+        v-else
         ref="inputRef"
         v-model="input"
         class="tag-input"
         type="text"
         maxlength="64"
-        :placeholder="creating ? '添加中…' : '标签名，回车确认'"
+        :placeholder="creating ? '添加中…' : '标签名，回车创建'"
         aria-label="标签名"
         :disabled="creating"
         @keydown.enter.prevent="create"
         @keydown.backspace="onBackspace"
         @keydown.esc.prevent="closeInput"
       />
-
-      <button v-else class="tag tag--add" type="button" @click="toggleEditing">+ 标签</button>
     </div>
 
     <p v-if="error" class="field__error">{{ error }}</p>
 
-    <!-- 输入时才出现：匹配已有标签（含 0 计数的） -->
+    <!-- 输入时才出现：匹配全部标签（含 0 计数的） -->
     <div v-if="editing && input.trim() && matches.length" class="tag-picker__suggest">
       <button
         v-for="tag in matches"
