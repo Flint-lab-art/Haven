@@ -1,18 +1,37 @@
 package main
 
 import (
+	"net/http"
+	"path/filepath"
+
 	"github.com/gin-gonic/gin"
 
 	"github.com/kairo/haven/internal/auth"
 	"github.com/kairo/haven/internal/httpx"
+	"github.com/kairo/haven/internal/notes"
+	"github.com/kairo/haven/internal/portfolio"
+	"github.com/kairo/haven/internal/search"
+	"github.com/kairo/haven/internal/tags"
 )
+
+// deps 汇总路由装配所需的依赖。
+type deps struct {
+	authStore     auth.Store
+	authHandler   *auth.Handler
+	notesHandler  *notes.Handler
+	tagsHandler   *tags.Handler
+	searchHandler *search.Handler
+	portfolio     *portfolio.Handler
+
+	// frontendDir 是 HAVEN_FRONTEND_DIR，用于托管 SPA 构建产物。
+	frontendDir string
+}
 
 // newRouter 组装 Gin 路由。
 //
 // 依据 docs/architecture.md 5.3：中间件顺序为 日志 → 鉴权 → 领域 handler。
-// 本期接入认证相关路由（api.md 第二、三、四、五、十一节）。
-func newRouter(h *auth.Handler, store auth.Store) *gin.Engine {
-	// 鉴权中间件通过回调使用统一错误响应，避免 auth ↔ httpx 包循环
+func newRouter(d deps) *gin.Engine {
+	// 鉴权中间件通过回调使用统一错误响应，避免包循环
 	httpx.InstallAuthErrorHandlers()
 	auth.SetErrorCallbacks(
 		httpx.FailBadRequest,
@@ -24,18 +43,50 @@ func newRouter(h *auth.Handler, store auth.Store) *gin.Engine {
 		httpx.FailUnprocessable,
 	)
 
-	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Recovery())
-	r.Use(auth.Authenticate(store))
+	r.Use(auth.Authenticate(d.authStore))
 
 	r.GET("/api/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 
-	auth.RegisterMeRoute(r, h)
-	auth.RegisterRoutes(r, h)
-	auth.RegisterManageRoutes(r, h)
+	auth.RegisterMeRoute(r, d.authHandler)
+	auth.RegisterRoutes(r, d.authHandler)
+	auth.RegisterManageRoutes(r, d.authHandler)
 
+	notes.RegisterRoutes(r, d.notesHandler)
+	tags.RegisterRoutes(r, d.tagsHandler)
+	search.RegisterRoutes(r, d.searchHandler)
+	portfolio.RegisterRoutes(r, d.portfolio)
+
+	mountStatic(r, d.frontendDir)
 	return r
+}
+
+// mountStatic 托管前端构建产物（docs/architecture.md 第七节）。
+//
+//   - /assets/* 直接返回文件并带长缓存（文件名含 hash）；
+//   - 其余非 /api 路径一律回 index.html，交给 Vue Router；
+//   - /api/* 未命中时不回退到 SPA，避免把接口 404 变成 200 index.html。
+func mountStatic(r *gin.Engine, dir string) {
+	if dir == "" {
+		return
+	}
+
+	r.Static("/assets", filepath.Join(dir, "assets"))
+	r.StaticFile("/favicon.svg", filepath.Join(dir, "favicon.svg"))
+
+	index := filepath.Join(dir, "index.html")
+	r.NoRoute(func(c *gin.Context) {
+		path := c.Request.URL.Path
+		if len(path) >= 5 && path[:5] == "/api/" || path == "/api" {
+			c.JSON(http.StatusNotFound, httpx.ErrorBody{
+				Error:   httpx.CodeNotFound,
+				Message: "资源不存在",
+			})
+			return
+		}
+		c.File(index)
+	})
 }

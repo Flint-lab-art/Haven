@@ -3,7 +3,7 @@
 > 执行清单，不是事实来源。所有实现细节以 `docs/` 为准；本文件与 `docs/` 冲突时以 `docs/` 为准。
 > `docs/` 只读，需求变更请先改文档，再勾选这里的条目。
 
-当前阶段：**第 3 章（审计）已完成**。第 1 章仅剩 migration 执行脚本（依赖第 7 章的 `deploy/`）。下一步进入第 4 章（领域接口）。
+当前阶段：**后端完成（第 0–5 章）**。剩余：第 1 章的 migration 执行脚本、第 7 章的 `deploy/` 与部署验证，然后进入第 6 章（前端）。
 
 图例：`[ ]` 未做 · `[x]` 已完成 · `[~]` 部分完成
 
@@ -52,29 +52,29 @@
 - [x] 写入时机：业务成功后、响应前；**失败只打错误日志，不影响业务结果**
 - [x] 笔记 CRUD 不写审计；不记录笔记内容、密码、Token 明文、TOTP secret
 
-> `note_published` / `note_unpublished` 的事件定义与 writer 已就绪，接线在第 4 章做笔记 publish 接口时一并挂上。
+> `note_published` / `note_unpublished` 已在第 4 章接入 `notes.Handler` 的钩子（`audit.UseNoteHooks`）。
 
 ## 4. 领域接口（按 `api.md` 逐条实现）
 
-- [ ] `/api/me`（11.1）：匿名/会话/Token 三种响应
-- [ ] 认证 `/api/auth`（二）：login、login/totp、logout、totp/setup|verify|disable、password
-- [ ] 会话 `/api/sessions`（三）：列表带 `is_current`；禁止撤销当前会话（422）；Token 访问 403
-- [ ] 授信设备 `/api/trusted-devices`（四）：**只读 + 删除，不提供 POST**
-- [ ] Token `/api/tokens`（五）：创建仅返回一次明文；撤销写 `revoked_at` 不删记录；需 TOTP
-- [ ] 笔记私有 `/api/notes`（六）：列表 `updated_at DESC` + `content_preview`（rune 截 200 + `…`）；创建不收 `visibility`；`tag_ids` 全量替换
-- [ ] publish / unpublish：`published_at` 首次写入、撤回保留；重复操作 409
-- [ ] 笔记公开 `/api/public/notes`（七）：`published_at DESC`，不可见统一 404
-- [ ] 标签 `/api/tags`（八）：`lower(name)` 唯一 → 409；无重命名接口；级联删除关联
-- [ ] 搜索（九）：`/api/search` 笔记查 `notes.search_text ILIKE '%q%'`、标签查 `tags.name ILIKE '%q%'`，返回 `{notes, tags}` 两块；`/api/public/search` 只查公开笔记的 `search_text`，不返回标签列表
-- [ ] 作品集 `/api/public/portfolio` + `/api/portfolio/*`（十）：`url` 由后端拼接（Gogs 用 `HAVEN_GOGS_BASE_URL`，GitHub 固定）；主链接唯一
-- [ ] `internal/httpx`：统一错误响应（`error`/`message`/可选 `fields`）+ 统一分页（`limit` 默认 20 上限 100）
-- [ ] 响应字段全 `snake_case`；列表空值返回 `{"items": [], "total": 0}`
-- [ ] 跨用户访问一律 404；read Token 写操作 403；凭证类操作对任何 Token 一律 403
+- [x] `/api/me`（11.1）：匿名/会话/Token 三种响应
+- [x] 认证 `/api/auth`（二）：login、login/totp、logout、totp/setup|verify|disable、password
+- [x] 会话 `/api/sessions`（三）：列表带 `is_current`；禁止撤销当前会话（422）；Token 访问 403
+- [x] 授信设备 `/api/trusted-devices`（四）：**只读 + 删除，不提供 POST**
+- [x] Token `/api/tokens`（五）：创建仅返回一次明文；撤销写 `revoked_at` 不删记录；需 TOTP
+- [x] 笔记私有 `/api/notes`（六）：列表 `updated_at DESC` + `content_preview`（rune 截 200 + `…`）；创建不收 `visibility`；`tag_ids` 全量替换
+- [x] publish / unpublish：`published_at` 首次写入、撤回保留；重复操作 409
+- [x] 笔记公开 `/api/public/notes`（七）：`published_at DESC`，不可见统一 404
+- [x] 标签 `/api/tags`（八）：`lower(name)` 唯一 → 409；无重命名接口；级联删除关联
+- [x] 搜索（九）：`/api/search` 笔记查 `notes.search_text ILIKE '%q%'`、标签查 `tags.name ILIKE '%q%'`，返回 `{notes, tags}` 两块；`/api/public/search` 只查公开笔记的 `search_text`，不返回标签列表
+- [x] 作品集 `/api/public/portfolio` + `/api/portfolio/*`（十）：`url` 由后端拼接（Gogs 用 `HAVEN_GOGS_BASE_URL`，GitHub 固定）；主链接唯一
+- [x] `internal/httpx`：统一错误响应（`error`/`message`/可选 `fields`）+ 统一分页（`limit` 默认 20 上限 100）
+- [x] 响应字段全 `snake_case`；列表空值返回 `{"items": [], "total": 0}`
+- [x] 跨用户访问一律 404；read Token 写操作 403；凭证类操作对任何 Token 一律 403
 
 ## 5. 静态托管
 
-- [ ] `r.Static` 托管 `/assets`（长缓存），`NoRoute` 兜底 `index.html`；`HAVEN_FRONTEND_DIR`
-- [ ] 确认 `/api/*` 不被 SPA 兜底吞掉
+- [x] `r.Static` 托管 `/assets`（长缓存），`NoRoute` 兜底 `index.html`；`HAVEN_FRONTEND_DIR`
+- [x] 确认 `/api/*` 不被 SPA 兜底吞掉
 
 ## 6. 前端（按 `frontend.md`）
 

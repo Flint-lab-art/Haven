@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -19,6 +20,10 @@ import (
 	"github.com/kairo/haven/internal/auth"
 	"github.com/kairo/haven/internal/config"
 	"github.com/kairo/haven/internal/db"
+	"github.com/kairo/haven/internal/notes"
+	"github.com/kairo/haven/internal/portfolio"
+	"github.com/kairo/haven/internal/search"
+	"github.com/kairo/haven/internal/tags"
 )
 
 // 端到端测试：真实 PostgreSQL + 完整路由栈，逐条对照 docs/api.md。
@@ -36,6 +41,7 @@ type testEnv struct {
 	svc    *auth.Service
 	cfg    config.Config
 	userID string
+	db     *sql.DB
 }
 
 func newTestEnv(t *testing.T) *testEnv {
@@ -98,9 +104,24 @@ func newTestEnv(t *testing.T) *testEnv {
 	store := auth.NewSQLStore(conn)
 	svc := auth.NewService(conn)
 	h := auth.NewHandler(svc, store, cfg.TotpIssuer, cfg.CookieDomain, cfg.CookieSecure)
-	audit.UseAuthHooks(h, audit.NewWriter(conn))
 
-	return &testEnv{t: t, router: newRouter(h, store), store: store, svc: svc, cfg: cfg}
+	auditWriter := audit.NewWriter(conn)
+	audit.UseAuthHooks(h, auditWriter)
+
+	notesHandler := notes.NewHandler(notes.NewService(conn))
+	audit.UseNoteHooks(notesHandler, auditWriter)
+
+	router := newRouter(deps{
+		authStore:     store,
+		authHandler:   h,
+		notesHandler:  notesHandler,
+		tagsHandler:   tags.NewHandler(tags.NewService(conn)),
+		searchHandler: search.NewHandler(search.NewService(conn)),
+		portfolio:     portfolio.NewHandler(portfolio.NewService(conn, cfg.GogsBaseURL)),
+		frontendDir:   cfg.FrontendDir,
+	})
+
+	return &testEnv{t: t, router: router, store: store, svc: svc, cfg: cfg, db: conn}
 }
 
 // appendSearchPath 在 DSN 追加 search_path，用于隔离集成测试的 schema。

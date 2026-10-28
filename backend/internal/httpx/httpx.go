@@ -1,6 +1,6 @@
 // Package httpx 提供跨领域共用的 HTTP 辅助。
 //
-// 依据 docs/architecture.md 5.4：统一错误响应构造函数放在这里，
+// 依据 docs/architecture.md 5.4：统一错误响应与分页参数都放在这里，
 // 所有 handler 调用同一套；错误细节不返回给客户端。
 package httpx
 
@@ -8,6 +8,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 
@@ -22,6 +23,20 @@ type ErrorBody struct {
 	Fields  map[string]string `json:"fields,omitempty"`
 }
 
+// ListBody 是 api.md 1.3 规定的列表响应包裹：空列表必须是 []，不能是 null。
+type ListBody struct {
+	Items any `json:"items"`
+	Total int `json:"total"`
+}
+
+// NewList 构造列表响应。items 为 nil 时输出空数组。
+func NewList(items any, total int) ListBody {
+	if items == nil {
+		items = []any{}
+	}
+	return ListBody{Items: items, Total: total}
+}
+
 // 错误码常量，取值见 docs/api.md 1.4。
 const (
 	CodeBadRequest       = "bad_request"
@@ -32,6 +47,54 @@ const (
 	CodeValidationFailed = "validation_failed"
 	CodeInternal         = "internal_error"
 )
+
+// 分页默认值（api.md 1.5）。
+const (
+	DefaultLimit = 20
+	MaxLimit     = 100
+)
+
+// Pagination 是解析后的 limit / offset。
+type Pagination struct {
+	Limit  int
+	Offset int
+}
+
+// Batch 封装一次分页查询。
+type Batch struct {
+	Pagination
+	// Total 是过滤后的总数。
+	Total int
+}
+
+// ParsePagination 解析 ?limit=&offset=。
+//
+// api.md 1.5：limit 默认 20，最大 100；offset 默认 0。
+// 非法值（负数、非数字）返回错误，由调用方转成 422。
+func ParsePagination(c *gin.Context) (Pagination, error) {
+	p := Pagination{Limit: DefaultLimit, Offset: 0}
+
+	if raw := c.Query("limit"); raw != "" {
+		v, err := strconv.Atoi(raw)
+		if err != nil || v <= 0 {
+			return p, errors.New("limit 必须是正整数")
+		}
+		if v > MaxLimit {
+			v = MaxLimit
+		}
+		p.Limit = v
+	}
+
+	if raw := c.Query("offset"); raw != "" {
+		v, err := strconv.Atoi(raw)
+		if err != nil || v < 0 {
+			return p, errors.New("offset 必须是非负整数")
+		}
+		p.Offset = v
+	}
+
+	return p, nil
+}
 
 // FailInternal 返回 500，细节只进日志（api.md 1.4、architecture.md 5.4）。
 func FailInternal(c *gin.Context, err error) {
@@ -54,6 +117,23 @@ func FailUnauthorizedWith(c *gin.Context, message string) {
 	c.AbortWithStatusJSON(http.StatusUnauthorized, ErrorBody{
 		Error:   CodeUnauthorized,
 		Message: message,
+	})
+}
+
+// FailForbidden 返回 403。
+func FailForbidden(c *gin.Context) {
+	c.AbortWithStatusJSON(http.StatusForbidden, ErrorBody{
+		Error:   CodeForbidden,
+		Message: "权限不足",
+	})
+}
+
+// FailValidation 返回 422，并带 fields。
+func FailValidation(c *gin.Context, fields map[string]string) {
+	c.AbortWithStatusJSON(http.StatusUnprocessableEntity, ErrorBody{
+		Error:   CodeValidationFailed,
+		Message: "字段校验失败",
+		Fields:  fields,
 	})
 }
 
@@ -97,55 +177,23 @@ func FailUnprocessable(c *gin.Context, message string) {
 	})
 }
 
-// FailForbidden 返回 403。
-func FailForbidden(c *gin.Context) {
-	c.AbortWithStatusJSON(http.StatusForbidden, ErrorBody{
-		Error:   CodeForbidden,
-		Message: "权限不足",
-	})
-}
-
-// FailValidation 返回 422，并带 fields。
-func FailValidation(c *gin.Context, fields map[string]string) {
-	c.AbortWithStatusJSON(http.StatusUnprocessableEntity, ErrorBody{
-		Error:   CodeValidationFailed,
-		Message: "字段校验失败",
-		Fields:  fields,
-	})
-}
-
 // Fail 按领域错误映射成 api.md 1.4 的响应。
 //
 // 只映射认证包已定义的业务错误；未识别的错误一律 500。
 func Fail(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, auth.ErrInvalidCredentials):
-		c.AbortWithStatusJSON(http.StatusUnauthorized, ErrorBody{
-			Error:   CodeUnauthorized,
-			Message: auth.ErrInvalidCredentials.Error(),
-		})
+		FailUnauthorizedWith(c, auth.ErrInvalidCredentials.Error())
 	case errors.Is(err, auth.ErrPendingExpired):
-		c.AbortWithStatusJSON(http.StatusUnauthorized, ErrorBody{
-			Error:   CodeUnauthorized,
-			Message: auth.ErrPendingExpired.Error(),
-		})
+		FailUnauthorizedWith(c, auth.ErrPendingExpired.Error())
 	case errors.Is(err, auth.ErrBadTotp):
-		c.AbortWithStatusJSON(http.StatusUnauthorized, ErrorBody{
-			Error:   CodeUnauthorized,
-			Message: auth.ErrBadTotp.Error(),
-		})
+		FailUnauthorizedWith(c, auth.ErrBadTotp.Error())
 	case errors.Is(err, auth.ErrTotpAlreadyEnabled):
-		c.AbortWithStatusJSON(http.StatusConflict, ErrorBody{
-			Error:   CodeConflict,
-			Message: auth.ErrTotpAlreadyEnabled.Error(),
-		})
+		FailConflict(c, auth.ErrTotpAlreadyEnabled.Error())
 	case errors.Is(err, auth.ErrTotpNotEnabled):
 		FailValidation(c, map[string]string{"code": "尚未启用 TOTP"})
 	case errors.Is(err, auth.ErrNotFound):
-		c.AbortWithStatusJSON(http.StatusNotFound, ErrorBody{
-			Error:   CodeNotFound,
-			Message: "资源不存在",
-		})
+		FailNotFound(c)
 	default:
 		FailInternal(c, err)
 	}
