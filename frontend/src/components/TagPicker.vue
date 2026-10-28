@@ -74,10 +74,45 @@ function toggle(id: string): void {
 }
 
 function toggleEditing(): void {
-  editing.value = !editing.value
-  error.value = ''
   if (editing.value) {
-    void nextTick(() => inputRef.value?.focus())
+    closeInput()
+    return
+  }
+  editing.value = true
+  error.value = ''
+  void nextTick(() => inputRef.value?.focus())
+}
+
+/** 收起输入框并清空草稿。 */
+function closeInput(): void {
+  editing.value = false
+  input.value = ''
+  error.value = ''
+}
+
+/** 从推荐列表点选：加入后保持输入框，方便连续添加。 */
+function addFromSuggestion(id: string): void {
+  if (!props.selected.includes(id)) {
+    emit('update:selected', [...props.selected, id])
+  }
+  input.value = ''
+  void nextTick(() => inputRef.value?.focus())
+}
+
+/** 输入框为空时按退格：关闭输入框。 */
+function onBackspace(): void {
+  if (input.value === '') {
+    closeInput()
+  }
+}
+
+/** 失焦：有内容就当作确认，没内容就收起输入框。 */
+function onBlur(): void {
+  if (creating.value) return
+  if (input.value.trim()) {
+    void create()
+  } else {
+    closeInput()
   }
 }
 
@@ -91,9 +126,7 @@ async function create(): Promise<void> {
     if (!props.selected.includes(exactMatch.value.id)) {
       emit('update:selected', [...props.selected, exactMatch.value.id])
     }
-    input.value = ''
-    editing.value = false
-    error.value = ''
+    closeInput()
     return
   }
 
@@ -102,10 +135,9 @@ async function create(): Promise<void> {
   try {
     const created = await createTag(name)
     emit('update:selected', [...props.selected, created.id])
-    input.value = ''
-    editing.value = false
     // 新标签还没有任何笔记使用，需要父组件刷新后才会出现在列表里
     emit('changed')
+    closeInput()
   } catch (err) {
     if (err instanceof ApiError && err.status === 409) {
       const existing = props.tags.find((tag) => tag.name.toLowerCase() === name.toLowerCase())
@@ -113,8 +145,7 @@ async function create(): Promise<void> {
         if (!props.selected.includes(existing.id)) {
           emit('update:selected', [...props.selected, existing.id])
         }
-        input.value = ''
-        editing.value = false
+        closeInput()
         return
       }
     }
@@ -136,40 +167,37 @@ defineExpose({
 <template>
   <div class="tag-picker">
     <div class="tag-row">
-      <!-- 已选：点一下就解除本篇笔记的关联 -->
+      <!-- 已选：点 × 只解除本篇笔记的关联 -->
       <button
         v-for="tag in selectedTags"
         :key="tag.id"
         class="tag tag--selected"
         type="button"
-        :aria-pressed="true"
+        aria-pressed="true"
         :title="`从这篇笔记移除「${tag.name}」`"
         @click="toggle(tag.id)"
       >
-        {{ tag.name }}
-        <span class="tag__x" aria-hidden="true">×</span>
+        {{ tag.name }}<span class="tag__x" aria-hidden="true">×</span>
       </button>
 
-      <button class="tag tag--add" type="button" @click="toggleEditing">
-        {{ editing ? '取消' : '+ 标签' }}
-      </button>
-    </div>
-
-    <div v-if="editing" class="tag-picker__new">
+      <!-- 内联输入：回车确认，空值退格关闭 -->
       <input
+        v-if="editing"
         ref="inputRef"
         v-model="input"
-        class="input"
+        class="tag-input"
         type="text"
         maxlength="64"
-        placeholder="输入标签名，回车添加"
+        :placeholder="creating ? '添加中…' : '标签名，回车确认'"
         aria-label="标签名"
+        :disabled="creating"
         @keydown.enter.prevent="create"
-        @keydown.esc="toggleEditing"
+        @keydown.backspace="onBackspace"
+        @keydown.esc.prevent="closeInput"
+        @blur="onBlur"
       />
-      <button class="btn btn--sm btn--primary" type="button" :disabled="creating" @click="create">
-        {{ creating ? '添加中…' : '添加' }}
-      </button>
+
+      <button v-else class="tag tag--add" type="button" @click="toggleEditing">+ 标签</button>
     </div>
 
     <p v-if="error" class="field__error">{{ error }}</p>
@@ -181,7 +209,8 @@ defineExpose({
         :key="tag.id"
         class="tag-picker__suggest-item"
         type="button"
-        @click="toggle(tag.id)"
+        @mousedown.prevent
+        @click="addFromSuggestion(tag.id)"
       >
         <span>{{ tag.name }}</span>
         <span class="tag-picker__suggest-action">{{ tag.note_count }} 篇</span>

@@ -1987,17 +1987,6 @@ button.tag[aria-pressed='true'] {
   background: transparent;
 }
 
-.tag-picker__new {
-  display: flex;
-  gap: var(--sp-2);
-  align-items: center;
-}
-
-.tag-picker__new .input {
-  min-height: 36px;
-  font: var(--text-subheadline);
-}
-
 .tag-picker__suggest {
   display: flex;
   flex-direction: column;
@@ -2080,3 +2069,47 @@ button.tag[aria-pressed='true'] {
   min-height: 20px;
 }
 
+
+
+/* 内联标签输入框：与标签胶囊同高，视觉上就是一个可输入的标签 */
+.tag-input {
+  font: var(--text-caption);
+  font-weight: 500;
+  font-family: var(--font-ui);
+  color: var(--label);
+  background: transparent;
+  border: 1px dashed var(--accent);
+  border-radius: var(--r-capsule);
+  padding: 3px 10px;
+  min-height: 22px;
+  height: 22px;
+  width: 132px;
+  outline: none;
+  box-shadow: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.tag-input::placeholder {
+  color: var(--label-3);
+}
+
+.tag-input:focus {
+  border-style: solid;
+  border-color: var(--accent);
+  box-shadow: none;
+}
+
+/* 编辑页顶部更紧凑，输入框与标签保持一致 */
+.tag-field .tag-input {
+  font-size: 12px;
+  min-height: 20px;
+  height: 20px;
+  padding: 2px 9px;
+  width: 118px;
+}
+
+/* 推荐列表里的点击不触发输入框失焦 */
+.tag-picker__suggest-item {
+  user-select: none;
+}
