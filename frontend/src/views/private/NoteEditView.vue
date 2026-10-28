@@ -210,7 +210,7 @@ onMounted(load)
   <div class="shell">
     <PrivateHeader />
 
-    <main class="container container--reading">
+    <main class="container" :class="editing ? 'container--editor' : 'container--reading'">
       <p v-if="error" class="notice notice--error">{{ error }}</p>
       <p v-if="notice" class="notice notice--success" style="margin-bottom: var(--sp-4)">{{ notice }}</p>
 
@@ -220,52 +220,57 @@ onMounted(load)
         <div class="skeleton skeleton--line" style="width: 76%"></div>
       </div>
 
-      <!-- 编辑态：标题 + 所见即所得正文 + 标签 -->
-      <section v-else-if="editing" class="panel panel--pad">
-        <div class="row row--wrap" style="justify-content: space-between; margin-bottom: var(--sp-5)">
-          <span class="field__label">{{ isNew ? '新笔记' : '编辑中' }}</span>
-          <div class="row">
-            <button class="btn btn--sm" type="button" @click="isNew ? router.push({ name: 'workbench' }) : cancelEditing()">
-              取消
-            </button>
-            <button class="btn btn--primary" type="button" :disabled="saving" @click="save">
-              {{ saving ? '保存中…' : '保存' }}
-            </button>
-          </div>
-        </div>
-
-        <div class="field" style="margin-bottom: var(--sp-4)">
-          <label class="field__label" for="note-title">标题</label>
+      <!-- 编辑态：标题与标签在上，正文撑满，操作在底部 -->
+      <section v-else-if="editing" class="editor-layout">
+        <div class="editor-layout__head">
           <input
             id="note-title"
             v-model="title"
-            class="input"
+            class="input editor-title"
             type="text"
-            placeholder="给这篇笔记起个名字"
-            style="font: var(--text-title3)"
+            placeholder="标题"
+            aria-label="标题"
           />
+
+          <div class="row row--wrap tag-field" style="gap: var(--sp-2)">
+            <span class="field__label" style="margin: 0">标签</span>
+            <p v-if="tags.length === 0" class="field__hint" style="margin: 0">
+              还没有标签，去「标签」页创建后再回来。
+            </p>
+            <div v-else class="tag-row" style="margin: 0">
+              <button
+                v-for="tag in tags"
+                :key="tag.id"
+                class="tag"
+                type="button"
+                :aria-pressed="selectedTagIds.includes(tag.id)"
+                @click="toggleTag(tag.id)"
+              >
+                {{ tag.name }}
+              </button>
+            </div>
+          </div>
         </div>
 
-        <div class="field" style="margin-bottom: var(--sp-4)">
-          <span class="field__label">正文（支持 Markdown：**粗体**、`代码`、列表、表格、引用）</span>
+        <div class="editor-layout__body">
           <MarkdownEditor ref="editorRef" v-model="content" :autofocus="isNew" />
         </div>
 
-        <div class="field">
-          <span class="field__label">标签</span>
-          <p v-if="tags.length === 0" class="field__hint">还没有标签，去「标签」页创建后再回来。</p>
-          <div v-else class="tag-row">
-            <button
-              v-for="tag in tags"
-              :key="tag.id"
-              class="tag"
-              type="button"
-              :aria-pressed="selectedTagIds.includes(tag.id)"
-              @click="toggleTag(tag.id)"
-            >
-              {{ tag.name }}
-            </button>
-          </div>
+        <div class="editor-layout__foot">
+          <span class="field__hint">
+            Markdown：**粗体**、`代码`、- 列表、&gt; 引用、``` 代码块
+          </span>
+          <div class="spacer"></div>
+          <button
+            class="btn"
+            type="button"
+            @click="isNew ? router.push({ name: 'workbench' }) : cancelEditing()"
+          >
+            取消
+          </button>
+          <button class="btn btn--primary" type="button" :disabled="saving" @click="save">
+            {{ saving ? '保存中…' : '保存' }}
+          </button>
         </div>
       </section>
 

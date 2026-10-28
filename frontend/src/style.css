@@ -228,6 +228,17 @@ a:hover {
   max-width: 720px;
 }
 
+/* 编辑页：全屏工作区，尽量把高度让给正文 */
+.container--editor {
+  max-width: 1120px;
+  padding-top: var(--sp-3);
+  padding-bottom: var(--sp-2);
+  /* 撑满顶栏以下的视口高度，并作为 flex 列把剩余高度分给编辑区 */
+  min-height: calc(100svh - 52px);
+  display: flex;
+  flex-direction: column;
+}
+
 .container--narrow {
   max-width: 480px;
 }
@@ -1290,6 +1301,11 @@ button.tag[aria-pressed='true'] {
   border: 1px solid var(--sep-strong);
   transition: border-color var(--dur-fast) var(--ease-smooth),
     box-shadow var(--dur-fast) var(--ease-smooth);
+  /* 在编辑布局里撑满父容器给的高度 */
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .editor-shell:focus-within {
@@ -1298,8 +1314,30 @@ button.tag[aria-pressed='true'] {
 }
 
 .editor-surface {
-  padding: var(--sp-5);
-  min-height: 420px;
+  padding: var(--sp-5) var(--sp-6);
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  overflow-y: auto;
+  /* 只在编辑器内部滚动，避免和页面滚动条叠成两条 */
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--label-4) transparent;
+}
+
+.editor-surface::-webkit-scrollbar {
+  width: 10px;
+}
+
+.editor-surface::-webkit-scrollbar-thumb {
+  background: var(--label-4);
+  border-radius: var(--r-capsule);
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+.editor-surface::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .milkdown {
@@ -1310,7 +1348,8 @@ button.tag[aria-pressed='true'] {
 
 .milkdown .ProseMirror {
   outline: none;
-  min-height: 380px;
+  flex: 1;
+  min-height: 100%;
   white-space: pre-wrap;
   word-wrap: break-word;
 }
@@ -1651,4 +1690,95 @@ button.tag[aria-pressed='true'] {
   justify-content: flex-end;
   gap: var(--sp-2);
   margin-top: var(--sp-6);
+}
+
+
+/* ============ 编辑页布局（全屏） ============ */
+
+/*
+ * 目标：标题与标签在上、正文尽量占满、保存/取消在底部。
+ * 用 flex 列布局 + 100% 视口高度，正文区 flex:1 吸收剩余空间。
+ */
+.editor-layout {
+  display: flex;
+  flex-direction: column;
+  /* 容器已经撑满视口，这里只需吃掉容器剩余空间 */
+  flex: 1;
+  min-height: 0;
+  gap: var(--sp-3);
+}
+
+.editor-layout__head {
+  flex: none;
+  background: var(--bg-elevated);
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-1);
+  padding: var(--sp-2) var(--sp-5);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-4);
+}
+
+/* 标题吃满剩余宽度，标签跟在后面同一行 */
+.editor-layout__head .editor-title {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.editor-layout__head .tag-field {
+  flex: 0 1 auto;
+  max-width: 100%;
+}
+
+.editor-title {
+  font: var(--text-title2);
+  letter-spacing: -0.3px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  min-height: 36px;
+  box-shadow: none !important;
+}
+
+.editor-title:hover {
+  border: none;
+}
+
+.editor-title:focus {
+  outline: none;
+  border: none;
+}
+
+.editor-layout__body {
+  flex: 1 1 0;
+  display: flex;
+  min-height: 0;
+}
+
+.editor-layout__foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-1);
+  min-height: 46px;
+}
+
+@media (max-width: 900px) {
+  .container--editor {
+    max-width: 100%;
+  }
+
+  .editor-layout__head {
+    padding: var(--sp-3) var(--sp-4);
+  }
+
+  .editor-surface {
+    padding: var(--sp-4);
+  }
+
+  .editor-layout__foot .field__hint {
+    display: none;
+  }
 }
