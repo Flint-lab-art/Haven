@@ -1344,11 +1344,18 @@ button.tag[aria-pressed='true'] {
   font: var(--text-body);
   color: var(--label);
   letter-spacing: 0.01em;
+  width: 100%;
 }
 
 .milkdown .ProseMirror {
   outline: none;
-  flex: 1;
+  /*
+   * 注意：这里不能用 flex: 1。.milkdown 是 flex 容器，
+   * flex-basis: 0 会把 ProseMirror 的**宽度**压成 0，
+   * 表现为「进页面能输入，点一下就点不到编辑器」。
+   * 高度用 min-height 撑开即可。
+   */
+  width: 100%;
   min-height: 100%;
   white-space: pre-wrap;
   word-wrap: break-word;
