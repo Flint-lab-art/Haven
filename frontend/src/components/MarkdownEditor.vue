@@ -16,7 +16,11 @@ import { listener, listenerCtx } from '@milkdown/plugin-listener'
 import { clipboard } from '@milkdown/plugin-clipboard'
 import { cursor } from '@milkdown/plugin-cursor'
 import { trailing } from '@milkdown/plugin-trailing'
-import { getMarkdown, replaceAll } from '@milkdown/utils'
+import { $prose, getMarkdown, replaceAll } from '@milkdown/utils'
+import { Plugin, PluginKey, type EditorState, type Transaction } from '@milkdown/prose/state'
+import { Decoration, DecorationSet } from '@milkdown/prose/view'
+import type { Node as ProseNode } from '@milkdown/prose/model'
+import { highlightCode } from '@/utils/highlight'
 
 const props = defineProps<{
   modelValue: string
@@ -56,6 +60,7 @@ async function build(): Promise<void> {
     // 文档末尾补一个空段落，方便在文末继续输入
     .use(trailing)
     .use(listener)
+    .use(highlightPlugin())
     .create()
 
   if (props.autofocus) {
@@ -65,6 +70,98 @@ async function build(): Promise<void> {
   }
 
   emit('ready')
+}
+
+/** highlight.js 输出里的一对标签及其覆盖的文本偏移。 */
+interface TokenRange {
+  start: number
+  end: number
+  className: string
+}
+
+/**
+ * 把 highlight.js 的 HTML 反解析成「纯文本偏移 + class 名」。
+ *
+ * 不直接用 innerHTML：那会替换文本节点，破坏 ProseMirror 的文档模型。
+ * 这里只取每个 <span class="hljs-xxx"> 覆盖的文本区间，再用 Decoration.inline
+ * 套同样的 class，文本本身仍由 ProseMirror 管理。
+ */
+function tokenRanges(html: string): { text: string; ranges: TokenRange[] } {
+  const doc = new DOMParser().parseFromString(`<div>${html}</div>`, 'text/html')
+  const root = doc.body.firstElementChild
+  const ranges: TokenRange[] = []
+  let offset = 0
+
+  const walk = (node: Node, classNames: string[]): void => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const value = node.nodeValue ?? ''
+      if (value && classNames.length) {
+        const className = classNames.filter((c) => c.startsWith('hljs-')).join(' ')
+        if (className) {
+          ranges.push({ start: offset, end: offset + value.length, className })
+        }
+      }
+      offset += value.length
+      return
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return
+    const el = node as HTMLElement
+    const next = el.className ? [...classNames, ...el.className.split(/\s+/)] : classNames
+    el.childNodes.forEach((child) => walk(child, next))
+  }
+
+  root?.childNodes.forEach((child) => walk(child, []))
+  return { text: root?.textContent ?? '', ranges }
+}
+
+/**
+ * 代码块语法高亮。
+ *
+ * 用 inline decoration 给代码块里的 token 套 hljs class；
+ * 文档内容保持纯文本，编辑与保存完全不受影响。
+ */
+function highlightPlugin() {
+  const key = new PluginKey('code-highlight')
+
+  const build = (doc: ProseNode): DecorationSet => {
+    const decorations: Decoration[] = []
+
+    doc.descendants((node: ProseNode, pos: number) => {
+      if (node.type.name !== 'code_block' && node.type.name !== 'fence') return true
+
+      const language = (node.attrs.language as string | undefined) ?? ''
+      const raw = node.textContent
+      if (!raw) return true
+
+      const { ranges } = tokenRanges(highlightCode(raw, language))
+      for (const range of ranges) {
+        if (range.start >= range.end) continue
+        decorations.push(
+          Decoration.inline(pos + 1 + range.start, pos + 1 + range.end, {
+            class: range.className,
+          }),
+        )
+      }
+      return false
+    })
+
+    return DecorationSet.create(doc, decorations)
+  }
+
+  const plugin = new Plugin<DecorationSet>({
+    key,
+    state: {
+      init: (_config, state: EditorState) => build(state.doc),
+      apply: (tr: Transaction, old: DecorationSet) => (tr.docChanged ? build(tr.doc) : old),
+    },
+    props: {
+      decorations(state: EditorState) {
+        return key.getState(state)
+      },
+    },
+  })
+
+  return $prose(() => plugin)
 }
 
 /**

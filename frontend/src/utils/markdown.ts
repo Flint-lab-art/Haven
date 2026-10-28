@@ -4,8 +4,9 @@
  * 存储格式是原始 Markdown 文本（docs/backend/data-model.md 的 notes.content）。
  * 所有 HTML 都经过 DOMPurify 过滤，避免笔记里的 <script>、onerror 等被执行。
  */
-import { marked } from 'marked'
+import { marked, type Tokens } from 'marked'
 import DOMPurify from 'dompurify'
+import { highlightCode, escapeHtml, normalizeLanguage } from './highlight'
 
 marked.setOptions({
   gfm: true,
@@ -14,14 +15,32 @@ marked.setOptions({
   breaks: false,
 })
 
+// 代码块语法高亮：marked 会把 renderer 的 code 交给这里
+const renderer = new marked.Renderer()
+renderer.code = ({ text, lang }: Tokens.Code): string => {
+  const language = normalizeLanguage(lang)
+  const highlighted = highlightCode(text, language)
+  const langClass = language ? ` class="language-${escapeHtml(language)}"` : ''
+  return (
+    '<div class="code-block-wrap">' +
+    (language ? `<span class="code-lang">${escapeHtml(language)}</span>` : '') +
+    `<pre><code${langClass}>${highlighted}</code></pre>` +
+    '</div>'
+  )
+}
+
+marked.use({ renderer })
+
 /** 把 Markdown 转成可安全插入的 HTML。 */
 export function renderMarkdown(source: string): string {
   if (!source.trim()) return ''
   const raw = marked.parse(source, { async: false }) as string
   return DOMPurify.sanitize(raw, {
-    // 不允许任何脚本、iframe、表单；站外链接统一加 rel
+    // 不允许任何脚本、iframe、表单
     FORBID_TAGS: ['script', 'style', 'iframe', 'form', 'input', 'object', 'embed'],
     FORBID_ATTR: ['style', 'onerror', 'onload', 'onclick'],
+    // highlight.js 输出 <span class="hljs-keyword"> 这类标签，需要保留 class
+    ADD_ATTR: ['class'],
   })
 }
 

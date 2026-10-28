@@ -1308,9 +1308,9 @@ button.tag[aria-pressed='true'] {
   overflow: hidden;
 }
 
+/* 聚焦只用一种提示：边框变色。不要再叠 box-shadow，否则看起来是两条边框 */
 .editor-shell:focus-within {
   border-color: var(--accent);
-  box-shadow: var(--focus-ring);
 }
 
 .editor-surface {
@@ -1348,7 +1348,8 @@ button.tag[aria-pressed='true'] {
 }
 
 .milkdown .ProseMirror {
-  outline: none;
+  outline: none !important;
+  box-shadow: none !important;
   /*
    * 注意：这里不能用 flex: 1。.milkdown 是 flex 容器，
    * flex-basis: 0 会把 ProseMirror 的**宽度**压成 0，
@@ -1362,6 +1363,11 @@ button.tag[aria-pressed='true'] {
 }
 
 .milkdown .ProseMirror > * + * {
+  margin-top: var(--sp-4);
+}
+
+.milkdown .ProseMirror pre + *,
+.milkdown .ProseMirror * + pre {
   margin-top: var(--sp-4);
 }
 
@@ -1436,12 +1442,24 @@ button.tag[aria-pressed='true'] {
 .milkdown .ProseMirror pre {
   font-family: var(--font-mono);
   font-size: 13px;
-  line-height: 1.65;
+  line-height: 1.6;
   background: var(--fill-3);
   border: 1px solid var(--sep);
   border-radius: var(--r-md);
   padding: var(--sp-4);
   overflow-x: auto;
+  white-space: pre;
+  tab-size: 2;
+}
+
+/* ProseMirror 会在代码块内部再包一层，去掉它的额外行距 */
+.milkdown .ProseMirror pre > code {
+  display: block;
+  line-height: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  background: none;
+  padding: 0;
 }
 
 .milkdown .ProseMirror pre code {
@@ -1578,12 +1596,20 @@ button.tag[aria-pressed='true'] {
 .md-body pre {
   font-family: var(--font-mono);
   font-size: 13px;
-  line-height: 1.65;
+  line-height: 1.6;
   background: var(--fill-3);
   border: 1px solid var(--sep);
   border-radius: var(--r-md);
   padding: var(--sp-4);
   overflow-x: auto;
+  /* 代码块内部不能沿用段落的行距，否则空行会被撑得很高 */
+  white-space: pre;
+  tab-size: 2;
+}
+
+.md-body pre code {
+  display: block;
+  line-height: inherit;
 }
 
 .md-body pre code {
@@ -1788,4 +1814,132 @@ button.tag[aria-pressed='true'] {
   .editor-layout__foot .field__hint {
     display: none;
   }
+}
+
+/* ============ 代码高亮（highlight.js token） ============ */
+
+/*
+ * 不引入 highlight.js 自带主题，按 HIG 语义色自定义，
+ * 与站点强调色一致；深浅色各一套。
+ */
+:root {
+  --code-comment: #6b7280;
+  --code-keyword: #b3268f;
+  --code-string: #0a7a3a;
+  --code-number: #b45309;
+  --code-function: #0550ae;
+  --code-type: #7c3aed;
+  --code-attr: #8a5a00;
+  --code-tag: #0550ae;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --code-comment: #8b95a5;
+    --code-keyword: #ff7ab6;
+    --code-string: #5ddc8b;
+    --code-number: #ffb86b;
+    --code-function: #79b8ff;
+    --code-type: #c792ea;
+    --code-attr: #ffd479;
+    --code-tag: #79b8ff;
+  }
+}
+
+/* 编辑态与阅读态共用 */
+.milkdown .ProseMirror .hljs,
+.md-body .hljs,
+.milkdown .ProseMirror code,
+.md-body code {
+  color: var(--label);
+}
+
+.hljs-comment,
+.hljs-quote {
+  color: var(--code-comment);
+  font-style: italic;
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-doctag,
+.hljs-meta .hljs-keyword {
+  color: var(--code-keyword);
+  font-weight: 600;
+}
+
+.hljs-string,
+.hljs-regexp,
+.hljs-addition,
+.hljs-meta .hljs-string {
+  color: var(--code-string);
+}
+
+.hljs-number,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-link {
+  color: var(--code-number);
+}
+
+.hljs-title,
+.hljs-title.function_,
+.hljs-section,
+.hljs-name {
+  color: var(--code-function);
+  font-weight: 600;
+}
+
+.hljs-type,
+.hljs-class .hljs-title,
+.hljs-title.class_,
+.hljs-built_in {
+  color: var(--code-type);
+}
+
+.hljs-attr,
+.hljs-attribute,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-property {
+  color: var(--code-attr);
+}
+
+.hljs-tag {
+  color: var(--code-tag);
+}
+
+.hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-strong {
+  font-weight: 700;
+}
+
+.hljs-deletion {
+  color: var(--danger);
+}
+
+/* 代码块容器：右上角显示语言 */
+.code-block-wrap {
+  position: relative;
+}
+
+.code-lang {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  font: var(--text-caption);
+  color: var(--label-3);
+  text-transform: lowercase;
+  letter-spacing: 0.03em;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* 给右上角的语言标签留出空间，而不是靠加大 padding-top（那会顶出大片空白） */
+.code-block-wrap pre {
+  padding-right: var(--sp-8);
 }

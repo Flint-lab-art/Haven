@@ -28,6 +28,19 @@ describe('renderMarkdown', () => {
     expect(html).toContain('a &lt; b')
   })
 
+  it('代码块带语法高亮与语言标签', () => {
+    const html = renderMarkdown('```go\nfunc main() {}\n```')
+    expect(html).toContain('code-block-wrap')
+    expect(html).toContain('code-lang')
+    expect(html).toContain('hljs-')
+    expect(html).toContain('language-go')
+  })
+
+  it('高亮产生的 class 不会被 DOMPurify 过滤', () => {
+    const html = renderMarkdown('```js\nconst a = 1\n```')
+    expect(html).toMatch(/class="hljs-[a-z]+/)
+  })
+
   it('不把单换行渲染成 <br>（避免往返把正文改脏）', () => {
     const html = renderMarkdown('第一行\n第二行')
     expect(html).not.toContain('<br')

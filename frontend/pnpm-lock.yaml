@@ -32,6 +32,9 @@ importers:
       '@milkdown/preset-gfm':
         specifier: ^7.23.0
         version: 7.23.0
+      '@milkdown/prose':
+        specifier: ^7.23.0
+        version: 7.23.0
       '@milkdown/utils':
         specifier: ^7.23.0
         version: 7.23.0
@@ -41,6 +44,9 @@ importers:
       dompurify:
         specifier: ^3.4.17
         version: 3.4.17
+      highlight.js:
+        specifier: ^11.12.0
+        version: 11.12.0
       marked:
         specifier: ^15.0.12
         version: 15.0.12
@@ -1085,6 +1091,10 @@ packages:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
     os: [darwin]
+
+  highlight.js@11.12.0:
+    resolution: {integrity: sha512-nbfWpyRMcMrPMmDwJB+dhX/eiaPKtc2RB+0QZskqJ3WjRA/FDS0e9hZrx8EC/lbEv8gXy98FcDbNa/dspAaJMg==}
+    engines: {node: '>=12.0.0'}
 
   hookable@5.5.3:
     resolution: {integrity: sha512-Yc+BQe8SvoXH1643Qez1zqLRmbA5rCL+sSmk6TVos0LWVfNIB7PGncdlId77WzLGSIB5KaWgTaNTs2lNVEI6VQ==}
@@ -3035,6 +3045,8 @@ snapshots:
 
   fsevents@2.3.3:
     optional: true
+
+  highlight.js@11.12.0: {}
 
   hookable@5.5.3: {}
 
