@@ -39,12 +39,6 @@ const selectedTags = computed(() =>
     .filter((tag): tag is Tag => Boolean(tag)),
 )
 
-/** 未选中、且有笔记在用的标签：直接平铺展示。 */
-const visibleUnselected = computed(() => {
-  const chosen = new Set(props.selected)
-  return props.tags.filter((tag) => tag.note_count > 0 && !chosen.has(tag.id))
-})
-
 /**
  * 输入时的匹配结果：按名称包含过滤，范围是**所有**标签
  * （包括 0 计数的——选中它就会重新被使用）。
@@ -98,16 +92,11 @@ function onBackspace(): void {
   }
 }
 
-/** 平铺标签点选：加入本篇。 */
-function addTag(id: string): void {
+/** 从匹配列表点选：加入后保持输入框，方便连续添加。 */
+function pickFromMatches(id: string): void {
   if (!props.selected.includes(id)) {
     emit('update:selected', [...props.selected, id])
   }
-}
-
-/** 从匹配列表点选：加入后保持输入框，方便连续添加。 */
-function pickFromMatches(id: string): void {
-  addTag(id)
   input.value = ''
   void nextTick(() => inputRef.value?.focus())
 }
@@ -194,50 +183,28 @@ defineExpose({
         {{ tag.name }}<span class="tag__x" aria-hidden="true">×</span>
       </button>
 
-      <!-- 未选的可用标签直接平铺，点一下即加入 -->
-      <button
-        v-for="tag in visibleUnselected"
-        :key="tag.id"
-        class="tag tag--pick"
-        type="button"
-        :title="`${tag.note_count} 篇笔记在用`"
-        @click="addTag(tag.id)"
-      >
-        {{ tag.name }}
-      </button>
-
-      <!-- 末尾固定一个加号：展开输入框 -->
-      <button
-        class="tag tag--add"
-        type="button"
-        :aria-expanded="editing"
-        aria-label="新建标签"
-        :title="editing ? '收起输入框' : '新建标签'"
-        @click="toggleEditing"
-      >
-        {{ editing ? '×' : '+' }}
-      </button>
-    </div>
-
-    <div v-if="editing" class="tag-picker__input-row">
+      <!-- 内联输入：回车确认，空值退格关闭 -->
       <input
+        v-if="editing"
         ref="inputRef"
         v-model="input"
         class="tag-input"
         type="text"
         maxlength="64"
-        :placeholder="creating ? '添加中…' : '输入标签名，回车创建'"
+        :placeholder="creating ? '添加中…' : '标签名，回车确认'"
         aria-label="标签名"
         :disabled="creating"
         @keydown.enter.prevent="create"
         @keydown.backspace="onBackspace"
         @keydown.esc.prevent="closeInput"
       />
+
+      <button v-else class="tag tag--add" type="button" @click="toggleEditing">+ 标签</button>
     </div>
 
     <p v-if="error" class="field__error">{{ error }}</p>
 
-    <!-- 输入时才出现：匹配全部标签（含 0 计数的，选中后自动启用） -->
+    <!-- 输入时才出现：匹配已有标签（含 0 计数的） -->
     <div v-if="editing && input.trim() && matches.length" class="tag-picker__suggest">
       <button
         v-for="tag in matches"

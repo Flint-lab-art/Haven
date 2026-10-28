@@ -13,7 +13,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import PrivateHeader from '@/components/PrivateHeader.vue'
 import MarkdownEditor from '@/components/MarkdownEditor.vue'
-import TagPicker from '@/components/TagPicker.vue'
+import TagDropdown from '@/components/TagDropdown.vue'
 import { ApiError } from '@/api/client'
 import {
   createNote,
@@ -240,7 +240,7 @@ onMounted(load)
           />
 
           <div class="tag-field">
-            <TagPicker v-model:selected="selectedTagIds" :tags="tags" @changed="reloadTags" />
+            <TagDropdown v-model:selected="selectedTagIds" :tags="tags" @changed="reloadTags" />
           </div>
         </div>
 
