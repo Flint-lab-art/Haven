@@ -39,21 +39,22 @@ const selectedTags = computed(() =>
     .filter((tag): tag is Tag => Boolean(tag)),
 )
 
-/**
- * 可供选择的标签：只列「有笔记在用」的，并排除已选的。
- *
- * 未被任何笔记使用的标签不出现在这里——想用的话直接输入名字新建。
- */
-const available = computed(() => {
+/** 未选中、且有笔记在用的标签：直接平铺展示。 */
+const visibleUnselected = computed(() => {
   const chosen = new Set(props.selected)
   return props.tags.filter((tag) => tag.note_count > 0 && !chosen.has(tag.id))
 })
 
-/** 输入过滤后的建议（仅在有输入时展示）。 */
-const suggestions = computed(() => {
+/**
+ * 输入时的匹配结果：按名称包含过滤，范围是**所有**标签
+ * （包括 0 计数的——选中它就会重新被使用）。
+ */
+const matches = computed(() => {
   const keyword = input.value.trim().toLowerCase()
-  if (!keyword) return available.value.slice(0, 8)
-  return available.value
+  if (!keyword) return []
+  const chosen = new Set(props.selected)
+  return props.tags
+    .filter((tag) => !chosen.has(tag.id))
     .filter((tag) => tag.name.toLowerCase().includes(keyword))
     .slice(0, 8)
 })
@@ -90,15 +91,6 @@ function closeInput(): void {
   error.value = ''
 }
 
-/** 从推荐列表点选：加入后保持输入框，方便连续添加。 */
-function addFromSuggestion(id: string): void {
-  if (!props.selected.includes(id)) {
-    emit('update:selected', [...props.selected, id])
-  }
-  input.value = ''
-  void nextTick(() => inputRef.value?.focus())
-}
-
 /** 输入框为空时按退格：关闭输入框。 */
 function onBackspace(): void {
   if (input.value === '') {
@@ -106,8 +98,30 @@ function onBackspace(): void {
   }
 }
 
-/** 失焦：有内容就当作确认，没内容就收起输入框。 */
-function onBlur(): void {
+/** 平铺标签点选：加入本篇。 */
+function addTag(id: string): void {
+  if (!props.selected.includes(id)) {
+    emit('update:selected', [...props.selected, id])
+  }
+}
+
+/** 从匹配列表点选：加入后保持输入框，方便连续添加。 */
+function pickFromMatches(id: string): void {
+  addTag(id)
+  input.value = ''
+  void nextTick(() => inputRef.value?.focus())
+}
+
+/**
+ * 焦点移出整个组件时收起输入框。
+ *
+ * 用 focusout + 组合内判断，而不是 input 的 blur：
+ * 点匹配列表里的项会先让 input 失焦，用 blur 会把列表立刻关掉。
+ */
+function onFocusOut(event: FocusEvent): void {
+  const root = event.currentTarget as HTMLElement
+  const next = event.relatedTarget as Node | null
+  if (next && root.contains(next)) return
   if (creating.value) return
   if (input.value.trim()) {
     void create()
@@ -165,7 +179,7 @@ defineExpose({
 </script>
 
 <template>
-  <div class="tag-picker">
+  <div class="tag-picker" @focusout="onFocusOut">
     <div class="tag-row">
       <!-- 已选：点 × 只解除本篇笔记的关联 -->
       <button
@@ -180,41 +194,68 @@ defineExpose({
         {{ tag.name }}<span class="tag__x" aria-hidden="true">×</span>
       </button>
 
-      <!-- 内联输入：回车确认，空值退格关闭 -->
+      <!-- 未选的可用标签直接平铺，点一下即加入 -->
+      <button
+        v-for="tag in visibleUnselected"
+        :key="tag.id"
+        class="tag tag--pick"
+        type="button"
+        :title="`${tag.note_count} 篇笔记在用`"
+        @click="addTag(tag.id)"
+      >
+        {{ tag.name }}
+      </button>
+
+      <!-- 末尾固定一个加号：展开输入框 -->
+      <button
+        class="tag tag--add"
+        type="button"
+        :aria-expanded="editing"
+        aria-label="新建标签"
+        :title="editing ? '收起输入框' : '新建标签'"
+        @click="toggleEditing"
+      >
+        {{ editing ? '×' : '+' }}
+      </button>
+    </div>
+
+    <div v-if="editing" class="tag-picker__input-row">
       <input
-        v-if="editing"
         ref="inputRef"
         v-model="input"
         class="tag-input"
         type="text"
         maxlength="64"
-        :placeholder="creating ? '添加中…' : '标签名，回车确认'"
+        :placeholder="creating ? '添加中…' : '输入标签名，回车创建'"
         aria-label="标签名"
         :disabled="creating"
         @keydown.enter.prevent="create"
         @keydown.backspace="onBackspace"
         @keydown.esc.prevent="closeInput"
-        @blur="onBlur"
       />
-
-      <button v-else class="tag tag--add" type="button" @click="toggleEditing">+ 标签</button>
     </div>
 
     <p v-if="error" class="field__error">{{ error }}</p>
 
-    <!-- 有笔记在用的标签，点一下即加入本篇 -->
-    <div v-if="editing && suggestions.length" class="tag-picker__suggest">
+    <!-- 输入时才出现：匹配全部标签（含 0 计数的，选中后自动启用） -->
+    <div v-if="editing && input.trim() && matches.length" class="tag-picker__suggest">
       <button
-        v-for="tag in suggestions"
+        v-for="tag in matches"
         :key="tag.id"
         class="tag-picker__suggest-item"
         type="button"
         @mousedown.prevent
-        @click="addFromSuggestion(tag.id)"
+        @click="pickFromMatches(tag.id)"
       >
         <span>{{ tag.name }}</span>
-        <span class="tag-picker__suggest-action">{{ tag.note_count }} 篇</span>
+        <span class="tag-picker__suggest-action">
+          {{ tag.note_count > 0 ? `${tag.note_count} 篇` : '未使用' }}
+        </span>
       </button>
     </div>
+
+    <p v-if="editing && input.trim() && !matches.length && !exactMatch" class="field__hint">
+      回车新建「{{ input.trim() }}」
+    </p>
   </div>
 </template>
