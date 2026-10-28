@@ -3,7 +3,7 @@
 > 执行清单，不是事实来源。所有实现细节以 `docs/` 为准；本文件与 `docs/` 冲突时以 `docs/` 为准。
 > `docs/` 只读，需求变更请先改文档，再勾选这里的条目。
 
-当前阶段：**第 2 章（鉴权核心）已完成**。第 1 章仅剩 migration 执行脚本（依赖第 7 章的 `deploy/`）。下一步进入第 3 章（审计）。
+当前阶段：**第 3 章（审计）已完成**。第 1 章仅剩 migration 执行脚本（依赖第 7 章的 `deploy/`）。下一步进入第 4 章（领域接口）。
 
 图例：`[ ]` 未做 · `[x]` 已完成 · `[~]` 部分完成
 
@@ -47,10 +47,12 @@
 
 ## 3. 审计（`internal/audit`，按 `audit.md`）
 
-- [ ] `audit_events` 写入器：只追加；`actor_user_id` 可为 NULL，`actor_username` 存快照
-- [ ] 实现第十三类事件（login_success/login_failure/logout/totp_bound/totp_disabled/password_changed/session_revoked/trusted_device_added|revoked/token_created|revoked/note_published|unpublished）
-- [ ] 写入时机：业务成功后、响应前；**失败只打错误日志，不影响业务结果**
-- [ ] 笔记 CRUD 不写审计；不记录笔记内容、密码、Token 明文、TOTP secret
+- [x] `audit_events` 写入器：只追加；`actor_user_id` 可为 NULL，`actor_username` 存快照
+- [x] 实现第十三类事件（login_success/login_failure/logout/totp_bound/totp_disabled/password_changed/session_revoked/trusted_device_added|revoked/token_created|revoked/note_published|unpublished）
+- [x] 写入时机：业务成功后、响应前；**失败只打错误日志，不影响业务结果**
+- [x] 笔记 CRUD 不写审计；不记录笔记内容、密码、Token 明文、TOTP secret
+
+> `note_published` / `note_unpublished` 的事件定义与 writer 已就绪，接线在第 4 章做笔记 publish 接口时一并挂上。
 
 ## 4. 领域接口（按 `api.md` 逐条实现）
 

@@ -26,6 +26,9 @@ import (
 //	HAVEN_TEST_DB_DSN='postgres://haven:...@127.0.0.1:5432/haven_dev?sslmode=disable' \
 //	  go test ./cmd/haven -v
 
+// testUserAgent 模拟浏览器 UA，供授信设备名推导与审计测试使用。
+const testUserAgent = "Mozilla/5.0 (X11; Linux x86_64) Chrome/130"
+
 type testEnv struct {
 	t      *testing.T
 	router *gin.Engine
@@ -95,7 +98,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	store := auth.NewSQLStore(conn)
 	svc := auth.NewService(conn)
 	h := auth.NewHandler(svc, store, cfg.TotpIssuer, cfg.CookieDomain, cfg.CookieSecure)
-	auth.UseAudit(h, audit.NewWriter(conn))
+	audit.UseAuthHooks(h, audit.NewWriter(conn))
 
 	return &testEnv{t: t, router: newRouter(h, store), store: store, svc: svc, cfg: cfg}
 }
@@ -142,6 +145,8 @@ func (e *testEnv) do(method, path string, body any, cookies ...*http.Cookie) *ht
 
 	req := httptest.NewRequest(method, path, reader)
 	req.Header.Set("Content-Type", "application/json")
+	// httptest 默认不带 UA；显式给一个，模拟真实浏览器（授信设备名由 UA 推导）
+	req.Header.Set("User-Agent", testUserAgent)
 	for _, c := range cookies {
 		req.AddCookie(c)
 	}

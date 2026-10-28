@@ -96,8 +96,9 @@ func TestServiceLoginWrongPassword(t *testing.T) {
 	if _, err := svc.Login(context.Background(), "kairo", "wrong", false, "", ""); err != ErrInvalidCredentials {
 		t.Errorf("错误密码应返回 ErrInvalidCredentials，实际 %v", err)
 	}
-	if _, err := svc.Login(context.Background(), "nobody", "whatever", false, "", ""); err != ErrInvalidCredentials {
-		t.Errorf("不存在的用户应返回 ErrInvalidCredentials（防枚举），实际 %v", err)
+	// 用户不存在单独成一种错误，仅供审计区分 reason；HTTP 层仍返回同样的 401 message
+	if _, err := svc.Login(context.Background(), "nobody", "whatever", false, "", ""); err != ErrNoSuchUser {
+		t.Errorf("不存在的用户应返回 ErrNoSuchUser，实际 %v", err)
 	}
 }
 

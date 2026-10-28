@@ -44,7 +44,7 @@ func run() error {
 	handler := auth.NewHandler(svc, store, cfg.TotpIssuer, cfg.CookieDomain, cfg.CookieSecure)
 
 	// 审计事件在业务成功后写，失败只记日志（audit.md 第五节）
-	auth.UseAudit(handler, audit.NewWriter(conn))
+	audit.UseAuthHooks(handler, audit.NewWriter(conn))
 
 	r := newRouter(handler, store)
 

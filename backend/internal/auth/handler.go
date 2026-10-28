@@ -36,11 +36,11 @@ type Handler struct {
 	OnTotpBound        func(c *gin.Context, ac AuditContext)
 	OnTotpDisabled     func(c *gin.Context, ac AuditContext)
 	OnPasswordChanged  func(c *gin.Context, ac AuditContext)
-	OnTrustedDeviceAdd func(c *gin.Context, ac AuditContext, deviceName string)
+	OnTrustedDeviceAdd func(c *gin.Context, ac AuditContext, deviceID, deviceName string)
 	OnSessionRevoked   func(c *gin.Context, ac AuditContext, sessionID, sessionCreatedAt string)
-	OnDeviceRevoked    func(c *gin.Context, ac AuditContext, deviceName string)
-	OnTokenCreated     func(c *gin.Context, ac AuditContext, name, scope, prefix string)
-	OnTokenRevoked     func(c *gin.Context, ac AuditContext, name, prefix string)
+	OnDeviceRevoked    func(c *gin.Context, ac AuditContext, deviceID, deviceName string)
+	OnTokenCreated     func(c *gin.Context, ac AuditContext, tokenID, name, scope, prefix string)
+	OnTokenRevoked     func(c *gin.Context, ac AuditContext, tokenID, name, prefix string)
 }
 
 // NewHandler 构造 Handler。
@@ -60,6 +60,9 @@ type AuditContext struct {
 	Username string
 	IP       string
 	UA       string
+	// DeviceID / TokenID 只在新建设备或 Token 时填写，用于审计的 target_id。
+	DeviceID string
+	TokenID  string
 }
 
 // LoginAudit 是登录成功时的审计信息。

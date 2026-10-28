@@ -80,21 +80,21 @@ func NewWriter(db *sql.DB) *Writer {
 // 因此本方法故意不返回 error。
 func (w *Writer) Record(ctx context.Context, e Event) {
 	if err := w.record(ctx, e); err != nil {
-		// 完整事件进日志，便于事后人工补录（audit.md 5.1）
-		slog.Error("写审计事件失败",
-			"event_type", e.EventType,
-			"actor_user_id", e.ActorUserID,
-			"actor_username", e.ActorUsername,
-			"target_type", e.TargetType,
-			"target_id", e.TargetID,
-			"metadata", e.Metadata,
-			"err", err)
+		// 事件内容进日志便于人工补录（audit.md 5.1），但经 Redact 过滤敏感键，
+		// 且不记录请求体（architecture.md 5.7）
+		slog.Error("写审计事件失败", "event", Redact(e), "err", err)
 	}
 }
 
 func (w *Writer) record(ctx context.Context, e Event) error {
 	if w == nil || w.db == nil {
 		return fmt.Errorf("audit writer 未初始化")
+	}
+
+	// 先按 audit.md 第三节清单校验形状：键名写错、target_type 不符、
+	// 混入敏感字段都在这里被拦住，而不是等数据库 CHECK 报错
+	if err := Validate(e); err != nil {
+		return err
 	}
 
 	targetType := e.TargetType

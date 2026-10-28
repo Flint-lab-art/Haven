@@ -35,11 +35,11 @@
 
 ## 当前代码状态（先看这里再动手，别假设已实现）
 
-仓库进度见 `TODO.md`：已完成第 0、1、2 章。
+仓库进度见 `TODO.md`：已完成第 0、1、2、3 章。
 
 - `backend/internal/auth`：凭证、TOTP、密码、登录两步、会话/授信设备/Token 管理、授权中间件、路由注册。`*gin.Context` 只在本包 handler 与中间件里出现。
 - `backend/internal/httpx`：统一错误响应；`auth` 通过 `auth.SetErrorCallbacks` 注入，避免包循环。
-- `backend/internal/audit`：只追加的审计写入器；`cmd/haven` 用 `auth.UseAudit` 接线。
+- `backend/internal/audit`：只追加的审计写入器 + 事件形状表（`events.go` 的 `specs`）。`Record` 先过 `Validate`（键名/ target_type / 必填 target_id / 敏感键），失败只打日志。`audit.UseAuthHooks` 由 `main` 接线到 `auth.Handler` 的钩子。
 - `backend/cmd/haven`：入口 + `router.go` 路由装配；`cmd/haven-init-user` 建唯一账号。
 - `backend/internal/{notes,tags,search,portfolio,llm}` 仍是空目录；`migrations/` 已有 `0001_init`；`deploy/` 尚不存在。
 - `frontend/` 仍是清理过的 Vite 模板（`main.ts` 已接 router/pinia，路由表暂空）。
@@ -95,6 +95,8 @@ pnpm build                      # = vue-tsc -b && vite build → frontend/dist/
 - **凭证类操作**（Token / 授信设备 / 会话 / TOTP / 密码）Token 一律 403，只允许 Web 会话；其中 TOTP 关闭、改密码、增删改查 Token 需要会话已通过 TOTP。
 - cookie 名、有效期、bcrypt cost 等是代码常量，**不从环境变量读取**（清单在 `docs/architecture.md` 第四节）。
 - 审计只在业务成功后写、失败只打日志不影响响应；笔记 CRUD 不写审计，只有 publish/unpublish 写。
+- **auth 与 audit 不能互相 import**：`audit` 依赖 `auth`（读 `auth.AuditContext`），所以 `auth` 里**不能**出现 `audit.Event`；审计接线只能放在 `internal/audit/hooks.go`，通过 `auth.Handler` 上的 `On*` 钩子函数挂载。
+- 新增审计事件：先改 `docs/backend/audit.md` 第三节，再同步 `migrations` 的 CHECK 与 `internal/audit/events.go` 的 `specs`，否则 `Validate` 会拒写。
 - **`sessions` 表没有「是否通过过 TOTP」列**（`auth.md` 6.2 却要求 `totp_verified`）。实现用 token 后缀承载：会话明文 `<随机串>:totp`，查库前先 `splitSessionToken` 再哈希。`pending_logins` 的 `trust_device` 同理（`:1`）。改这两处先改文档。
 - **`gin.Context.Cookie(name)` 返回 `(string, error)`**，没有 cookie 时 err 非空、返回空串。不要写成 `raw, ok := c.Cookie(...)`。
 - `auth` 与 `httpx` 故意互相不 import：`auth` 通过 `auth.SetErrorCallbacks`、`auth.InstallAuthErrorHandlers` 注入错误响应，`main`/`router` 负责接线。

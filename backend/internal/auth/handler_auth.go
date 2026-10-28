@@ -35,6 +35,10 @@ func (h *Handler) Login(c *gin.Context) {
 		case errors.Is(err, ErrInvalidCredentials):
 			// 失败审计（audit.md 第三节）
 			h.failLogin(c, req.Username, ReasonBadPassword)
+			// 对外 message 固定，防枚举（api.md 2.1）
+			Unauthorized(c, ErrInvalidCredentials.Error())
+		case errors.Is(err, ErrNoSuchUser):
+			h.failLogin(c, req.Username, ReasonNoSuchUser)
 			Unauthorized(c, ErrInvalidCredentials.Error())
 		default:
 			InternalError(c, err)
@@ -89,8 +93,13 @@ func (h *Handler) succeedLogin(c *gin.Context, res LoginResult) {
 		h.OnLoginSuccess(c, LoginAudit{UserID: res.User.ID, Username: res.User.Username, Via: res.AuditVia})
 	}
 	if res.DeviceToken != "" && h.OnTrustedDeviceAdd != nil {
-		h.OnTrustedDeviceAdd(c, AuditContext{UserID: res.User.ID, Username: res.User.Username,
-			IP: c.ClientIP(), UA: c.Request.UserAgent()}, res.DeviceName)
+		h.OnTrustedDeviceAdd(c, AuditContext{
+			UserID:   res.User.ID,
+			Username: res.User.Username,
+			IP:       c.ClientIP(),
+			UA:       c.Request.UserAgent(),
+			DeviceID: res.DeviceID,
+		}, res.DeviceID, res.DeviceName)
 	}
 
 	c.JSON(http.StatusOK, loginResponse{

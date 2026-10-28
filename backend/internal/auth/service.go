@@ -24,6 +24,9 @@ var (
 	ErrInvalidCredentials = errors.New("用户名或密码错误")
 	// ErrPendingExpired 临时 token 无效或已过期（401）。
 	ErrPendingExpired = errors.New("登录已超时，请重新登录")
+	// ErrNoSuchUser 用户名不存在。对外与 ErrInvalidCredentials 同样返回 401 + 同一 message，
+	// 仅在审计里用 reason=no_such_user 区分（audit.md 第三节）。
+	ErrNoSuchUser = errors.New("用户名不存在")
 	// ErrBadTotp 动态码错误（401）。
 	ErrBadTotp = errors.New("动态码错误")
 	// ErrTotpAlreadyEnabled TOTP 已启用（409）。
@@ -54,7 +57,8 @@ type LoginResult struct {
 	// SessionToken / DeviceToken 是下发 cookie 的明文，仅在不需 TOTP 时非空。
 	SessionToken string
 	DeviceToken  string
-	// DeviceName 是新建授信设备时使用的展示名，供写 trusted_device_added 审计。
+	// DeviceID / DeviceName 是新建授信设备的信息，供写 trusted_device_added 审计。
+	DeviceID   string
 	DeviceName string
 	// AuditVia 用于写 login_success 审计（audit.md 第三节）。
 	// 不需要 TOTP 时也要写，值为 password+totp 或 password+trusted_device。
@@ -88,7 +92,9 @@ func NewService(db *sql.DB) *Service {
 func (s *Service) Login(ctx context.Context, username, password string, trustDevice bool, trustedDeviceCookie, userAgent string) (LoginResult, error) {
 	user, err := s.findUserByUsername(ctx, username)
 	if errors.Is(err, ErrNotFound) {
-		return LoginResult{}, ErrInvalidCredentials
+		// 区分出来只为写审计的 reason=no_such_user；
+		// 对外响应仍统一为「用户名或密码错误」，不泄露账号是否存在
+		return LoginResult{}, ErrNoSuchUser
 	}
 	if err != nil {
 		return LoginResult{}, err
@@ -356,13 +362,15 @@ func (s *Service) issueSessionWithFlags(ctx context.Context, user User, trustDev
 			return LoginResult{}, err
 		}
 		name := deviceNameFromUA(userAgent)
-		if _, err := tx.ExecContext(ctx,
+		var deviceID string
+		if err := tx.QueryRowContext(ctx,
 			`INSERT INTO trusted_devices (user_id, token_hash, device_name, expires_at, last_used_at)
-			 VALUES ($1, $2, $3, $4, $5)`,
-			user.ID, HashToken(deviceToken), name, now.Add(TrustedDeviceTTL), now); err != nil {
+			 VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+			user.ID, HashToken(deviceToken), name, now.Add(TrustedDeviceTTL), now).Scan(&deviceID); err != nil {
 			return LoginResult{}, fmt.Errorf("创建授信设备失败: %w", err)
 		}
 		res.DeviceToken = deviceToken
+		res.DeviceID = deviceID
 		res.DeviceName = name
 	}
 

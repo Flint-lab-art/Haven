@@ -93,7 +93,7 @@ func (h *Handler) DeleteTrustedDevice(c *gin.Context) {
 	}
 
 	if h.OnDeviceRevoked != nil {
-		h.OnDeviceRevoked(c, h.auditContext(c), device.DeviceName)
+		h.OnDeviceRevoked(c, h.auditContext(c), device.ID, device.DeviceName)
 	}
 	c.Status(http.StatusNoContent)
 }
@@ -132,7 +132,7 @@ func (h *Handler) CreateToken(c *gin.Context) {
 	}
 
 	if h.OnTokenCreated != nil {
-		h.OnTokenCreated(c, h.auditContext(c), created.Name, created.Scope, created.TokenPrefix)
+		h.OnTokenCreated(c, h.auditContext(c), created.ID, created.Name, created.Scope, created.TokenPrefix)
 	}
 
 	// 明文只在这里返回一次（api.md 5.2 / auth.md 第五节规则 1）
@@ -157,7 +157,7 @@ func (h *Handler) DeleteToken(c *gin.Context) {
 	}
 
 	if h.OnTokenRevoked != nil {
-		h.OnTokenRevoked(c, h.auditContext(c), token.Name, token.TokenPrefix)
+		h.OnTokenRevoked(c, h.auditContext(c), token.ID, token.Name, token.TokenPrefix)
 	}
 	c.Status(http.StatusNoContent)
 }
