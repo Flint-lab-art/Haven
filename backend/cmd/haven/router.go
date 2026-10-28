@@ -14,6 +14,13 @@ import (
 	"github.com/kairo/haven/internal/tags"
 )
 
+// init 关闭 Gin 的 debug 输出（路由表、模式警告）。
+// 必须在 gin.New / gin.Default 之前设置，因此放在包级 init 而不是 newRouter 里：
+// 日志统一走 slog（architecture.md 5.7）。
+func init() {
+	gin.SetMode(gin.ReleaseMode)
+}
+
 // deps 汇总路由装配所需的依赖。
 type deps struct {
 	authStore     auth.Store
