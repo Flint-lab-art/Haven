@@ -35,7 +35,7 @@
 
 ## 当前代码状态（先看这里再动手，别假设已实现）
 
-仓库进度见 `TODO.md`：后端已完成（第 0–5 章），前端（第 6 章）未开始。
+仓库进度见 `TODO.md`：前后端功能均已完成（第 0–6 章），剩部署（第 7 章）。
 
 - `backend/internal/auth`：凭证、TOTP、密码、登录两步、会话/授信设备/Token 管理、授权中间件、路由注册。`*gin.Context` 只在本包 handler 与中间件里出现。
 - `backend/internal/httpx`：统一错误响应；`auth` 通过 `auth.SetErrorCallbacks` 注入，避免包循环。
@@ -44,7 +44,8 @@
 - `backend/internal/notes`：私有 CRUD + publish/unpublish + 公开只读；`internal/tags`、`internal/search`、`internal/portfolio` 各有 Service + Handler + `RegisterRoutes`。
 - `backend/internal/llm` 仍是空目录（本期只定义接口，见 `docs/backend/llm-extension.md`）；`migrations/` 已有 `0001_init`；`deploy/` 尚不存在。
 - 全部业务路由已挂在 `cmd/haven/router.go`，前端静态托管在同一处 `mountStatic`。
-- `frontend/` 仍是清理过的 Vite 模板（`main.ts` 已接 router/pinia，路由表暂空）。
+- `frontend/`：完整 Vue 3 应用。`src/api/` 按领域拆文件（含 `ApiError`）；`src/stores/auth.ts` 管登录态；`src/router/` 按 `window.location.hostname` 选公开域/私有域路由表；`src/views/{public,private}/` 是页面；`src/components/` 是公共组件。
+- 前端样式写在 `src/style.css`（HIG 语义色 + 字号阶梯 + 8pt 节奏），**不引入组件库**（`docs/frontend/frontend.md` 第八节）。
 - `frontend/dist/` 是构建产物，已被 gitignore，不要手改、不要提交。
 
 ## 常用命令
@@ -76,8 +77,9 @@ HAVEN_DB_DSN=... HAVEN_INIT_PASSWORD='至少12位' go run ./cmd/haven-init-user 
 
 ```bash
 pnpm install
-pnpm dev                        # Vite dev server，需自行代理 /api 到后端
+pnpm dev                        # Vite dev server，/api 已代理到 HAVEN_API_TARGET（默认 127.0.0.1:8080）
 pnpm build                      # = vue-tsc -b && vite build → frontend/dist/
+pnpm test                       # vitest，纯逻辑单测（路由域判定、ApiError、格式化）
 ```
 
 没有 lint / format / CI 配置，不要自造工具链。
@@ -102,6 +104,7 @@ pnpm build                      # = vue-tsc -b && vite build → frontend/dist/
 - **搜索的 `ILIKE` 参数必须先转义 `%` `_` `\`**（`search.escapeLike`），否则用户输入 `%` 会匹配全部笔记。
 - `/api/*` 未命中时由 `mountStatic` 的 `NoRoute` 返回 JSON 404；**不要**让 SPA 兜底接住 API 路径（会把 404 变成 200 HTML）。
 - 标签名长度上限 `tags.MaxNameRunes = 64` 是**实现决策**：`api.md` 8.2 只说"过长"未给数值，改需求先改文档。
+- **前端域判定**：`src/router/domain.ts` 里 `localhost` / IP 一律当私有域（方便本地开发）；生产必须设 `VITE_PRIVATE_HOST=app.example.com`，否则整站按公开域渲染、看不到后台。公开域没有登录入口，别加。
 - **`sessions` 表没有「是否通过过 TOTP」列**（`auth.md` 6.2 却要求 `totp_verified`）。实现用 token 后缀承载：会话明文 `<随机串>:totp`，查库前先 `splitSessionToken` 再哈希。`pending_logins` 的 `trust_device` 同理（`:1`）。改这两处先改文档。
 - **`gin.Context.Cookie(name)` 返回 `(string, error)`**，没有 cookie 时 err 非空、返回空串。不要写成 `raw, ok := c.Cookie(...)`。
 - `auth` 与 `httpx` 故意互相不 import：`auth` 通过 `auth.SetErrorCallbacks`、`auth.InstallAuthErrorHandlers` 注入错误响应，`main`/`router` 负责接线。

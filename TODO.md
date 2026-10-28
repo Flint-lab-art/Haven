@@ -3,7 +3,7 @@
 > 执行清单，不是事实来源。所有实现细节以 `docs/` 为准；本文件与 `docs/` 冲突时以 `docs/` 为准。
 > `docs/` 只读，需求变更请先改文档，再勾选这里的条目。
 
-当前阶段：**后端完成（第 0–5 章）**。剩余：第 1 章的 migration 执行脚本、第 7 章的 `deploy/` 与部署验证，然后进入第 6 章（前端）。
+当前阶段：**前后端功能均已完成（第 0–6 章）**。剩余：第 1 章的 migration 执行脚本、第 7 章的 `deploy/` 与部署验证。
 
 图例：`[ ]` 未做 · `[x]` 已完成 · `[~]` 部分完成
 
@@ -78,16 +78,16 @@
 
 ## 6. 前端（按 `frontend.md`）
 
-- [ ] `src/api/` 按领域拆文件（auth/notes/tags/search/portfolio/sessions/devices/tokens/me）+ 统一 `ApiError`；路径写相对 `/api/...`
-- [ ] `auth` store：启动调 `GET /api/me`；401 统一清空并跳 `/login`；403 只提示不跳转
-- [ ] 按 `window.location.hostname` 选择公开域/私有域路由表（同一份构建）
-- [ ] router guard：除 `/login` 外全部需登录，支持 `?redirect=`
-- [ ] 公开域页面：`/`、`/notes/:id`、`/search?q=`、`/portfolio`；**无登录入口、无后台链接**
-- [ ] 私有域页面：`/login`（含 TOTP 第二步，`temp_token` 只存内存）、`/`、`/notes/:id`、`/notes/new`、`/search`、`/tags`、`/portfolio`、`/settings`、`/settings/security`、`/settings/sessions`、`/settings/devices`、`/settings/tokens`
-- [ ] `/settings/tokens` 遇 403 时引导去 `/settings/security` 完成 TOTP，不登出
-- [ ] 公共组件：`NoteCard`、`TagBadge`、`SearchBar`、`LoginForm`、`TotpForm`、`SettingsNav`
-- [ ] 中文界面；不做深色模式切换、不做 PWA、不做多语言
-- [ ] 本地开发代理 `/api` 到后端（`vite.config.ts` 目前没有 server proxy）
+- [x] `src/api/` 按领域拆文件（auth/notes/tags/search/portfolio/sessions/devices/tokens/me）+ 统一 `ApiError`；路径写相对 `/api/...`
+- [x] `auth` store：启动调 `GET /api/me`；401 统一清空并跳 `/login`；403 只提示不跳转
+- [x] 按 `window.location.hostname` 选择公开域/私有域路由表（同一份构建）
+- [x] router guard：除 `/login` 外全部需登录，支持 `?redirect=`
+- [x] 公开域页面：`/`、`/notes/:id`、`/search?q=`、`/portfolio`；**无登录入口、无后台链接**
+- [x] 私有域页面：`/login`（含 TOTP 第二步，`temp_token` 只存内存）、`/`、`/notes/:id`、`/notes/new`、`/search`、`/tags`、`/portfolio`、`/settings`、`/settings/security`、`/settings/sessions`、`/settings/devices`、`/settings/tokens`
+- [x] `/settings/tokens` 遇 403 时引导去 `/settings/security` 完成 TOTP，不登出
+- [x] 公共组件：`NoteCard`、`TagBadge`、`SearchBar`、`LoginForm`、`TotpForm`、`SettingsNav`
+- [x] 中文界面；不做深色模式切换、不做 PWA、不做多语言
+- [x] 本地开发代理 `/api` 到后端（`vite.config.ts` 目前没有 server proxy）
 
 ## 7. 验证与部署
 
