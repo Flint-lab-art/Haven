@@ -13,6 +13,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import PrivateHeader from '@/components/PrivateHeader.vue'
 import MarkdownEditor from '@/components/MarkdownEditor.vue'
+import TagPicker from '@/components/TagPicker.vue'
 import { ApiError } from '@/api/client'
 import {
   createNote,
@@ -105,10 +106,13 @@ async function load(): Promise<void> {
   }
 }
 
-function toggleTag(id: string): void {
-  const index = selectedTagIds.value.indexOf(id)
-  if (index >= 0) selectedTagIds.value.splice(index, 1)
-  else selectedTagIds.value.push(id)
+/** 标签被新建或删除后重新拉取（删除会影响其它笔记，需要最新列表）。 */
+async function reloadTags(): Promise<void> {
+  try {
+    tags.value = (await listTags()).items
+  } catch {
+    // 拉取失败不阻塞编辑
+  }
 }
 
 function handleError(err: unknown): void {
@@ -232,23 +236,8 @@ onMounted(load)
             aria-label="标题"
           />
 
-          <div class="row row--wrap tag-field" style="gap: var(--sp-2)">
-            <span class="field__label" style="margin: 0">标签</span>
-            <p v-if="tags.length === 0" class="field__hint" style="margin: 0">
-              还没有标签，去「标签」页创建后再回来。
-            </p>
-            <div v-else class="tag-row" style="margin: 0">
-              <button
-                v-for="tag in tags"
-                :key="tag.id"
-                class="tag"
-                type="button"
-                :aria-pressed="selectedTagIds.includes(tag.id)"
-                @click="toggleTag(tag.id)"
-              >
-                {{ tag.name }}
-              </button>
-            </div>
+          <div class="tag-field">
+            <TagPicker v-model:selected="selectedTagIds" :tags="tags" @changed="reloadTags" />
           </div>
         </div>
 

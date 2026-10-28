@@ -8,6 +8,7 @@
 import { nextTick, onMounted, onBeforeUnmount, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { listTags, type Tag } from '@/api/tags'
+import TagPicker from './TagPicker.vue'
 
 const props = defineProps<{
   open: boolean
@@ -23,12 +24,6 @@ const title = ref('')
 const selected = ref<string[]>([])
 const error = ref('')
 const titleInput = ref<HTMLInputElement | null>(null)
-
-function toggle(id: string): void {
-  const i = selected.value.indexOf(id)
-  if (i >= 0) selected.value.splice(i, 1)
-  else selected.value.push(id)
-}
 
 async function loadTags(): Promise<void> {
   loadingTags.value = true
@@ -108,23 +103,14 @@ defineExpose({
         </div>
 
         <div class="field" style="margin-top: var(--sp-4)">
-          <span class="field__label">标签（可多选）</span>
+          <span class="field__label">标签（可多选，也可直接新建）</span>
           <p v-if="loadingTags" class="field__hint">加载中…</p>
-          <p v-else-if="tags.length === 0" class="field__hint">
-            还没有标签。可以先直接开始，之后再补。
-          </p>
-          <div v-else class="tag-row">
-            <button
-              v-for="tag in tags"
-              :key="tag.id"
-              class="tag"
-              type="button"
-              :aria-pressed="selected.includes(tag.id)"
-              @click="toggle(tag.id)"
-            >
-              {{ tag.name }}
-            </button>
-          </div>
+          <TagPicker
+            v-else
+            v-model:selected="selected"
+            :tags="tags"
+            @changed="loadTags"
+          />
         </div>
 
         <div class="modal__actions">

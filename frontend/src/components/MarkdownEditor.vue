@@ -34,6 +34,8 @@ const emit = defineEmits<{
 }>()
 
 const container = ref<HTMLDivElement | null>(null)
+/** 文档是否为空，用于显示占位提示。 */
+const empty = ref(!props.modelValue.trim())
 let editor: Editor | undefined
 /** 回填内容时避免把程序化变更当成用户输入再抛出去。 */
 let applyingExternal = false
@@ -46,6 +48,7 @@ async function build(): Promise<void> {
       ctx.set(rootCtx, container.value!)
       ctx.set(defaultValueCtx, props.modelValue)
       ctx.get(listenerCtx).markdownUpdated((_ctx, markdown) => {
+        empty.value = !markdown.trim()
         if (applyingExternal) return
         emit('update:modelValue', markdown)
       })
@@ -204,6 +207,6 @@ watch(
 
 <template>
   <div class="editor-shell">
-    <div ref="container" class="editor-surface milkdown"></div>
+    <div ref="container" class="editor-surface milkdown" :data-empty="empty ? 'true' : 'false'"></div>
   </div>
 </template>

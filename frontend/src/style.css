@@ -1943,3 +1943,157 @@ button.tag[aria-pressed='true'] {
 .code-block-wrap pre {
   padding-right: var(--sp-8);
 }
+
+/* ============ 标签选择器 ============ */
+
+.tag-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.tag--add {
+  background: transparent;
+  border: 1px dashed var(--sep-strong);
+  color: var(--label-2);
+}
+
+.tag--add:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: transparent;
+}
+
+.tag-picker__new {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: center;
+}
+
+.tag-picker__new .input {
+  min-height: 36px;
+  font: var(--text-subheadline);
+}
+
+.tag-picker__suggest {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--sep);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.tag-picker__suggest-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: 8px var(--sp-3);
+  border: none;
+  border-top: 1px solid var(--sep);
+  background: var(--bg-elevated);
+  font: var(--text-subheadline);
+  color: var(--label);
+  cursor: pointer;
+  text-align: left;
+}
+
+.tag-picker__suggest-item:first-child {
+  border-top: none;
+}
+
+.tag-picker__suggest-item:hover {
+  background: var(--cell-hover);
+}
+
+.tag-picker__suggest-action {
+  font: var(--text-caption);
+  color: var(--accent);
+}
+
+.tag-picker__manage {
+  font: var(--text-footnote);
+  color: var(--label-2);
+}
+
+.tag-picker__manage summary {
+  cursor: pointer;
+  padding: 2px 0;
+  user-select: none;
+}
+
+.tag-picker__manage summary:hover {
+  color: var(--label);
+}
+
+.tag-picker__manage-list {
+  margin-top: var(--sp-2);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--sep);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+.tag-picker__manage-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: 6px var(--sp-3);
+  border-top: 1px solid var(--sep);
+  font: var(--text-subheadline);
+  color: var(--label);
+}
+
+.tag-picker__manage-list li:first-child {
+  border-top: none;
+}
+
+/* 编辑页顶部：标签选择器与标题同一行 */
+.tag-field {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.tag-field .tag-picker {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+/* 编辑器占位提示：文档为空时在左上角显示 */
+.milkdown[data-empty='true'] {
+  position: relative;
+}
+
+.milkdown[data-empty='true']::before {
+  content: '开始写点什么…支持 Markdown：**粗体**、`代码`、- 列表、> 引用';
+  position: absolute;
+  top: var(--sp-5);
+  left: var(--sp-6);
+  color: var(--label-3);
+  font: var(--text-body);
+  pointer-events: none;
+  user-select: none;
+}
+
+/* 编辑页顶部标签行：更紧凑，不抢正文空间 */
+.tag-field .tag-picker {
+  gap: 6px;
+}
+
+.tag-field .tag {
+  font-size: 12px;
+  padding: 2px 9px;
+  min-height: 20px;
+}
+
+.tag-field .tag-picker__manage summary {
+  font: var(--text-caption);
+}
