@@ -48,7 +48,8 @@
 - 前端样式写在 `src/style.css`（HIG 语义色 + 字号阶梯 + 8pt 节奏），**不引入组件库**（`docs/frontend/frontend.md` 第八节）。
 - **正文是 Markdown 原文**：`notes.content` 存 Markdown 文本，阅读态用 `utils/markdown.ts`（marked + DOMPurify）渲染，编辑态用 `components/MarkdownEditor.vue`（Milkdown，路由懒加载）。
 - **新建笔记流程**：工作台点「新建笔记」→ `NewNoteModal` 收标题与标签 → 带 query 跳 `/notes/new` → 首次保存才 `POST /api/notes`。
-- **标签的新建/删除可在弹窗与编辑页内完成**：统一用 `components/TagPicker.vue`，不要另写一套；新建遇到 409 时自动选中同名已有标签，而不是报错。
+- **标签语义跟随笔记生命周期（类思源）**：统一用 `components/TagPicker.vue`。弹窗与编辑页**不提供物理删除**；编辑页点标签上的 × 只是解除本篇关联。选择器只列出 `note_count > 0` 的标签，计数归零自动隐藏（数据仍留在库里，下次被使用会重新出现）。新建遇到 409 时自动选中同名已有标签。
+- 物理删除标签只在 `/tags` 页（`DELETE /api/tags/:id`）。
 - `frontend/dist/` 是构建产物，已被 gitignore，不要手改、不要提交。
 
 ## 常用命令

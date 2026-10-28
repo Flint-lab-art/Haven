@@ -5,7 +5,7 @@
  * 按用户选择，弹窗只把数据暂存在前端（不立刻建空笔记），
  * 首次保存时才真正 POST /api/notes。
  */
-import { nextTick, onMounted, onBeforeUnmount, ref } from 'vue'
+import { nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { listTags, type Tag } from '@/api/tags'
 import TagPicker from './TagPicker.vue'
@@ -60,8 +60,16 @@ function onKeydown(event: KeyboardEvent): void {
   if (event.key === 'Escape') emit('close')
 }
 
+// 每次打开都重新拉一次：标签计数会随其他笔记的编辑变化
+watch(
+  () => props.open,
+  (open) => {
+    if (open) void loadTags()
+  },
+  { immediate: true },
+)
+
 onMounted(() => {
-  void loadTags()
   window.addEventListener('keydown', onKeydown)
 })
 

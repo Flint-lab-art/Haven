@@ -1,16 +1,20 @@
 <script setup lang="ts">
 /**
- * 标签选择器：多选 + 就地新建 + 删除。
+ * 标签选择器：多选 + 就地新建 + 从本篇笔记移除。
  *
- * 弹窗与编辑页共用（docs/api.md 第八节：POST /api/tags 新建，DELETE 删除）。
- * 新建时若名字已存在（后端 409），自动选中已有那个而不是报错。
+ * 标签语义参考思源笔记：**标签本身不手动删除**，它跟着使用它的笔记走。
+ *   - 只显示「至少被一篇笔记使用」的标签（note_count > 0）；
+ *   - 从笔记上移除标签 = 解除关联，计数减到 0 时该标签自动从列表消失；
+ *   - 想用没用过的标签，直接输入名字新建即可。
+ *
+ * 数据层面不做物理删除（docs/api.md 第八节已有 DELETE 接口，但本组件不调用）。
  */
 import { computed, nextTick, ref } from 'vue'
 import { ApiError } from '@/api/client'
-import { createTag, deleteTag, type Tag } from '@/api/tags'
+import { createTag, type Tag } from '@/api/tags'
 
 const props = defineProps<{
-  /** 全部可选标签（由父组件加载，避免两处各拉一次）。 */
+  /** 父组件加载的全部标签（含未被使用的）。 */
   tags: Tag[]
   /** 已选中的标签 id。 */
   selected: string[]
@@ -18,7 +22,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:selected': [value: string[]]
-  /** 标签列表发生变化（新建 / 删除后），父组件据此刷新。 */
+  /** 标签列表发生变化（新建后），父组件据此刷新。 */
   changed: []
 }>()
 
@@ -28,23 +32,40 @@ const error = ref('')
 const editing = ref(false)
 const inputRef = ref<HTMLInputElement | null>(null)
 
-/** 下拉候选：按输入过滤，排除已选。 */
+/** 已选中的标签对象，保证即使计数为 0 也仍然显示（正在编辑的这一篇用它）。 */
+const selectedTags = computed(() =>
+  props.selected
+    .map((id) => props.tags.find((tag) => tag.id === id))
+    .filter((tag): tag is Tag => Boolean(tag)),
+)
+
+/**
+ * 可供选择的标签：只列「有笔记在用」的，并排除已选的。
+ *
+ * 未被任何笔记使用的标签不出现在这里——想用的话直接输入名字新建。
+ */
+const available = computed(() => {
+  const chosen = new Set(props.selected)
+  return props.tags.filter((tag) => tag.note_count > 0 && !chosen.has(tag.id))
+})
+
+/** 输入过滤后的建议（仅在有输入时展示）。 */
 const suggestions = computed(() => {
   const keyword = input.value.trim().toLowerCase()
-  const chosen = new Set(props.selected)
-  return props.tags
-    .filter((tag) => !chosen.has(tag.id))
-    .filter((tag) => !keyword || tag.name.toLowerCase().includes(keyword))
+  if (!keyword) return available.value.slice(0, 8)
+  return available.value
+    .filter((tag) => tag.name.toLowerCase().includes(keyword))
     .slice(0, 8)
 })
 
-/** 输入的名字是否已完全等于某个已有标签。 */
+/** 输入的名字是否已完全等于某个现有标签（不论计数）。 */
 const exactMatch = computed(() => {
   const keyword = input.value.trim().toLowerCase()
   if (!keyword) return undefined
   return props.tags.find((tag) => tag.name.toLowerCase() === keyword)
 })
 
+/** 选中 / 取消选中（取消只影响本篇笔记的关联）。 */
 function toggle(id: string): void {
   const next = props.selected.includes(id)
     ? props.selected.filter((x) => x !== id)
@@ -83,10 +104,10 @@ async function create(): Promise<void> {
     emit('update:selected', [...props.selected, created.id])
     input.value = ''
     editing.value = false
+    // 新标签还没有任何笔记使用，需要父组件刷新后才会出现在列表里
     emit('changed')
   } catch (err) {
     if (err instanceof ApiError && err.status === 409) {
-      // 后端判重（大小写不同也算重名）：选中已有那个
       const existing = props.tags.find((tag) => tag.name.toLowerCase() === name.toLowerCase())
       if (existing) {
         if (!props.selected.includes(existing.id)) {
@@ -103,22 +124,6 @@ async function create(): Promise<void> {
   }
 }
 
-/** 删除标签（会解除所有笔记的关联，需二次确认）。 */
-async function remove(tag: Tag): Promise<void> {
-  if (!window.confirm(`删除标签「${tag.name}」？所有笔记上的这个标签都会被移除。`)) return
-
-  error.value = ''
-  try {
-    await deleteTag(tag.id)
-    if (props.selected.includes(tag.id)) {
-      emit('update:selected', props.selected.filter((x) => x !== tag.id))
-    }
-    emit('changed')
-  } catch (err) {
-    error.value = err instanceof ApiError ? err.message : '删除标签失败'
-  }
-}
-
 defineExpose({
   focusInput: async () => {
     editing.value = true
@@ -131,19 +136,22 @@ defineExpose({
 <template>
   <div class="tag-picker">
     <div class="tag-row">
+      <!-- 已选：点一下就解除本篇笔记的关联 -->
       <button
-        v-for="tag in tags"
+        v-for="tag in selectedTags"
         :key="tag.id"
-        class="tag"
+        class="tag tag--selected"
         type="button"
-        :aria-pressed="selected.includes(tag.id)"
+        :aria-pressed="true"
+        :title="`从这篇笔记移除「${tag.name}」`"
         @click="toggle(tag.id)"
       >
         {{ tag.name }}
+        <span class="tag__x" aria-hidden="true">×</span>
       </button>
 
       <button class="tag tag--add" type="button" @click="toggleEditing">
-        {{ editing ? '取消' : '+ 新建' }}
+        {{ editing ? '取消' : '+ 标签' }}
       </button>
     </div>
 
@@ -154,19 +162,19 @@ defineExpose({
         class="input"
         type="text"
         maxlength="64"
-        placeholder="新标签名，回车创建"
-        aria-label="新标签名"
+        placeholder="输入标签名，回车添加"
+        aria-label="标签名"
         @keydown.enter.prevent="create"
         @keydown.esc="toggleEditing"
       />
       <button class="btn btn--sm btn--primary" type="button" :disabled="creating" @click="create">
-        {{ creating ? '创建中…' : '创建' }}
+        {{ creating ? '添加中…' : '添加' }}
       </button>
     </div>
 
     <p v-if="error" class="field__error">{{ error }}</p>
 
-    <!-- 已有标签的联想与删除 -->
+    <!-- 有笔记在用的标签，点一下即加入本篇 -->
     <div v-if="editing && suggestions.length" class="tag-picker__suggest">
       <button
         v-for="tag in suggestions"
@@ -176,18 +184,8 @@ defineExpose({
         @click="toggle(tag.id)"
       >
         <span>{{ tag.name }}</span>
-        <span class="tag-picker__suggest-action">选择</span>
+        <span class="tag-picker__suggest-action">{{ tag.note_count }} 篇</span>
       </button>
     </div>
-
-    <details v-if="tags.length" class="tag-picker__manage">
-      <summary>管理标签（删除）</summary>
-      <ul class="tag-picker__manage-list">
-        <li v-for="tag in tags" :key="tag.id">
-          <span>{{ tag.name }}</span>
-          <button class="btn btn--sm btn--danger" type="button" @click="remove(tag)">删除</button>
-        </li>
-      </ul>
-    </details>
   </div>
 </template>

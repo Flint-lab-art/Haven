@@ -1952,6 +1952,29 @@ button.tag[aria-pressed='true'] {
   gap: var(--sp-2);
 }
 
+.tag--selected {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.tag--selected:hover {
+  background: var(--accent-hover);
+  color: var(--on-accent);
+}
+
+.tag__x {
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.75;
+}
+
+.tag--selected:hover .tag__x {
+  opacity: 1;
+}
+
 .tag--add {
   background: transparent;
   border: 1px dashed var(--sep-strong);
@@ -2013,44 +2036,7 @@ button.tag[aria-pressed='true'] {
   color: var(--accent);
 }
 
-.tag-picker__manage {
-  font: var(--text-footnote);
-  color: var(--label-2);
-}
 
-.tag-picker__manage summary {
-  cursor: pointer;
-  padding: 2px 0;
-  user-select: none;
-}
-
-.tag-picker__manage summary:hover {
-  color: var(--label);
-}
-
-.tag-picker__manage-list {
-  margin-top: var(--sp-2);
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--sep);
-  border-radius: var(--r-md);
-  overflow: hidden;
-}
-
-.tag-picker__manage-list li {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-3);
-  padding: 6px var(--sp-3);
-  border-top: 1px solid var(--sep);
-  font: var(--text-subheadline);
-  color: var(--label);
-}
-
-.tag-picker__manage-list li:first-child {
-  border-top: none;
-}
 
 /* 编辑页顶部：标签选择器与标题同一行 */
 .tag-field {
@@ -2094,6 +2080,3 @@ button.tag[aria-pressed='true'] {
   min-height: 20px;
 }
 
-.tag-field .tag-picker__manage summary {
-  font: var(--text-caption);
-}

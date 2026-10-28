@@ -151,6 +151,7 @@ async function save(): Promise<void> {
       // 换成详情地址，刷新不会重复创建
       await router.replace({ name: 'note-detail', params: { id: created.id } })
       notice.value = '已保存'
+      await reloadTags()
     } else {
       const updated = await updateNote(noteId.value, {
         title: title.value,
@@ -161,6 +162,8 @@ async function save(): Promise<void> {
       dirty.value = false
       notice.value = '已保存'
       editing.value = false
+      // 标签计数变了：不再被使用的标签会自动从列表消失
+      await reloadTags()
     }
   } catch (err) {
     handleError(err)
