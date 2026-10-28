@@ -1,5 +1,5 @@
 <script setup lang="ts">
-/** 私有搜索（docs/frontend/frontend.md 第四节）：笔记 + 标签两块结果。 */
+/** 私有搜索：笔记 + 标签两块结果。 */
 import { ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import PrivateHeader from '@/components/PrivateHeader.vue'
@@ -55,54 +55,71 @@ watch(
 </script>
 
 <template>
-  <PrivateHeader />
+  <div class="shell">
+    <PrivateHeader />
 
-  <main class="page">
-    <h1 class="page-title" style="margin-bottom: 16px">搜索</h1>
+    <main class="container">
+      <header class="page-head">
+        <div>
+          <h1 class="page-title">搜索</h1>
+          <p v-if="searched" class="page-sub">“{{ searched }}” · {{ noteTotal }} 篇笔记</p>
+          <p v-else class="page-sub">在所有私有与公开笔记里查找</p>
+        </div>
+      </header>
 
-    <SearchBar v-model="keyword" />
+      <SearchBar v-model="keyword" large />
 
-    <p v-if="error" class="notice notice--error" style="margin-top: 16px">{{ error }}</p>
+      <p v-if="error" class="notice notice--error" style="margin-top: var(--sp-4)">{{ error }}</p>
 
-    <template v-if="searched">
-      <template v-if="tagHits.length">
-        <p class="section-caption">标签</p>
-        <div class="tag-row" style="margin-top: 0">
-          <RouterLink
-            v-for="tag in tagHits"
-            :key="tag.id"
-            :to="{ name: 'tags' }"
-            class="tag"
-          >
-            {{ tag.name }} · {{ tag.note_count }}
-          </RouterLink>
+      <template v-if="searched">
+        <template v-if="tagHits.length">
+          <p class="section-label">标签</p>
+          <div class="tag-row">
+            <button
+              v-for="tag in tagHits"
+              :key="tag.id"
+              class="tag"
+              type="button"
+              @click="router.push({ path: '/search', query: { q: tag.name } })"
+            >
+              {{ tag.name }} · {{ tag.note_count }}
+            </button>
+          </div>
+        </template>
+
+        <p class="section-label">笔记</p>
+
+        <div v-if="loading" class="panel panel--pad">
+          <div class="skeleton skeleton--title" style="width: 48%"></div>
+          <div class="skeleton skeleton--line" style="width: 84%"></div>
+        </div>
+
+        <div v-else-if="noteHits.length === 0" class="panel empty">
+          <p class="empty__title">没有匹配的笔记</p>
+          <p class="empty__text">换个关键词，或回到全部笔记。</p>
+          <button class="btn" type="button" @click="router.push({ name: 'workbench' })">
+            返回笔记列表
+          </button>
+        </div>
+
+        <div v-else class="panel rows">
+          <NoteCard
+            v-for="hit in noteHits"
+            :key="hit.id"
+            :id="hit.id"
+            :title="hit.title"
+            :preview="hit.content_preview"
+            :tags="hit.tags"
+            :meta="`更新于 ${formatRelative(hit.updated_at)}`"
+            :visibility="hit.visibility ?? null"
+          />
         </div>
       </template>
 
-      <p class="section-caption">笔记 · {{ noteTotal }} 篇</p>
-
-      <div v-if="loading" class="panel panel--padded">
-        <span class="skeleton" style="display: block; width: 60%"></span>
+      <div v-else class="panel empty" style="margin-top: var(--sp-6)">
+        <p class="empty__title">输入关键词开始搜索</p>
+        <p class="empty__text">支持标题、正文与标签；2 个字以上效果最好。</p>
       </div>
-
-      <div v-else-if="noteHits.length === 0" class="panel empty">
-        <p class="empty__title">没有匹配的笔记</p>
-        <button class="btn" type="button" @click="router.push({ name: 'workbench' })">
-          返回笔记列表
-        </button>
-      </div>
-
-      <div v-else class="panel">
-        <NoteCard
-          v-for="hit in noteHits"
-          :key="hit.id"
-          :id="hit.id"
-          :title="hit.title"
-          :preview="hit.content_preview"
-          :tags="hit.tags"
-          :meta="`更新于 ${formatRelative(hit.updated_at)}`"
-        />
-      </div>
-    </template>
-  </main>
+    </main>
+  </div>
 </template>

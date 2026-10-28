@@ -1,5 +1,5 @@
 <script setup lang="ts">
-/** 工作台首页：私有笔记列表（docs/frontend/frontend.md 第四节）。 */
+/** 工作台首页：私有笔记列表。 */
 import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import PrivateHeader from '@/components/PrivateHeader.vue'
@@ -17,15 +17,16 @@ const loading = ref(true)
 const error = ref('')
 const filter = ref<Filter>('all')
 
-const filterLabel = computed(() => {
-  switch (filter.value) {
-    case 'private':
-      return '私有'
-    case 'public':
-      return '已公开'
-    default:
-      return '全部'
-  }
+const filters = [
+  { value: 'all', label: '全部' },
+  { value: 'private', label: '私有' },
+  { value: 'public', label: '已公开' },
+] as const
+
+const subtitle = computed(() => {
+  if (loading.value) return '加载中…'
+  if (total.value === 0) return '还没有笔记'
+  return `共 ${total.value} 篇`
 })
 
 async function load(offset = 0): Promise<void> {
@@ -51,62 +52,66 @@ onMounted(() => load())
 </script>
 
 <template>
-  <PrivateHeader />
+  <div class="shell">
+    <PrivateHeader />
 
-  <main class="page">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">笔记</h1>
-        <p class="page-subtitle">共 {{ total }} 篇 · {{ filterLabel }}</p>
+    <main class="container">
+      <header class="page-head">
+        <div>
+          <h1 class="page-title">笔记</h1>
+          <p class="page-sub">{{ subtitle }}</p>
+        </div>
+        <RouterLink :to="{ name: 'note-new' }" class="btn btn--primary btn--lg">新建笔记</RouterLink>
+      </header>
+
+      <div class="segmented" role="group" aria-label="筛选">
+        <button
+          v-for="option in filters"
+          :key="option.value"
+          class="segmented__item"
+          type="button"
+          :aria-pressed="filter === option.value"
+          @click="filter = option.value"
+        >
+          {{ option.label }}
+        </button>
       </div>
-      <RouterLink :to="{ name: 'note-new' }" class="btn btn--primary">新建笔记</RouterLink>
-    </div>
 
-    <div class="row" style="gap: 4px; margin-bottom: 16px">
-      <button
-        v-for="option in [
-          { value: 'all', label: '全部' },
-          { value: 'private', label: '私有' },
-          { value: 'public', label: '已公开' },
-        ] as const"
-        :key="option.value"
-        class="pill-toggle"
-        :aria-pressed="filter === option.value"
-        type="button"
-        @click="filter = option.value"
-      >
-        {{ option.label }}
-      </button>
-    </div>
+      <p v-if="error" class="notice notice--error" style="margin-top: var(--sp-4)">
+        {{ error }}
+        <span class="notice__actions">
+          <button class="btn btn--sm" type="button" @click="load()">重试</button>
+        </span>
+      </p>
 
-    <p v-if="error" class="notice notice--error">{{ error }}</p>
+      <div v-else-if="loading" class="panel panel--pad" style="margin-top: var(--sp-4)">
+        <div class="skeleton skeleton--title" style="width: 42%"></div>
+        <div class="skeleton skeleton--line" style="width: 90%"></div>
+        <div class="skeleton skeleton--line" style="width: 66%"></div>
+      </div>
 
-    <div v-if="loading" class="panel panel--padded">
-      <div class="skeleton" style="width: 45%"></div>
-      <div class="skeleton" style="width: 85%"></div>
-    </div>
+      <div v-else-if="notes.length === 0" class="panel empty" style="margin-top: var(--sp-4)">
+        <p class="empty__title">{{ filter === 'all' ? '还没有笔记' : '这个筛选下没有笔记' }}</p>
+        <p class="empty__text">新建一篇，记录今天学到的东西。</p>
+        <RouterLink :to="{ name: 'note-new' }" class="btn btn--primary">新建笔记</RouterLink>
+      </div>
 
-    <div v-else-if="notes.length === 0" class="panel empty">
-      <p class="empty__title">还没有笔记</p>
-      <p style="margin-bottom: 16px">新建一篇，记录今天学到的东西。</p>
-      <RouterLink :to="{ name: 'note-new' }" class="btn btn--primary">新建笔记</RouterLink>
-    </div>
+      <div v-else class="panel rows" style="margin-top: var(--sp-4)">
+        <NoteCard
+          v-for="note in notes"
+          :key="note.id"
+          :id="note.id"
+          :title="note.title"
+          :preview="note.content_preview"
+          :tags="note.tags"
+          :meta="`更新于 ${formatRelative(note.updated_at)}`"
+          :visibility="note.visibility"
+        />
+      </div>
 
-    <div v-else class="panel">
-      <NoteCard
-        v-for="note in notes"
-        :key="note.id"
-        :id="note.id"
-        :title="note.title"
-        :preview="note.content_preview"
-        :tags="note.tags"
-        :meta="`更新于 ${formatRelative(note.updated_at)}`"
-        :visibility="note.visibility"
-      />
-    </div>
-
-    <div v-if="!loading && notes.length < total" class="row" style="margin-top: 24px; justify-content: center">
-      <button class="btn" type="button" @click="load(notes.length)">加载更多</button>
-    </div>
-  </main>
+      <div v-if="!loading && notes.length < total" class="row" style="margin-top: var(--sp-6); justify-content: center">
+        <button class="btn" type="button" @click="load(notes.length)">加载更多</button>
+      </div>
+    </main>
+  </div>
 </template>

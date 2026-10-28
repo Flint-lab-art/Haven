@@ -1,9 +1,7 @@
 <script setup lang="ts">
 /**
- * API Token 管理（docs/frontend/frontend.md 第四节 /settings/tokens）。
- *
- * 该页面需要「会话已通过过 TOTP」。若收到 403，只在页面内提示并引导去
- * /settings/security，不强制登出（docs/frontend/frontend.md 第四节规则最后一条）。
+ * API Token 管理。需要「会话已通过过 TOTP」；403 时只在页面内引导，不登出
+ * （docs/frontend/frontend.md 第四节规则最后一条）。
  */
 import { onMounted, reactive, ref } from 'vue'
 import { RouterLink } from 'vue-router'
@@ -18,9 +16,9 @@ const loading = ref(true)
 const forbidden = ref(false)
 const error = ref('')
 const creating = ref(false)
-/** 新建后一次性展示的明文，刷新即丢失。 */
 const created = ref<CreatedToken | null>(null)
 const copied = ref(false)
+const showNew = ref(false)
 
 const form = reactive({
   name: '',
@@ -60,6 +58,7 @@ async function create(): Promise<void> {
       expires_at: form.neverExpires || !form.expiresAt ? null : new Date(form.expiresAt).toISOString(),
     })
     form.name = ''
+    showNew.value = false
     await load()
   } catch (err) {
     if (err instanceof ApiError && err.isForbidden) {
@@ -98,104 +97,124 @@ onMounted(load)
 </script>
 
 <template>
-  <PrivateHeader />
+  <div class="shell">
+    <PrivateHeader />
 
-  <main class="page page--wide">
-    <h1 class="page-title" style="margin-bottom: 24px">API Token</h1>
-
-    <div class="settings-layout">
-      <SettingsNav />
-
-      <div class="stack">
-        <!-- 未通过 TOTP：引导而不是登出 -->
-        <section v-if="forbidden" class="panel panel--padded stack">
-          <h2 class="card__title">管理 Token 需要完成动态码验证</h2>
-          <p class="field__hint">
-            当前会话不是通过动态码建立的。请到「账号安全」完成验证后再回来。
+    <main class="container">
+      <header class="page-head">
+        <div>
+          <h1 class="page-title">API Token</h1>
+          <p class="page-sub">
+            {{ loading ? '加载中…' : `${tokens.filter((t) => !t.revoked_at).length} 个有效凭证` }}
           </p>
-          <RouterLink :to="{ name: 'settings-security' }" class="btn btn--primary" style="align-self: flex-start">
-            去账号安全
-          </RouterLink>
-        </section>
+        </div>
+        <button
+          v-if="!forbidden"
+          class="btn btn--primary btn--lg"
+          type="button"
+          @click="showNew = !showNew"
+        >
+          {{ showNew ? '收起' : '新建 Token' }}
+        </button>
+      </header>
 
-        <template v-else>
-          <p v-if="error" class="notice notice--error">{{ error }}</p>
+      <div class="settings-layout">
+        <SettingsNav />
 
-          <!-- 一次性明文 -->
-          <section v-if="created" class="panel panel--padded stack">
-            <h2 class="card__title">新 Token 已创建</h2>
-            <p class="field__hint">明文只显示这一次，离开页面后无法再获取。</p>
-            <code class="totp-uri">{{ created.token }}</code>
-            <div class="row">
-              <button class="btn btn--primary" type="button" @click="copy">
-                {{ copied ? '已复制' : '复制' }}
-              </button>
-              <button class="btn" type="button" @click="created = null">已保存，关闭</button>
-            </div>
+        <div class="stack">
+          <!-- 403：引导完成 TOTP 验证，不登出 -->
+          <section v-if="forbidden" class="panel panel--pad">
+            <h2 class="row-item__title" style="font: var(--text-title3)">管理 Token 需要完成动态码验证</h2>
+            <p class="field__hint" style="margin-top: var(--sp-2)">
+              当前会话不是通过动态码建立的。去「账号安全」绑定并验证后，重新登录即可管理 Token。
+            </p>
+            <RouterLink :to="{ name: 'settings-security' }" class="btn btn--primary" style="margin-top: var(--sp-4)">
+              去账号安全
+            </RouterLink>
           </section>
 
-          <!-- 新建 -->
-          <form class="panel panel--padded stack" @submit.prevent="create">
-            <h2 class="card__title">新建 Token</h2>
-            <div class="field">
-              <label class="field__label" for="token-name">名称</label>
-              <input id="token-name" v-model="form.name" class="input" type="text" placeholder="脚本 @ 家里" required />
-            </div>
-            <div class="field">
-              <label class="field__label" for="token-scope">权限</label>
-              <select id="token-scope" v-model="form.scope" class="select">
-                <option value="read">只读（read）</option>
-                <option value="read_write">读写（read_write）</option>
-              </select>
-            </div>
-            <label class="checkbox-row">
-              <input v-model="form.neverExpires" type="checkbox" />
-              永不过期
-            </label>
-            <div v-if="!form.neverExpires" class="field">
-              <label class="field__label" for="token-expiry">过期时间</label>
-              <input id="token-expiry" v-model="form.expiresAt" class="input" type="datetime-local" />
-            </div>
-            <button class="btn btn--primary" type="submit" :disabled="creating">创建</button>
-          </form>
+          <template v-else>
+            <p v-if="error" class="notice notice--error">{{ error }}</p>
 
-          <!-- 列表 -->
-          <div v-if="loading" class="panel panel--padded">
-            <div class="skeleton" style="width: 50%"></div>
-          </div>
-
-          <div v-else-if="tokens.length === 0" class="panel empty">
-            <p class="empty__title">还没有 Token</p>
-            <p>给脚本或编辑器插件创建一个，避免直接使用密码。</p>
-          </div>
-
-          <ul v-else class="panel list">
-            <li v-for="item in tokens" :key="item.id" class="list__row">
-              <div class="list__row-main">
-                <div class="card__title">
-                  {{ item.name }}
-                  <span v-if="item.revoked_at" class="tag" style="margin-left: 6px">已撤销</span>
-                </div>
-                <div class="card__meta">
-                  <span class="mono">{{ item.token_prefix }}…</span>
-                  <span>· {{ item.scope === 'read' ? '只读' : '读写' }}</span>
-                  <span v-if="item.expires_at">· 到期 {{ formatDateTime(item.expires_at) }}</span>
-                  <span v-else>· 永不过期</span>
-                  <span v-if="item.last_used_at">· 最近使用 {{ formatRelative(item.last_used_at) }}</span>
-                </div>
+            <!-- 一次性明文 -->
+            <section v-if="created" class="panel panel--pad" style="border: 1px solid var(--success)">
+              <span class="badge badge--public">已创建</span>
+              <p class="field__hint" style="margin-top: var(--sp-2)">
+                明文只显示这一次，离开页面后无法再获取。现在就复制保存。
+              </p>
+              <p class="code-block" style="margin-top: var(--sp-3)">{{ created.token }}</p>
+              <div class="row" style="margin-top: var(--sp-4)">
+                <button class="btn btn--primary" type="button" @click="copy">
+                  {{ copied ? '已复制' : '复制' }}
+                </button>
+                <button class="btn" type="button" @click="created = null">我已保存</button>
               </div>
-              <button
-                v-if="!item.revoked_at"
-                class="btn btn--small btn--danger"
-                type="button"
-                @click="revoke(item)"
-              >
-                撤销
-              </button>
-            </li>
-          </ul>
-        </template>
+            </section>
+
+            <form v-if="showNew" class="panel panel--pad" @submit.prevent="create">
+              <div class="field">
+                <label class="field__label" for="token-name">名称</label>
+                <input id="token-name" v-model="form.name" class="input" type="text" placeholder="脚本 @ 家里" required />
+              </div>
+              <div class="field" style="margin-top: var(--sp-3)">
+                <label class="field__label" for="token-scope">权限</label>
+                <select id="token-scope" v-model="form.scope" class="select">
+                  <option value="read">只读 — 只能查看</option>
+                  <option value="read_write">读写 — 可增删改</option>
+                </select>
+              </div>
+              <label class="checkbox-row" style="margin-top: var(--sp-4)">
+                <input v-model="form.neverExpires" type="checkbox" />
+                永不过期
+              </label>
+              <div v-if="!form.neverExpires" class="field" style="margin-top: var(--sp-3)">
+                <label class="field__label" for="token-expiry">过期时间</label>
+                <input id="token-expiry" v-model="form.expiresAt" class="input" type="datetime-local" />
+              </div>
+              <div class="row" style="justify-content: flex-end; margin-top: var(--sp-4)">
+                <button class="btn" type="button" @click="showNew = false">取消</button>
+                <button class="btn btn--primary" type="submit" :disabled="creating">创建</button>
+              </div>
+            </form>
+
+            <div v-if="loading" class="panel panel--pad">
+              <div class="skeleton skeleton--title" style="width: 44%"></div>
+            </div>
+
+            <div v-else-if="tokens.length === 0" class="panel empty">
+              <p class="empty__title">还没有 Token</p>
+              <p class="empty__text">给脚本或编辑器插件创建一个，避免在任何地方直接使用密码。</p>
+              <button class="btn btn--primary" type="button" @click="showNew = true">新建 Token</button>
+            </div>
+
+            <ul v-else class="panel rows">
+              <li v-for="item in tokens" :key="item.id" class="row-item">
+                <div class="row-item__main">
+                  <div class="row-item__title">
+                    {{ item.name }}
+                    <span v-if="item.revoked_at" class="badge badge--private">已撤销</span>
+                  </div>
+                  <div class="row-item__sub">
+                    <span class="mono">{{ item.token_prefix }}…</span>
+                    · {{ item.scope === 'read' ? '只读' : '读写' }}
+                    <template v-if="item.expires_at"> · {{ formatDateTime(item.expires_at) }} 到期</template>
+                    <template v-else> · 永不过期</template>
+                    <template v-if="item.last_used_at"> · 最近使用 {{ formatRelative(item.last_used_at) }}</template>
+                  </div>
+                </div>
+                <button
+                  v-if="!item.revoked_at"
+                  class="btn btn--sm btn--danger"
+                  type="button"
+                  @click="revoke(item)"
+                >
+                  撤销
+                </button>
+              </li>
+            </ul>
+          </template>
+        </div>
       </div>
-    </div>
-  </main>
+    </main>
+  </div>
 </template>

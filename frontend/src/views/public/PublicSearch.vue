@@ -1,5 +1,5 @@
 <script setup lang="ts">
-/** 公开搜索（docs/frontend/frontend.md 第三节）：只搜已公开笔记。 */
+/** 公开搜索：只搜已公开笔记。 */
 import { ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import PublicHeader from '@/components/PublicHeader.vue'
@@ -26,7 +26,7 @@ async function run(q: string): Promise<void> {
 
   loading.value = true
   error.value = ''
-  searched.value = q
+  searched.value = q.trim()
   try {
     const result = await searchPublic(q)
     results.value = result.items
@@ -49,41 +49,46 @@ watch(
 </script>
 
 <template>
-  <PublicHeader />
+  <div class="shell">
+    <PublicHeader />
 
-  <main class="page">
-    <h1 class="page-title" style="margin-bottom: 16px">搜索</h1>
+    <main class="container">
+      <header class="page-head">
+        <div>
+          <h1 class="page-title">搜索</h1>
+          <p v-if="searched" class="page-sub">“{{ searched }}” · {{ total }} 篇结果</p>
+          <p v-else class="page-sub">按标题、正文或标签查找公开笔记</p>
+        </div>
+      </header>
 
-    <SearchBar v-model="keyword" />
+      <SearchBar v-model="keyword" large />
 
-    <p v-if="error" class="notice notice--error" style="margin-top: 16px">{{ error }}</p>
+      <p v-if="error" class="notice notice--error" style="margin-top: var(--sp-4)">{{ error }}</p>
 
-    <template v-if="searched">
-      <p class="section-caption">
-        “{{ searched }}” · 找到 {{ total }} 篇
-      </p>
+      <template v-if="searched">
+        <div v-if="loading" class="panel panel--pad" style="margin-top: var(--sp-6)">
+          <div class="skeleton skeleton--title" style="width: 50%"></div>
+          <div class="skeleton skeleton--line" style="width: 80%"></div>
+        </div>
 
-      <div v-if="loading" class="panel panel--padded">
-        <span class="skeleton" style="display: block; width: 60%"></span>
-      </div>
+        <div v-else-if="results.length === 0" class="panel empty" style="margin-top: var(--sp-6)">
+          <p class="empty__title">没有匹配的笔记</p>
+          <p class="empty__text">换个关键词试试，或浏览全部笔记。</p>
+        </div>
 
-      <div v-else-if="results.length === 0" class="panel empty">
-        <p class="empty__title">没有匹配的笔记</p>
-        <p>换个关键词试试。</p>
-      </div>
-
-      <div v-else class="panel">
-        <NoteCard
-          v-for="hit in results"
-          :key="hit.id"
-          :id="hit.id"
-          :title="hit.title"
-          :preview="hit.content_preview"
-          :tags="hit.tags"
-          :meta="formatDate(hit.published_at)"
-          :to="`/notes/${hit.id}`"
-        />
-      </div>
-    </template>
-  </main>
+        <div v-else class="panel rows" style="margin-top: var(--sp-6)">
+          <NoteCard
+            v-for="hit in results"
+            :key="hit.id"
+            :id="hit.id"
+            :title="hit.title"
+            :preview="hit.content_preview"
+            :tags="hit.tags"
+            :meta="formatDate(hit.published_at)"
+            :to="`/notes/${hit.id}`"
+          />
+        </div>
+      </template>
+    </main>
+  </div>
 </template>

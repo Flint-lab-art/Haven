@@ -1,5 +1,5 @@
 <script setup lang="ts">
-/** 账号安全（docs/frontend/frontend.md 第四节 /settings/security）。 */
+/** 账号安全：修改密码、绑定 / 关闭 TOTP。 */
 import { onMounted, reactive, ref } from 'vue'
 import PrivateHeader from '@/components/PrivateHeader.vue'
 import SettingsNav from '@/components/SettingsNav.vue'
@@ -9,19 +9,16 @@ import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
 
-// 修改密码
 const pw = reactive({ oldPassword: '', newPassword: '', totpCode: '' })
 const pwError = ref('')
 const pwNotice = ref('')
 const pwBusy = ref(false)
 
-// 绑定 TOTP
 const setup = ref<{ secret: string; otpauth_uri: string } | null>(null)
 const bindCode = ref('')
 const bindError = ref('')
 const bindBusy = ref(false)
 
-// 关闭 TOTP
 const disableCode = ref('')
 const disableError = ref('')
 
@@ -84,7 +81,6 @@ async function confirmDisable(): Promise<void> {
   try {
     await disableTotp(disableCode.value.trim())
     disableCode.value = ''
-    // 关闭 TOTP 会删掉全部授信设备，也会影响后续 Token 管理
     await auth.refresh()
   } catch (err) {
     disableError.value = describe(err, '关闭失败')
@@ -95,95 +91,132 @@ onMounted(() => void auth.refresh())
 </script>
 
 <template>
-  <PrivateHeader />
+  <div class="shell">
+    <PrivateHeader />
 
-  <main class="page page--wide">
-    <h1 class="page-title" style="margin-bottom: 24px">账号安全</h1>
+    <main class="container">
+      <header class="page-head">
+        <div>
+          <h1 class="page-title">账号安全</h1>
+          <p class="page-sub">密码与双重验证</p>
+        </div>
+      </header>
 
-    <div class="settings-layout">
-      <SettingsNav />
+      <div class="settings-layout">
+        <SettingsNav />
 
-      <div class="stack">
-        <!-- 修改密码 -->
-        <form class="panel panel--padded stack" @submit.prevent="submitPassword">
-          <h2 class="card__title">修改密码</h2>
-          <p class="field__hint">修改后所有会话与授信设备都会失效，API Token 不受影响。</p>
+        <div class="stack">
+          <!-- 动态验证码（是否已启用是这页最重要的状态，放最前） -->
+          <section class="panel panel--pad">
+            <div class="row" style="justify-content: space-between; align-items: flex-start">
+              <div>
+                <h2 class="row-item__title" style="font: var(--text-title3)">动态验证码</h2>
+                <p class="field__hint" style="margin-top: 4px">
+                  {{
+                    auth.totpEnabled
+                      ? '已启用。管理 Token、修改密码等操作需要动态码。'
+                      : '尚未启用。绑定后登录需要第二步验证，更安全。'
+                  }}
+                </p>
+              </div>
+              <span :class="auth.totpEnabled ? 'badge badge--public' : 'badge badge--private'">
+                {{ auth.totpEnabled ? '已启用' : '未启用' }}
+              </span>
+            </div>
 
-          <div class="field">
-            <label class="field__label" for="old-password">原密码</label>
-            <input id="old-password" v-model="pw.oldPassword" class="input" type="password" required />
-          </div>
-          <div class="field">
-            <label class="field__label" for="new-password">新密码</label>
-            <input
-              id="new-password"
-              v-model="pw.newPassword"
-              class="input"
-              type="password"
-              autocomplete="new-password"
-              minlength="12"
-              required
-            />
-            <span class="field__hint">至少 12 位，且不能与原密码相同。</span>
-          </div>
-          <div v-if="auth.totpEnabled" class="field">
-            <label class="field__label" for="pw-totp">动态码</label>
-            <input id="pw-totp" v-model="pw.totpCode" class="input mono" inputmode="numeric" maxlength="6" />
-          </div>
+            <div class="divider"></div>
 
-          <p v-if="pwError" class="notice notice--error">{{ pwError }}</p>
-          <p v-if="pwNotice" class="notice notice--info">{{ pwNotice }}</p>
+            <template v-if="!auth.totpEnabled">
+              <button v-if="!setup" class="btn" type="button" @click="beginSetup">开始绑定</button>
 
-          <button class="btn btn--primary" type="submit" :disabled="pwBusy">修改密码</button>
-        </form>
+              <template v-else>
+                <p class="field__hint">
+                  在验证器 App 里手动输入下面的密钥（或用 otpauth 链接导入），然后输入它显示的 6 位码。
+                </p>
+                <p class="code-block">{{ setup.secret }}</p>
+                <p class="code-block" style="font-size: 11px; color: var(--label-2)">{{ setup.otpauth_uri }}</p>
 
-        <!-- 动态验证码 -->
-        <section class="panel panel--padded stack">
-          <h2 class="card__title">动态验证码</h2>
-          <p class="field__hint">
-            {{
-              auth.totpEnabled
-                ? '已启用。管理 API Token、修改密码等操作需要动态码。'
-                : '尚未启用。绑定后登录需要第二步验证。'
-            }}
-          </p>
+                <div class="field" style="margin-top: var(--sp-4)">
+                  <label class="field__label" for="bind-code">6 位动态码</label>
+                  <input
+                    id="bind-code"
+                    v-model="bindCode"
+                    class="input code-input"
+                    inputmode="numeric"
+                    maxlength="6"
+                    placeholder="······"
+                  />
+                </div>
+                <p v-if="bindError" class="notice notice--error" style="margin-top: var(--sp-3)">{{ bindError }}</p>
 
-          <template v-if="!auth.totpEnabled">
-            <button v-if="!setup" class="btn" type="button" @click="beginSetup">开始绑定</button>
+                <div class="row" style="margin-top: var(--sp-4)">
+                  <button class="btn btn--primary" type="button" :disabled="bindBusy" @click="confirmBind">
+                    确认绑定
+                  </button>
+                  <button class="btn" type="button" @click="setup = null">取消</button>
+                </div>
+              </template>
+            </template>
 
             <template v-else>
-              <p class="field__hint">
-                在验证器 App 里添加以下密钥（或扫描 otpauth 链接），然后输入它显示的 6 位码。
-              </p>
-              <p class="totp-uri">{{ setup.secret }}</p>
-              <p class="totp-uri">{{ setup.otpauth_uri }}</p>
-
               <div class="field">
-                <label class="field__label" for="bind-code">6 位动态码</label>
-                <input id="bind-code" v-model="bindCode" class="input mono" inputmode="numeric" maxlength="6" />
+                <label class="field__label" for="disable-code">输入当前动态码以关闭</label>
+                <input
+                  id="disable-code"
+                  v-model="disableCode"
+                  class="input code-input"
+                  inputmode="numeric"
+                  maxlength="6"
+                  placeholder="······"
+                  style="max-width: 220px"
+                />
               </div>
-              <p v-if="bindError" class="notice notice--error">{{ bindError }}</p>
-
-              <div class="row">
-                <button class="btn btn--primary" type="button" :disabled="bindBusy" @click="confirmBind">
-                  确认绑定
-                </button>
-                <button class="btn" type="button" @click="setup = null">取消</button>
-              </div>
+              <p v-if="disableError" class="notice notice--error" style="margin-top: var(--sp-3)">{{ disableError }}</p>
+              <p class="field__hint" style="margin-top: var(--sp-3)">关闭后所有授信设备会被一并删除。</p>
+              <button class="btn btn--danger" type="button" style="margin-top: var(--sp-3)" @click="confirmDisable">
+                关闭动态验证码
+              </button>
             </template>
-          </template>
+          </section>
 
-          <template v-else>
-            <div class="field">
-              <label class="field__label" for="disable-code">输入当前动态码以关闭</label>
-              <input id="disable-code" v-model="disableCode" class="input mono" inputmode="numeric" maxlength="6" />
+          <!-- 修改密码 -->
+          <form class="panel panel--pad" @submit.prevent="submitPassword">
+            <h2 class="row-item__title" style="font: var(--text-title3)">修改密码</h2>
+            <p class="field__hint" style="margin-top: 4px">
+              修改后所有会话与授信设备都会失效；API Token 不受影响。
+            </p>
+
+            <div class="field" style="margin-top: var(--sp-4)">
+              <label class="field__label" for="old-password">原密码</label>
+              <input id="old-password" v-model="pw.oldPassword" class="input" type="password" autocomplete="current-password" required />
             </div>
-            <p v-if="disableError" class="notice notice--error">{{ disableError }}</p>
-            <p class="field__hint">关闭后所有授信设备会被一并删除。</p>
-            <button class="btn btn--danger" type="button" @click="confirmDisable">关闭动态验证码</button>
-          </template>
-        </section>
+            <div class="field" style="margin-top: var(--sp-3)">
+              <label class="field__label" for="new-password">新密码</label>
+              <input
+                id="new-password"
+                v-model="pw.newPassword"
+                class="input"
+                type="password"
+                autocomplete="new-password"
+                minlength="12"
+                required
+              />
+              <span class="field__hint">至少 12 位，且不能与原密码相同。</span>
+            </div>
+            <div v-if="auth.totpEnabled" class="field" style="margin-top: var(--sp-3)">
+              <label class="field__label" for="pw-totp">动态码</label>
+              <input id="pw-totp" v-model="pw.totpCode" class="input code-input" inputmode="numeric" maxlength="6" placeholder="······" style="max-width: 220px" />
+            </div>
+
+            <p v-if="pwError" class="notice notice--error" style="margin-top: var(--sp-3)">{{ pwError }}</p>
+            <p v-if="pwNotice" class="notice notice--success" style="margin-top: var(--sp-3)">{{ pwNotice }}</p>
+
+            <button class="btn btn--primary" type="submit" :disabled="pwBusy" style="margin-top: var(--sp-4)">
+              修改密码
+            </button>
+          </form>
+        </div>
       </div>
-    </div>
-  </main>
+    </main>
+  </div>
 </template>

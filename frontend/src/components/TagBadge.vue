@@ -1,11 +1,11 @@
 <script setup lang="ts">
-/** 标签徽章（docs/frontend/frontend.md 第八节公共组件）。 */
+/** 标签徽章：可点击时跳搜索，否则纯展示。 */
 import { RouterLink } from 'vue-router'
 
 withDefaults(
   defineProps<{
     name: string
-    /** 传入则渲染为跳转搜索的链接，否则是纯展示。 */
+    /** 传入则渲染为可点击的标签链。 */
     to?: string
   }>(),
   { to: undefined },

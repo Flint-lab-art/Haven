@@ -1,5 +1,5 @@
 <script setup lang="ts">
-/** 标签管理（docs/frontend/frontend.md 第四节）：只支持创建与删除，没有重命名。 */
+/** 标签管理：只支持创建与删除，没有重命名（data-model.md 第四节）。 */
 import { onMounted, ref } from 'vue'
 import PrivateHeader from '@/components/PrivateHeader.vue'
 import { ApiError } from '@/api/client'
@@ -47,7 +47,7 @@ async function create(): Promise<void> {
 }
 
 async function remove(tag: Tag): Promise<void> {
-  if (!window.confirm(`删除标签「${tag.name}」？笔记不会被删除，只解除关联。`)) return
+  if (!window.confirm(`删除标签「${tag.name}」？笔记不会删除，只解除关联。`)) return
 
   error.value = ''
   try {
@@ -62,42 +62,51 @@ onMounted(load)
 </script>
 
 <template>
-  <PrivateHeader />
+  <div class="shell">
+    <PrivateHeader />
 
-  <main class="page">
-    <h1 class="page-title" style="margin-bottom: 16px">标签</h1>
-
-    <form class="row" @submit.prevent="create">
-      <input
-        v-model="name"
-        class="input"
-        type="text"
-        placeholder="新标签名"
-        aria-label="新标签名"
-        maxlength="64"
-      />
-      <button class="btn btn--primary" type="submit" :disabled="creating">添加</button>
-    </form>
-
-    <p v-if="error" class="notice notice--error" style="margin-top: 16px">{{ error }}</p>
-
-    <div v-if="loading" class="panel panel--padded" style="margin-top: 16px">
-      <div class="skeleton" style="width: 40%"></div>
-    </div>
-
-    <div v-else-if="tags.length === 0" class="panel empty" style="margin-top: 16px">
-      <p class="empty__title">还没有标签</p>
-      <p>创建标签后，可以在编辑笔记时挂上去。</p>
-    </div>
-
-    <ul v-else class="panel list" style="margin-top: 16px">
-      <li v-for="tag in tags" :key="tag.id" class="list__row">
-        <div class="list__row-main">
-          <div class="card__title">{{ tag.name }}</div>
-          <div class="card__meta">{{ tag.note_count }} 篇笔记</div>
+    <main class="container container--reading">
+      <header class="page-head">
+        <div>
+          <h1 class="page-title">标签</h1>
+          <p class="page-sub">
+            {{ loading ? '加载中…' : `${tags.length} 个标签` }}
+          </p>
         </div>
-        <button class="btn btn--small btn--danger" type="button" @click="remove(tag)">删除</button>
-      </li>
-    </ul>
-  </main>
+      </header>
+
+      <form class="row" style="gap: var(--sp-2)" @submit.prevent="create">
+        <input
+          v-model="name"
+          class="input input--search"
+          type="text"
+          placeholder="新标签名"
+          aria-label="新标签名"
+          maxlength="64"
+        />
+        <button class="btn btn--primary" type="submit" :disabled="creating">添加</button>
+      </form>
+
+      <p v-if="error" class="notice notice--error" style="margin-top: var(--sp-4)">{{ error }}</p>
+
+      <div v-if="loading" class="panel panel--pad" style="margin-top: var(--sp-4)">
+        <div class="skeleton skeleton--title" style="width: 40%"></div>
+      </div>
+
+      <div v-else-if="tags.length === 0" class="panel empty" style="margin-top: var(--sp-4)">
+        <p class="empty__title">还没有标签</p>
+        <p class="empty__text">创建后，可以在编辑笔记时挂上去。</p>
+      </div>
+
+      <ul v-else class="panel rows" style="margin-top: var(--sp-4)">
+        <li v-for="tag in tags" :key="tag.id" class="row-item">
+          <div class="row-item__main">
+            <div class="row-item__title">{{ tag.name }}</div>
+            <div class="row-item__sub">{{ tag.note_count }} 篇笔记</div>
+          </div>
+          <button class="btn btn--sm btn--danger" type="button" @click="remove(tag)">删除</button>
+        </li>
+      </ul>
+    </main>
+  </div>
 </template>

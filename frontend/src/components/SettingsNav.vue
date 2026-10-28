@@ -1,5 +1,5 @@
 <script setup lang="ts">
-/** 设置页左侧导航（docs/frontend/frontend.md 第四节）。 */
+/** 设置页左侧导航。 */
 import { RouterLink } from 'vue-router'
 
 const items = [

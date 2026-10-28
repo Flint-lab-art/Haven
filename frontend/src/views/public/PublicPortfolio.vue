@@ -1,5 +1,5 @@
 <script setup lang="ts">
-/** 公开作品集（docs/frontend/frontend.md 第三节）。 */
+/** 公开作品集：卡片栅格，主链接最显眼。 */
 import { onMounted, ref } from 'vue'
 import PublicHeader from '@/components/PublicHeader.vue'
 import { listPortfolio, type PortfolioItem } from '@/api/portfolio'
@@ -10,53 +10,70 @@ const error = ref('')
 
 onMounted(async () => {
   try {
-    const result = await listPortfolio()
-    items.value = result.items
+    items.value = (await listPortfolio()).items
   } catch {
     error.value = '作品集加载失败，请稍后重试'
   } finally {
     loading.value = false
   }
 })
+
+function sortedRepos(item: PortfolioItem) {
+  // 主链接在前，其余保持后端顺序
+  return [...item.repos].sort((a, b) => Number(b.is_primary) - Number(a.is_primary))
+}
 </script>
 
 <template>
-  <PublicHeader />
+  <div class="shell">
+    <PublicHeader />
 
-  <main class="page page--wide">
-    <h1 class="page-title" style="margin-bottom: 24px">作品集</h1>
-
-    <p v-if="error" class="notice notice--error">{{ error }}</p>
-
-    <div v-if="loading" class="panel panel--padded">
-      <span class="skeleton" style="display: block; width: 40%"></span>
-    </div>
-
-    <div v-else-if="items.length === 0" class="panel empty">
-      <p class="empty__title">还没有作品</p>
-    </div>
-
-    <div v-else class="stack">
-      <section v-for="item in items" :key="item.id" class="panel panel--padded">
-        <h2 class="card__title" style="font: var(--text-title2)">{{ item.title }}</h2>
-        <p v-if="item.description" class="page-subtitle">{{ item.description }}</p>
-
-        <div class="tag-row" style="margin-top: 16px">
-          <!-- 主链接优先展示；没有主链接时取第一个 -->
-          <a
-            v-for="repo in item.repos"
-            :key="repo.id"
-            class="btn btn--small"
-            :class="{ 'btn--primary': repo.is_primary }"
-            :href="repo.url"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {{ repo.platform === 'gogs' ? 'Gogs' : 'GitHub' }} · {{ repo.repo_path }}
-          </a>
-          <span v-if="item.repos.length === 0" class="field__hint">暂无仓库链接</span>
+    <main class="container">
+      <header class="page-head">
+        <div>
+          <h1 class="page-title">作品集</h1>
+          <p class="page-sub">
+            {{ items.length > 0 ? `共 ${items.length} 个项目` : '正在做的事和写过的东西' }}
+          </p>
         </div>
-      </section>
-    </div>
-  </main>
+      </header>
+
+      <p v-if="error" class="notice notice--error">{{ error }}</p>
+
+      <div v-else-if="loading" class="portfolio-grid">
+        <div v-for="n in 2" :key="n" class="panel panel--pad">
+          <div class="skeleton skeleton--title" style="width: 50%"></div>
+          <div class="skeleton skeleton--line" style="width: 85%"></div>
+        </div>
+      </div>
+
+      <div v-else-if="items.length === 0" class="panel empty">
+        <p class="empty__title">还没有作品</p>
+        <p class="empty__text">项目会连同代码仓库链接一起展示。</p>
+      </div>
+
+      <div v-else class="portfolio-grid">
+        <article v-for="item in items" :key="item.id" class="portfolio-card">
+          <h2 class="portfolio-card__title">{{ item.title }}</h2>
+          <p v-if="item.description" class="portfolio-card__desc">{{ item.description }}</p>
+
+          <div v-if="item.repos.length" class="tag-row">
+            <a
+              v-for="repo in sortedRepos(item)"
+              :key="repo.id"
+              :href="repo.url"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="repo-link"
+              :class="{ 'repo-link--primary': repo.is_primary }"
+            >
+              {{ repo.platform === 'gogs' ? 'Gogs' : 'GitHub' }}
+              <span style="opacity: 0.7">{{ repo.repo_path }}</span>
+            </a>
+          </div>
+          <p v-else class="field__hint">暂无仓库链接</p>
+        </article>
+      </div>
+    </main>
+  </div>
 </template>

@@ -1,5 +1,7 @@
 <script setup lang="ts">
-/** 登录页（docs/frontend/frontend.md 第五节）。temp_token 只放内存，不落 localStorage。 */
+/**
+ * 登录页。temp_token 只放在内存里，刷新即失效（docs/frontend/frontend.md 第五节）。
+ */
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import LoginForm from '@/components/LoginForm.vue'
@@ -12,7 +14,6 @@ const router = useRouter()
 const auth = useAuthStore()
 
 const step = ref<'password' | 'totp'>('password')
-/** 第二步使用，页面刷新即丢失（符合“不落 localStorage”的要求）。 */
 const tempToken = ref('')
 const expiredNotice = ref('')
 
@@ -43,14 +44,18 @@ function onExpired(): void {
 </script>
 
 <template>
-  <main class="page" style="max-width: 420px; padding-top: 64px">
-    <div class="panel panel--padded">
-      <h1 class="page-title" style="font: var(--text-title1); margin-bottom: 4px">Haven</h1>
-      <p class="page-subtitle" style="margin-bottom: 24px">
-        {{ step === 'password' ? '登录后管理你的笔记' : '输入动态码完成登录' }}
+  <div class="auth-shell">
+    <main class="auth-card">
+      <div class="auth-card__mark" aria-hidden="true">H</div>
+
+      <h1 class="auth-card__title">
+        {{ step === 'password' ? '登录 Haven' : '两步验证' }}
+      </h1>
+      <p class="auth-card__sub">
+        {{ step === 'password' ? '管理你的私有笔记' : '输入验证器 App 显示的动态码' }}
       </p>
 
-      <p v-if="expiredNotice && step === 'password'" class="notice notice--info" style="margin-bottom: 16px">
+      <p v-if="expiredNotice && step === 'password'" class="notice notice--info" style="margin-bottom: var(--sp-4)">
         {{ expiredNotice }}
       </p>
 
@@ -61,6 +66,6 @@ function onExpired(): void {
         @expired="onExpired"
       />
       <LoginForm v-else @success="goAfterLogin" @totp-required="onTotpRequired" />
-    </div>
-  </main>
+    </main>
+  </div>
 </template>

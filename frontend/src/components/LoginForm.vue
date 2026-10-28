@@ -1,5 +1,5 @@
 <script setup lang="ts">
-/** 登录表单第一步：账号密码（docs/frontend/frontend.md 第五节）。 */
+/** 登录第一步：账号密码。 */
 import { ref } from 'vue'
 import { ApiError } from '@/api/client'
 import { login, type LoginResult } from '@/api/auth'
@@ -80,10 +80,10 @@ async function submit(): Promise<void> {
 
     <p v-if="error" class="notice notice--error" role="alert">{{ error }}</p>
 
-    <button class="btn btn--primary btn--block" type="submit" :disabled="submitting">
+    <button class="btn btn--primary btn--block btn--lg" type="submit" :disabled="submitting">
       {{ submitting ? '登录中…' : '登录' }}
     </button>
 
-    <p class="field__hint">公共电脑上请勿勾选“信任这台设备”。</p>
+    <p class="field__hint" style="text-align: center">公共电脑上请勿勾选“信任这台设备”。</p>
   </form>
 </template>
