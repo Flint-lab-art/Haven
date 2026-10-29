@@ -9,6 +9,7 @@ import (
 	"github.com/kairo/haven/internal/auth"
 	"github.com/kairo/haven/internal/config"
 	"github.com/kairo/haven/internal/db"
+	"github.com/kairo/haven/internal/folders"
 	"github.com/kairo/haven/internal/notes"
 	"github.com/kairo/haven/internal/portfolio"
 	"github.com/kairo/haven/internal/search"
@@ -43,6 +44,7 @@ func run() error {
 
 	store := auth.NewSQLStore(conn)
 	notesSvc := notes.NewService(conn)
+	foldersSvc := folders.NewService(conn)
 	tagsSvc := tags.NewService(conn)
 	searchSvc := search.NewService(conn)
 	portfolioSvc := portfolio.NewService(conn, cfg.GogsBaseURL)
@@ -56,13 +58,14 @@ func run() error {
 	audit.UseNoteHooks(notesHandler, auditWriter)
 
 	r := newRouter(deps{
-		authStore:     store,
-		authHandler:   authHandler,
-		notesHandler:  notesHandler,
-		tagsHandler:   tags.NewHandler(tagsSvc),
-		searchHandler: search.NewHandler(searchSvc),
-		portfolio:     portfolio.NewHandler(portfolioSvc),
-		frontendDir:   cfg.FrontendDir,
+		authStore:      store,
+		authHandler:    authHandler,
+		notesHandler:   notesHandler,
+		foldersHandler: folders.NewHandler(foldersSvc),
+		tagsHandler:    tags.NewHandler(tagsSvc),
+		searchHandler:  search.NewHandler(searchSvc),
+		portfolio:      portfolio.NewHandler(portfolioSvc),
+		frontendDir:    cfg.FrontendDir,
 	})
 
 	logger.Info("后端启动", "listen_addr", cfg.ListenAddr)

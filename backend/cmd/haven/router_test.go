@@ -10,6 +10,8 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -20,6 +22,7 @@ import (
 	"github.com/kairo/haven/internal/auth"
 	"github.com/kairo/haven/internal/config"
 	"github.com/kairo/haven/internal/db"
+	"github.com/kairo/haven/internal/folders"
 	"github.com/kairo/haven/internal/notes"
 	"github.com/kairo/haven/internal/portfolio"
 	"github.com/kairo/haven/internal/search"
@@ -71,10 +74,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	}
 
 	// 在独立 schema 里建表：直接复用 migration 文件，保证与生产结构一致
-	migration, err := os.ReadFile("../../migrations/0001_init.up.sql")
-	if err != nil {
-		t.Fatalf("读取 migration 失败: %v", err)
-	}
+	migration := readUpMigrations(t, "../../migrations")
 
 	conn, err := db.Open(ctx, appendSearchPath(dsn, schema+",public"))
 	if err != nil {
@@ -86,7 +86,7 @@ func newTestEnv(t *testing.T) *testEnv {
 		admin.Close()
 	})
 
-	if _, err := conn.ExecContext(ctx, string(migration)); err != nil {
+	if _, err := conn.ExecContext(ctx, migration); err != nil {
 		t.Fatalf("建表失败: %v", err)
 	}
 
@@ -112,13 +112,14 @@ func newTestEnv(t *testing.T) *testEnv {
 	audit.UseNoteHooks(notesHandler, auditWriter)
 
 	router := newRouter(deps{
-		authStore:     store,
-		authHandler:   h,
-		notesHandler:  notesHandler,
-		tagsHandler:   tags.NewHandler(tags.NewService(conn)),
-		searchHandler: search.NewHandler(search.NewService(conn)),
-		portfolio:     portfolio.NewHandler(portfolio.NewService(conn, cfg.GogsBaseURL)),
-		frontendDir:   cfg.FrontendDir,
+		authStore:      store,
+		authHandler:    h,
+		notesHandler:   notesHandler,
+		foldersHandler: folders.NewHandler(folders.NewService(conn)),
+		tagsHandler:    tags.NewHandler(tags.NewService(conn)),
+		searchHandler:  search.NewHandler(search.NewService(conn)),
+		portfolio:      portfolio.NewHandler(portfolio.NewService(conn, cfg.GogsBaseURL)),
+		frontendDir:    cfg.FrontendDir,
 	})
 
 	return &testEnv{t: t, router: router, store: store, svc: svc, cfg: cfg, db: conn}
@@ -131,6 +132,27 @@ func appendSearchPath(dsn, searchPath string) string {
 		sep = "&"
 	}
 	return dsn + sep + "search_path=" + url.QueryEscape(searchPath)
+}
+
+// readUpMigrations 按文件名顺序拼接 migrations 下的全部 *.up.sql。
+func readUpMigrations(t *testing.T, dir string) string {
+	t.Helper()
+	files, err := filepath.Glob(filepath.Join(dir, "*.up.sql"))
+	if err != nil {
+		t.Fatalf("查找 migration 失败: %v", err)
+	}
+	sort.Strings(files)
+
+	var b strings.Builder
+	for _, file := range files {
+		data, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatalf("读取 migration 失败: %v", err)
+		}
+		b.Write(data)
+		b.WriteString("\n")
+	}
+	return b.String()
 }
 
 // createUser 直接插库建用户。

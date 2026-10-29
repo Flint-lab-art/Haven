@@ -25,6 +25,8 @@ var (
 	ErrAlreadyPrivate = errors.New("笔记已是 private")
 	// ErrInvalidTag 表示 tag_ids 里有不属于当前用户的标签（422）。
 	ErrInvalidTag = errors.New("标签不存在")
+	// ErrInvalidFolder 表示 folder_id 指向不存在的文件夹或不属于当前用户（422）。
+	ErrInvalidFolder = errors.New("文件夹不存在")
 	// ErrTitleRequired 标题为空（422）。
 	ErrTitleRequired = errors.New("标题不能为空")
 )
@@ -41,6 +43,7 @@ type TagBrief struct {
 // Note 是详情响应（api.md 6.2）。
 type Note struct {
 	ID          string     `json:"id"`
+	FolderID    *string    `json:"folder_id"`
 	Title       string     `json:"title"`
 	Content     string     `json:"content"`
 	Visibility  string     `json:"visibility"`
@@ -53,6 +56,7 @@ type Note struct {
 // NoteSummary 是私有列表项（api.md 6.1）：不含 content，含 content_preview。
 type NoteSummary struct {
 	ID             string     `json:"id"`
+	FolderID       *string    `json:"folder_id"`
 	Title          string     `json:"title"`
 	ContentPreview string     `json:"content_preview"`
 	Visibility     string     `json:"visibility"`
@@ -86,25 +90,33 @@ type PublicNoteSummary struct {
 type ListFilter struct {
 	Visibility string // 空表示不过滤
 	TagID      string // 空表示不过滤
+	// FolderFilter 为 true 时按 FolderID 过滤；
+	// FolderID 为空串表示「未分类」（folder_id IS NULL）。
+	FolderFilter bool
+	FolderID     string
 }
 
 // CreateInput 是 POST /api/notes 的入参。
 //
 // 刻意没有 Visibility 字段：新建一律 private（api.md 6.3、conventions.md 第四节）。
 type CreateInput struct {
-	Title   string
-	Content string
-	TagIDs  []string
+	Title    string
+	Content  string
+	TagIDs   []string
+	FolderID *string
 }
 
 // UpdateInput 是 PATCH /api/notes/:id 的入参。
 //
 // 字段为指针以区分「未出现」与「显式置空」（api.md 1.7 部分更新）。
 // TagIDs 为 nil 表示未出现；非 nil 表示全量替换（含空数组 = 清空标签）。
+// FolderIDSet 为 true 时，FolderID 为 nil 表示移回未分类。
 type UpdateInput struct {
-	Title   *string
-	Content *string
-	TagIDs  []string
+	Title       *string
+	Content     *string
+	TagIDs      []string
+	FolderID    *string
+	FolderIDSet bool
 }
 
 // Service 承载笔记领域逻辑，不依赖 gin。
@@ -138,23 +150,31 @@ func (s *Service) ListPrivate(ctx context.Context, userID string, f ListFilter, 
 		SELECT count(*) FROM notes
 		WHERE user_id = $1
 		  AND ($2 = '' OR visibility = $2)
-		  AND ($3::uuid IS NULL OR id IN (SELECT note_id FROM note_tags WHERE tag_id = $3))`
+		  AND ($3::uuid IS NULL OR id IN (SELECT note_id FROM note_tags WHERE tag_id = $3))
+		  AND (NOT $4::boolean
+		       OR (folder_id IS NULL AND $5 = '')
+		       OR folder_id = NULLIF($5, '')::uuid)`
 
 	var total int
-	if err := s.db.QueryRowContext(ctx, countQ, userID, f.Visibility, tagID).Scan(&total); err != nil {
+	if err := s.db.QueryRowContext(ctx, countQ, userID, f.Visibility, tagID,
+		f.FolderFilter, f.FolderID).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("统计笔记数量失败: %w", err)
 	}
 
 	const q = `
-		SELECT id, title, content, visibility, published_at, created_at, updated_at
+		SELECT id, folder_id, title, content, visibility, published_at, created_at, updated_at
 		FROM notes
 		WHERE user_id = $1
 		  AND ($2 = '' OR visibility = $2)
 		  AND ($3::uuid IS NULL OR id IN (SELECT note_id FROM note_tags WHERE tag_id = $3))
+		  AND (NOT $4::boolean
+		       OR (folder_id IS NULL AND $5 = '')
+		       OR folder_id = NULLIF($5, '')::uuid)
 		ORDER BY updated_at DESC
-		LIMIT $4 OFFSET $5`
+		LIMIT $6 OFFSET $7`
 
-	rows, err := s.db.QueryContext(ctx, q, userID, f.Visibility, tagID, limit, offset)
+	rows, err := s.db.QueryContext(ctx, q, userID, f.Visibility, tagID,
+		f.FolderFilter, f.FolderID, limit, offset)
 	if err != nil {
 		return nil, 0, fmt.Errorf("查询笔记列表失败: %w", err)
 	}
@@ -165,7 +185,7 @@ func (s *Service) ListPrivate(ctx context.Context, userID string, f ListFilter, 
 	for rows.Next() {
 		var content string
 		var item NoteSummary
-		if err := rows.Scan(&item.ID, &item.Title, &content, &item.Visibility,
+		if err := rows.Scan(&item.ID, &item.FolderID, &item.Title, &content, &item.Visibility,
 			&item.PublishedAt, &item.CreatedAt, &item.UpdatedAt); err != nil {
 			return nil, 0, fmt.Errorf("扫描笔记失败: %w", err)
 		}
@@ -191,13 +211,13 @@ func (s *Service) ListPrivate(ctx context.Context, userID string, f ListFilter, 
 // Get 返回当前用户的一篇笔记详情（api.md 6.2）。
 func (s *Service) Get(ctx context.Context, userID, id string) (Note, error) {
 	const q = `
-		SELECT id, title, content, visibility, published_at, created_at, updated_at
+		SELECT id, folder_id, title, content, visibility, published_at, created_at, updated_at
 		FROM notes
 		WHERE id = $1 AND user_id = $2`
 
 	var n Note
 	err := s.db.QueryRowContext(ctx, q, id, userID).Scan(
-		&n.ID, &n.Title, &n.Content, &n.Visibility, &n.PublishedAt, &n.CreatedAt, &n.UpdatedAt)
+		&n.ID, &n.FolderID, &n.Title, &n.Content, &n.Visibility, &n.PublishedAt, &n.CreatedAt, &n.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Note{}, ErrNotFound
 	}
@@ -228,10 +248,16 @@ func (s *Service) Create(ctx context.Context, userID string, in CreateInput) (No
 	}
 	defer tx.Rollback()
 
+	if in.FolderID != nil {
+		if err := validateFolder(ctx, tx, userID, *in.FolderID); err != nil {
+			return Note{}, err
+		}
+	}
+
 	var id string
 	if err := tx.QueryRowContext(ctx,
-		`INSERT INTO notes (user_id, title, content) VALUES ($1, $2, $3) RETURNING id`,
-		userID, title, in.Content).Scan(&id); err != nil {
+		`INSERT INTO notes (user_id, folder_id, title, content) VALUES ($1, $2, $3, $4) RETURNING id`,
+		userID, folderValue(in.FolderID), title, in.Content).Scan(&id); err != nil {
 		return Note{}, fmt.Errorf("创建笔记失败: %w", err)
 	}
 
@@ -285,6 +311,18 @@ func (s *Service) Update(ctx context.Context, userID, id string, in UpdateInput)
 	if in.TagIDs != nil {
 		if err := s.replaceTags(ctx, tx, userID, id, in.TagIDs); err != nil {
 			return Note{}, err
+		}
+	}
+
+	if in.FolderIDSet {
+		if in.FolderID != nil {
+			if err := validateFolder(ctx, tx, userID, *in.FolderID); err != nil {
+				return Note{}, err
+			}
+		}
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE notes SET folder_id = $2 WHERE id = $1`, id, folderValue(in.FolderID)); err != nil {
+			return Note{}, fmt.Errorf("更新文件夹归属失败: %w", err)
 		}
 	}
 
@@ -449,6 +487,28 @@ func (s *Service) GetPublic(ctx context.Context, id string) (PublicNote, error) 
 
 // authVisibilityPublic 是全库唯一的公开可见条件（data-model.md 第三节规则 4）。
 const authVisibilityPublic = `visibility = 'public' AND published_at IS NOT NULL`
+
+// validateFolder 校验文件夹属于当前用户（data-model.md 第三节规则 9）。
+func validateFolder(ctx context.Context, tx *sql.Tx, userID, folderID string) error {
+	var exists bool
+	if err := tx.QueryRowContext(ctx,
+		`SELECT EXISTS (SELECT 1 FROM folders WHERE id = $1 AND user_id = $2)`,
+		folderID, userID).Scan(&exists); err != nil {
+		return fmt.Errorf("校验文件夹失败: %w", err)
+	}
+	if !exists {
+		return ErrInvalidFolder
+	}
+	return nil
+}
+
+// folderValue 把可选文件夹转成驱动可接受的值（nil → SQL NULL）。
+func folderValue(folderID *string) any {
+	if folderID == nil {
+		return nil
+	}
+	return *folderID
+}
 
 // replaceTags 全量替换笔记的标签关联，并校验标签属于当前用户。
 func (s *Service) replaceTags(ctx context.Context, tx *sql.Tx, userID, noteID string, tagIDs []string) error {

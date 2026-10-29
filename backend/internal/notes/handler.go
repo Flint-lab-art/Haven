@@ -1,6 +1,7 @@
 package notes
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -49,15 +50,17 @@ func (h *Handler) auditContext(c *gin.Context) AuditContext {
 // 请求体。
 
 type createRequest struct {
-	Title   string   `json:"title"`
-	Content string   `json:"content"`
-	TagIDs  []string `json:"tag_ids"`
+	Title    string   `json:"title"`
+	Content  string   `json:"content"`
+	TagIDs   []string `json:"tag_ids"`
+	FolderID *string  `json:"folder_id"`
 }
 
 type updateRequest struct {
-	Title   *string   `json:"title"`
-	Content *string   `json:"content"`
-	TagIDs  *[]string `json:"tag_ids"`
+	Title    *string         `json:"title"`
+	Content  *string         `json:"content"`
+	TagIDs   *[]string       `json:"tag_ids"`
+	FolderID json.RawMessage `json:"folder_id"`
 }
 
 // fail 把领域错误映射成 api.md 1.4 的响应。
@@ -71,6 +74,8 @@ func fail(c *gin.Context, err error) {
 		httpx.FailValidation(c, map[string]string{"title": ErrTitleRequired.Error()})
 	case errors.Is(err, ErrInvalidTag):
 		httpx.FailValidation(c, map[string]string{"tag_ids": ErrInvalidTag.Error()})
+	case errors.Is(err, ErrInvalidFolder):
+		httpx.FailValidation(c, map[string]string{"folder_id": ErrInvalidFolder.Error()})
 	default:
 		httpx.FailInternal(c, err)
 	}
@@ -91,6 +96,14 @@ func (h *Handler) List(c *gin.Context) {
 	if filter.Visibility != "" && filter.Visibility != "private" && filter.Visibility != "public" {
 		httpx.FailValidation(c, map[string]string{"visibility": "只能是 private 或 public"})
 		return
+	}
+	if raw, ok := c.GetQuery("folder_id"); ok {
+		filter.FolderFilter = true
+		filter.FolderID = raw
+		if raw != "" && !httpx.IsUUID(raw) {
+			httpx.FailValidation(c, map[string]string{"folder_id": "文件夹 id 无效"})
+			return
+		}
 	}
 
 	items, total, err := h.svc.ListPrivate(c.Request.Context(), auth.UserID(c), filter, page.Limit, page.Offset)
@@ -120,11 +133,16 @@ func (h *Handler) Create(c *gin.Context) {
 		httpx.FailBadRequest(c, err)
 		return
 	}
+	if req.FolderID != nil && !httpx.IsUUID(*req.FolderID) {
+		httpx.FailValidation(c, map[string]string{"folder_id": "文件夹 id 无效"})
+		return
+	}
 
 	note, err := h.svc.Create(c.Request.Context(), auth.UserID(c), CreateInput{
-		Title:   req.Title,
-		Content: req.Content,
-		TagIDs:  req.TagIDs,
+		Title:    req.Title,
+		Content:  req.Content,
+		TagIDs:   req.TagIDs,
+		FolderID: req.FolderID,
 	})
 	if err != nil {
 		fail(c, err)
@@ -147,6 +165,18 @@ func (h *Handler) Update(c *gin.Context) {
 		in.TagIDs = *req.TagIDs
 		if in.TagIDs == nil {
 			in.TagIDs = []string{}
+		}
+	}
+	if req.FolderID != nil {
+		// 显式出现才更新；null 表示移回未分类
+		in.FolderIDSet = true
+		if string(req.FolderID) != "null" {
+			var folderID string
+			if err := json.Unmarshal(req.FolderID, &folderID); err != nil || !httpx.IsUUID(folderID) {
+				httpx.FailValidation(c, map[string]string{"folder_id": "文件夹 id 无效"})
+				return
+			}
+			in.FolderID = &folderID
 		}
 	}
 

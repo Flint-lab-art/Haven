@@ -157,7 +157,7 @@ func (s *Service) NotesByTag(ctx context.Context, userID, tagID string, limit, o
 	}
 
 	const q = `
-		SELECT n.id, n.title, n.content, n.visibility, n.published_at, n.created_at, n.updated_at
+		SELECT n.id, n.folder_id, n.title, n.content, n.visibility, n.published_at, n.created_at, n.updated_at
 		FROM notes n
 		JOIN note_tags nt ON nt.note_id = n.id
 		WHERE n.user_id = $1 AND nt.tag_id = $2
@@ -174,12 +174,14 @@ func (s *Service) NotesByTag(ctx context.Context, userID, tagID string, limit, o
 	ids := make([]string, 0, limit)
 	for rows.Next() {
 		var id, title, content, visibility string
+		var folderID *string
 		var publishedAt, createdAt, updatedAt any
-		if err := rows.Scan(&id, &title, &content, &visibility, &publishedAt, &createdAt, &updatedAt); err != nil {
+		if err := rows.Scan(&id, &folderID, &title, &content, &visibility, &publishedAt, &createdAt, &updatedAt); err != nil {
 			return nil, 0, fmt.Errorf("扫描标签笔记失败: %w", err)
 		}
 		items = append(items, gin.H{
 			"id":              id,
+			"folder_id":       folderID,
 			"title":           title,
 			"content_preview": preview(content),
 			"visibility":      visibility,

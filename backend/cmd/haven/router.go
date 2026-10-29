@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/kairo/haven/internal/auth"
+	"github.com/kairo/haven/internal/folders"
 	"github.com/kairo/haven/internal/httpx"
 	"github.com/kairo/haven/internal/notes"
 	"github.com/kairo/haven/internal/portfolio"
@@ -23,12 +24,13 @@ func init() {
 
 // deps 汇总路由装配所需的依赖。
 type deps struct {
-	authStore     auth.Store
-	authHandler   *auth.Handler
-	notesHandler  *notes.Handler
-	tagsHandler   *tags.Handler
-	searchHandler *search.Handler
-	portfolio     *portfolio.Handler
+	authStore      auth.Store
+	authHandler    *auth.Handler
+	notesHandler   *notes.Handler
+	foldersHandler *folders.Handler
+	tagsHandler    *tags.Handler
+	searchHandler  *search.Handler
+	portfolio      *portfolio.Handler
 
 	// frontendDir 是 HAVEN_FRONTEND_DIR，用于托管 SPA 构建产物。
 	frontendDir string
@@ -63,6 +65,7 @@ func newRouter(d deps) *gin.Engine {
 	auth.RegisterManageRoutes(r, d.authHandler)
 
 	notes.RegisterRoutes(r, d.notesHandler)
+	folders.RegisterRoutes(r, d.foldersHandler)
 	tags.RegisterRoutes(r, d.tagsHandler)
 	search.RegisterRoutes(r, d.searchHandler)
 	portfolio.RegisterRoutes(r, d.portfolio)

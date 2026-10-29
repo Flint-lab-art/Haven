@@ -8,12 +8,22 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/kairo/haven/internal/auth"
 )
+
+var uuidPattern = regexp.MustCompile(
+	`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`,
+)
+
+// IsUUID 校验外部传入的 uuid，避免把非法字符串交给 PostgreSQL 导致 500。
+func IsUUID(value string) bool {
+	return uuidPattern.MatchString(value)
+}
 
 // ErrorBody 是 api.md 1.4 定义的错误响应。
 // fields 仅在 422 validation_failed 时出现。

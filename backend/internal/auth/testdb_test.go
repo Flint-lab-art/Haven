@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -49,24 +51,38 @@ func newSchemaService(t *testing.T) *Service {
 		admin.Close()
 	})
 
-	migration, err := os.ReadFile("./migrations/0001_init.up.sql")
-	if err == nil {
-		// 从包目录跑时可用
-		if _, err := conn.ExecContext(ctx, string(migration)); err != nil {
-			t.Fatalf("在测试 schema 内建表失败: %v", err)
-		}
-	} else {
-		// 在 internal/auth 下跑时，迁移文件在 ../../migrations
-		migration, err = os.ReadFile("../../migrations/0001_init.up.sql")
-		if err != nil {
-			t.Fatalf("读取 migration 失败: %v", err)
-		}
-		if _, err := conn.ExecContext(ctx, string(migration)); err != nil {
-			t.Fatalf("在测试 schema 内建表失败: %v", err)
-		}
+	migration := readAuthTestMigrations(t)
+	if _, err := conn.ExecContext(ctx, migration); err != nil {
+		t.Fatalf("在测试 schema 内建表失败: %v", err)
 	}
 
 	return NewService(conn)
+}
+
+// readAuthTestMigrations 按文件名顺序拼接全部 up migration。
+func readAuthTestMigrations(t *testing.T) string {
+	t.Helper()
+	dir := "migrations"
+	if _, err := os.Stat(dir); err != nil {
+		dir = "../../migrations"
+	}
+
+	files, err := filepath.Glob(filepath.Join(dir, "*.up.sql"))
+	if err != nil {
+		t.Fatalf("查找 migration 失败: %v", err)
+	}
+	sort.Strings(files)
+
+	var b strings.Builder
+	for _, file := range files {
+		data, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatalf("读取 migration 失败: %v", err)
+		}
+		b.Write(data)
+		b.WriteString("\n")
+	}
+	return b.String()
 }
 
 // openTestDB 打开与测试库的连接，未设置 HAVEN_TEST_DB_DSN 时跳过。
