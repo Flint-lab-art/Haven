@@ -1,49 +1,9 @@
-# ===== 环境与配置 =====
-.env
-.env.*
-!.env.example
-*.local
-
-# ===== 后端（Go）=====
-# 编译产物
-/backend/haven
-/backend/*.exe
-/backend/*.test
-/backend/cmd/**/*.test
+# 后端产物与临时文件（路径均相对 backend/）
+# 只忽略可执行文件。不要写裸 `haven`——那会连 cmd/haven 源码目录一起忽略
+/haven
+*.exe
+*.test
+cmd/**/*.test
 # 测试与覆盖率
 *.out
 coverage.*
-# go work 摘要（如不用 workspace 可不加）
-go.work.sum
-
-# ===== 前端（Vite / Node）=====
-node_modules/
-dist/
-dist-ssr/
-.vite/
-*.tsbuildinfo
-pnpm-debug.log*
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# ===== 构建与部署产物 =====
-/deploy/build/
-/deploy/out/
-
-# ===== 编辑器与 IDE =====
-.vscode/*
-!.vscode/extensions.json
-!.vscode/settings.json
-.idea/
-*.swp
-*.swo
-*~
-
-# ===== 操作系统 =====
-.DS_Store
-Thumbs.db
-
-# ===== 日志与临时文件 =====
-*.log
-/tmp/

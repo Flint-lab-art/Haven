@@ -25,6 +25,8 @@
 - 创建成功返回 `201` + 创建后的完整对象；
 - 更新成功返回 `200` + 更新后的完整对象；
 - 删除成功返回 `204`，无响应体。
+- 返回笔记对象的列表接口，item 中一律包含 `content_preview` 字段。正文截断规则见 6.1 备注。
+
 
 ### 1.4 错误响应
 
@@ -410,6 +412,7 @@
     {
       "id": "...",
       "title": "...",
+      "content_preview": "笔记正文前 200 字...",
       "visibility": "private",
       "published_at": null,
       "created_at": "...",
@@ -421,7 +424,8 @@
 }
 ```
 
-**备注**：列表不返回 `content`（正文），正文只在详情接口返回。按 `updated_at DESC` 排序。
+**备注**：列表不返回 `content`（正文），正文只在详情接口返回。按 `updated_at DESC` 排序。列表返回 `content_preview`：正文按 rune 截断至 200 字符，超出部分以 `…` 结尾；正文为空时返回空串。截断由后端完成，前端直接展示。
+
 
 ### 6.2 GET `/api/notes/:id`
 
@@ -548,6 +552,7 @@
     {
       "id": "...",
       "title": "...",
+      "content_preview": "...",
       "published_at": "...",
       "updated_at": "...",
       "tags": [{ "id": "...", "name": "编程" }]
@@ -640,7 +645,8 @@
 
 **查询参数**：`limit`、`offset`
 
-**响应** `200`：结构同 6.1（含私有和公开）。
+**响应** `200`：结构同 6.1，含 `content_preview`。
+
 
 **错误**：
 
@@ -668,6 +674,7 @@
       {
         "id": "...",
         "title": "...",
+        "content_preview": "...",
         "visibility": "private",
         "published_at": null,
         "updated_at": "...",
@@ -703,6 +710,7 @@
     {
       "id": "...",
       "title": "...",
+      "content_preview": "...",
       "published_at": "...",
       "updated_at": "...",
       "tags": [{ "id": "...", "name": "编程" }]
