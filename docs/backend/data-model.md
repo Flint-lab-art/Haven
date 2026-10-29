@@ -39,6 +39,7 @@
 |---|---|---|---|---|
 | `id` | uuid | PRIMARY KEY | `gen_random_uuid()` | 主键 |
 | `user_id` | uuid | NOT NULL, FK → users(id) ON DELETE CASCADE | — | 所属用户 |
+| `folder_id` | uuid | NULL, FK → folders(id) ON DELETE SET NULL | NULL | 所属文件夹；NULL 表示未分类 |
 | `title` | text | NOT NULL | — | 标题 |
 | `content` | text | NOT NULL | `''` | 正文，允许空串 |
 | `visibility` | text | NOT NULL, CHECK (visibility IN ('private','public')) | `'private'` | 可见性，默认私有 |
@@ -71,6 +72,7 @@ CREATE INDEX idx_notes_search_trgm ON notes USING gin (search_text gin_trgm_ops)
 6. **`search_text` 由数据库自动维护**：应用层不得在 INSERT / UPDATE 时写入该字段，也不得在 Go 代码中手动拼接。搜索查询统一使用 `search_text`，不直接查 `title` 或 `content`。
 7. **搜索结果受可见性约束**：搜索查询同样要经过授权中间件的 visibility 过滤（未登录只能搜到 public 笔记）。具体过滤规则见 `docs/backend/auth.md`，本表不重复定义。
 8. **笔记归属唯一用户**：所有笔记读写操作必须以当前登录用户为过滤条件，即 `WHERE user_id = current_user_id`。授权中间件在 visibility 过滤之外，必须叠加用户归属过滤。跨用户访问视为越权，返回 404 而非 403（不泄露笔记存在性）。
+9. **文件夹归属**：笔记可以属于某个文件夹（`folder_id`），也可以不属于任何文件夹（`folder_id IS NULL`，即“未分类”）。删除文件夹时，笔记不会被删除，而是自动变为未分类。
 
 ## 四、tags — 标签
 
@@ -179,6 +181,32 @@ CREATE UNIQUE INDEX idx_portfolio_repos_primary ON portfolio_repos (portfolio_it
 3. **主链接不强制存在**：作品可以没有 `is_primary = true` 的仓库，主页展示逻辑需处理这种情况。
 4. **仓库归属通过作品间接确定**：`portfolio_repos` 不单独带 `user_id`，归属由所属作品决定。任何仓库操作必须先校验所属作品的 `user_id = current_user_id`。
 
+## 七点五、folders — 文件夹目录树
+
+**用途**：支持无限嵌套的目录结构，用于整理笔记。
+
+| 字段 | 类型 | 约束 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `id` | uuid | PRIMARY KEY | `gen_random_uuid()` | 主键 |
+| `user_id` | uuid | NOT NULL, FK → users(id) ON DELETE CASCADE | — | 所属用户 |
+| `parent_id` | uuid | NULL, FK → folders(id) ON DELETE CASCADE | NULL | 父文件夹；NULL 表示根目录 |
+| `name` | text | NOT NULL | — | 文件夹名称 |
+| `sort_order` | int | NOT NULL | `0` | 排序权重，小的在前 |
+| `created_at` | timestamptz | NOT NULL | `now()` | 创建时间 |
+| `updated_at` | timestamptz | NOT NULL | `now()` | 更新时间 |
+
+**索引**：
+```sql
+CREATE INDEX idx_folders_user_parent ON folders (user_id, parent_id);
+```
+
+**规则**：
+
+1. **无限嵌套**：通过 `parent_id` 实现无限层级。
+2. **删除策略**：删除父文件夹时，子文件夹通过 `ON DELETE CASCADE` 级联删除；文件夹内的笔记通过 `ON DELETE SET NULL` 自动迁移到未分类，绝对不级联删除笔记。
+3. **命名唯一性**：同一个父目录下，不允许有同名的文件夹（应用层校验）。
+
+
 ## 八、搜索设计说明
 
 **范围**：笔记标题、笔记正文、标签名。三处都支持模糊包含查询。
@@ -208,4 +236,4 @@ CREATE UNIQUE INDEX idx_portfolio_repos_primary ON portfolio_repos (portfolio_it
 - `tokens` — 长期 API Token（见 auth.md 第五节）
 - `audit_events` — 审计事件（见 audit.md 第二节）
 
-**migration 顺序：**users 必须最先创建；sessions、pending_logins、trusted_devices、tokens、audit_events 依赖 users；notes、tags、portfolio_items 也依赖 users。
+ **migration 顺序**：`users` 必须最先创建；`sessions`、`pending_logins`、`trusted_devices`、`tokens`、`audit_events` 依赖 `users`；`folders` 依赖 `users`（且通过 `parent_id` 自引用）；`notes`、`tags`、`portfolio_items` 依赖 `users`，且 `notes` 依赖 `folders`。

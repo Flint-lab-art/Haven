@@ -1,0 +1,49 @@
+# Haven 后端 systemd unit。
+#
+# 安装（需要 root）：
+#   install -d /opt/haven /etc/haven
+#   install -m 0644 deploy/haven.service /etc/systemd/system/haven.service
+#   systemctl daemon-reload && systemctl enable --now haven
+#
+# 前置：
+#   - /opt/haven/bin/haven、/opt/haven/frontend/dist 已就位
+#   - /etc/haven/haven.env 已按 deploy/haven.env.example 填好
+#   - PostgreSQL 已建库并执行过 migration（deploy/migrate.sh up）
+#
+# 若不想用独立的 haven 账号，把下面 User/Group 改成实际运行账号（如 deploy），
+# 并确认该账号对 /opt/haven 有读权限。
+
+[Unit]
+Description=Haven backend (Go + Gin)
+Documentation=file:///opt/haven/README.md
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=haven
+Group=haven
+WorkingDirectory=/opt/haven
+EnvironmentFile=/etc/haven/haven.env
+ExecStart=/opt/haven/bin/haven
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=10
+SyslogIdentifier=haven
+
+# 加固：后端只读磁盘、只写 stdout/stderr（日志进 journald）
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

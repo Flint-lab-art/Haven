@@ -28,7 +28,7 @@
 - [x] `migrations/0001_init.up.sql` / `.down.sql`：按 `data-model.md` 依赖顺序建表（`users` → `sessions`/`pending_logins`/`trusted_devices`/`tokens`/`audit_events` → `notes`/`tags`/`portfolio_items` → `note_tags`/`portfolio_repos`），含全部索引与 CHECK
 - [x] migration 要求 `CREATE EXTENSION IF NOT EXISTS pg_trgm;`；确认 `gen_random_uuid()` 可用
 - [x] 初始化脚本：创建唯一用户（bcrypt cost 12）——**不暴露注册接口**（`backend/cmd/haven-init-user`）
-- [~] 后端启动**不**跑 migration（由脚本执行）；在 `deploy/` 或文档待定处补执行方式（已确认启动不迁移；执行方式待 `deploy/` 建立后补，见第 7 章）
+- [x] 后端启动**不**跑 migration（由脚本执行）；在 `deploy/` 或文档待定处补执行方式（已确认启动不迁移；执行方式见 `deploy/migrate.sh`）
 
 ## 2. 鉴权核心（`internal/auth`，按 `auth.md`）
 
@@ -105,7 +105,7 @@
 - [ ] `go vet ./...`、`go test ./...` 全绿；至少覆盖：可见性矩阵、Token scope、跨用户 404、publish 幂等性
 - [ ] `pnpm build`（含 `vue-tsc -b`）通过
 - [ ] 手工冒烟：匿名 → 公开列表/详情/搜索/作品集；登录 → TOTP → 笔记 CRUD → publish → 退出
-- [ ] `deploy/`（README 与 `conventions.md` 提到但尚不存在）：构建脚本 + systemd unit + migration 执行
+- [x] `deploy/`（README 与 `conventions.md` 提到但尚不存在）：构建脚本 + systemd unit + migration 执行
 - [ ] 部署形态待定项（`architecture.md` 第八节）：端口、HTTPS/反代、`pg_dump` 备份定时任务
 - [ ] 更新根 `README.md` 的「快速开始」占位
 

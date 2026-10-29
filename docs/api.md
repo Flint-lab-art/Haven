@@ -534,6 +534,44 @@
 
 **备注**：写 `note_unpublished` 审计事件。
 
+## 六点五、文件夹管理 `/api/folders`
+
+### 6.5.1 GET `/api/folders`
+**鉴权**：登录
+**说明**：获取当前用户的**所有**文件夹（平铺数组，由前端组合成树）。
+**响应** `200`：
+{
+  "items": [
+    { "id": "uuid", "parent_id": null, "name": "技术", "sort_order": 0 }
+  ],
+  "total": 1
+}
+
+### 6.5.2 POST `/api/folders`
+**鉴权**：登录 + write
+**请求**：
+{ "name": "新文件夹", "parent_id": "父uuid或null" }
+**响应** `201`：返回创建的文件夹对象。
+
+### 6.5.3 PATCH `/api/folders/:id`
+**鉴权**：登录 + write
+**请求**：
+{ "name": "新名字", "parent_id": "新父uuid", "sort_order": 1 }
+**备注**：支持改名和移动目录。
+
+### 6.5.4 DELETE `/api/folders/:id`
+**鉴权**：登录 + write
+**响应** `204`
+**备注**：删除该文件夹及其所有子文件夹，里面的笔记全部移动到未分类（`folder_id = null`）。
+
+**2. 找到 `### 6.1 GET /api/notes` 的查询参数，增加一条：**
+
+- `folder_id`：可选，按文件夹过滤。传具体 uuid 查该文件夹下笔记；传空字符串（`folder_id=`）查未分类（NULL）笔记；不传则查全部。
+
+**3. 找到 `### 6.3 POST /api/notes` 和 `### 6.4 PATCH /api/notes/:id` 的请求体，在里面加上一行：**
+
+`"folder_id": null,  // 可选，所属文件夹 id，不传或 null 表示未分类`
+
 ---
 
 ## 七、笔记（公开侧）`/api/public/notes`

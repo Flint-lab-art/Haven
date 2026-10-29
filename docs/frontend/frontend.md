@@ -92,9 +92,7 @@
 
 ## 八、样式与组件
 
-- 不做组件库锁定，用原生 CSS 或轻量库，优先可读性；
-- 公共组件：`NoteCard`、`TagBadge`、`SearchBar`、`LoginForm`、`TotpForm`、`SettingsNav`；
-- 不做深色模式切换（如需要，后期加，不在本期）。
+本文件只规定业务逻辑、路由与接口调用。所有关于布局结构（三栏式）、色彩排版、组件外观与交互反馈的要求，**严格以 `docs/frontend/ui-design.md` 为准**。不得自行引入 UI 组件库，必须按规范手写 CSS。
 
 ## 九、不做的事
 

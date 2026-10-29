@@ -25,6 +25,7 @@
 - `docs/backend/llm-extension.md` — LLM 抽象层预留
 - `docs/frontend/frontend.md` — Web 前端页面与交互
 - `docs/frontend/clients.md` — TUI 与 Neovim 插件
+- `docs/frontend/ui-design.md` — UI 与交互设计规范
 
 新增文档时，先判断它约束谁，再决定放哪个目录。
 
