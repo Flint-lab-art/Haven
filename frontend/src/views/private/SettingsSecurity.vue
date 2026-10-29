@@ -1,8 +1,6 @@
 <script setup lang="ts">
 /** 账号安全：修改密码、绑定 / 关闭 TOTP。 */
 import { onMounted, reactive, ref } from 'vue'
-import PrivateHeader from '@/components/PrivateHeader.vue'
-import SettingsNav from '@/components/SettingsNav.vue'
 import { ApiError } from '@/api/client'
 import { changePassword, disableTotp, setupTotp, verifyTotp } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
@@ -91,21 +89,13 @@ onMounted(() => void auth.refresh())
 </script>
 
 <template>
-  <div class="shell">
-    <PrivateHeader />
+  <div class="detail-inner">
+    <header class="detail-head">
+      <h1 class="detail-title">账号安全</h1>
+      <p class="detail-sub">密码与双重验证</p>
+    </header>
 
-    <main class="container">
-      <header class="page-head">
-        <div>
-          <h1 class="page-title">账号安全</h1>
-          <p class="page-sub">密码与双重验证</p>
-        </div>
-      </header>
-
-      <div class="settings-layout">
-        <SettingsNav />
-
-        <div class="stack">
+    <div class="stack">
           <!-- 动态验证码（是否已启用是这页最重要的状态，放最前） -->
           <section class="panel panel--pad">
             <div class="row" style="justify-content: space-between; align-items: flex-start">
@@ -214,9 +204,7 @@ onMounted(() => void auth.refresh())
             <button class="btn btn--primary" type="submit" :disabled="pwBusy" style="margin-top: var(--sp-4)">
               修改密码
             </button>
-          </form>
-        </div>
-      </div>
-    </main>
+      </form>
+    </div>
   </div>
 </template>

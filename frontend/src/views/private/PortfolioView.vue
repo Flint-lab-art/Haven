@@ -1,7 +1,10 @@
 <script setup lang="ts">
-/** 作品集管理：作品列表 + 每个作品的仓库链接编辑。 */
-import { onMounted, reactive, ref } from 'vue'
-import PrivateHeader from '@/components/PrivateHeader.vue'
+/**
+ * 右侧作品集详情：新建作品、编辑作品信息、管理仓库链接。
+ * 列表在中间栏，选中项与「正在新建」由 ui store 维护。
+ */
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { ApiError } from '@/api/client'
 import {
   addRepo,
@@ -12,35 +15,43 @@ import {
   updateItem,
   type PortfolioItem,
 } from '@/api/portfolio'
+import { useUiStore } from '@/stores/ui'
+
+const ui = useUiStore()
 
 const items = ref<PortfolioItem[]>([])
 const loading = ref(true)
-const error = ref('')
 const busy = ref(false)
-const showNew = ref(false)
+const error = ref('')
 
+const pendingItem = ref<PortfolioItem | null>(null)
+const deleting = ref(false)
+
+const draft = reactive({ title: '', description: '', sort_order: 0 })
 const newItem = reactive({ title: '', description: '', sort_order: 0 })
-const repoForm = reactive<Record<string, { platform: 'gogs' | 'github'; repo_path: string; is_primary: boolean }>>({})
-/** 展开仓库编辑的作品 id。 */
-const expanded = ref<string | null>(null)
+const repoDraft = reactive({ platform: 'gogs' as 'gogs' | 'github', repo_path: '', is_primary: false })
 
-function repoDraft(itemId: string) {
-  if (!repoForm[itemId]) {
-    repoForm[itemId] = { platform: 'gogs', repo_path: '', is_primary: false }
-  }
-  return repoForm[itemId]
-}
+const selected = computed(() => items.value.find((item) => item.id === ui.selectedPortfolioId) ?? null)
 
 async function load(): Promise<void> {
   loading.value = true
-  error.value = ''
   try {
     items.value = (await listPortfolio()).items
+    if (ui.selectedPortfolioId && !items.value.some((item) => item.id === ui.selectedPortfolioId)) {
+      ui.selectPortfolio(null)
+    }
   } catch {
     error.value = '作品集加载失败，请稍后重试'
   } finally {
     loading.value = false
   }
+}
+
+function syncDraft(item: PortfolioItem | null): void {
+  if (!item) return
+  draft.title = item.title
+  draft.description = item.description
+  draft.sort_order = item.sort_order
 }
 
 function handleError(err: unknown): void {
@@ -58,7 +69,7 @@ async function create(): Promise<void> {
   busy.value = true
   error.value = ''
   try {
-    await createItem({
+    const created = await createItem({
       title,
       description: newItem.description,
       sort_order: Number(newItem.sort_order) || 0,
@@ -66,7 +77,28 @@ async function create(): Promise<void> {
     newItem.title = ''
     newItem.description = ''
     newItem.sort_order = 0
-    showNew.value = false
+    ui.selectPortfolio(created.id)
+    ui.portfolioChanged()
+    await load()
+  } catch (err) {
+    handleError(err)
+  } finally {
+    busy.value = false
+  }
+}
+
+async function save(): Promise<void> {
+  if (!selected.value || busy.value) return
+
+  busy.value = true
+  error.value = ''
+  try {
+    await updateItem(selected.value.id, {
+      title: draft.title.trim(),
+      description: draft.description,
+      sort_order: Number(draft.sort_order) || 0,
+    })
+    ui.portfolioChanged()
     await load()
   } catch (err) {
     handleError(err)
@@ -79,38 +111,51 @@ async function move(item: PortfolioItem, delta: number): Promise<void> {
   error.value = ''
   try {
     await updateItem(item.id, { sort_order: item.sort_order + delta })
+    ui.portfolioChanged()
     await load()
   } catch (err) {
     handleError(err)
   }
 }
 
-async function remove(item: PortfolioItem): Promise<void> {
-  if (!window.confirm(`删除作品「${item.title}」及其仓库链接？`)) return
+function remove(item: PortfolioItem): void {
+  pendingItem.value = item
+}
 
+async function confirmRemove(): Promise<void> {
+  const item = pendingItem.value
+  if (!item || deleting.value) return
+
+  deleting.value = true
   error.value = ''
   try {
     await deleteItem(item.id)
+    ui.selectPortfolio(null)
+    ui.portfolioChanged()
     await load()
+    pendingItem.value = null
   } catch (err) {
     handleError(err)
+    pendingItem.value = null
+  } finally {
+    deleting.value = false
   }
 }
 
-async function add(item: PortfolioItem): Promise<void> {
-  const draft = repoDraft(item.id)
-  if (!draft.repo_path.trim() || busy.value) return
+async function addLink(item: PortfolioItem): Promise<void> {
+  if (!repoDraft.repo_path.trim() || busy.value) return
 
   busy.value = true
   error.value = ''
   try {
     await addRepo(item.id, {
-      platform: draft.platform,
-      repo_path: draft.repo_path.trim(),
-      is_primary: draft.is_primary,
+      platform: repoDraft.platform,
+      repo_path: repoDraft.repo_path.trim(),
+      is_primary: repoDraft.is_primary,
     })
-    draft.repo_path = ''
-    draft.is_primary = false
+    repoDraft.repo_path = ''
+    repoDraft.is_primary = false
+    ui.portfolioChanged()
     await load()
   } catch (err) {
     handleError(err)
@@ -119,133 +164,149 @@ async function add(item: PortfolioItem): Promise<void> {
   }
 }
 
-async function removeRepo(item: PortfolioItem, repoId: string): Promise<void> {
+async function removeLink(item: PortfolioItem, repoId: string): Promise<void> {
   error.value = ''
   try {
     await deleteRepo(item.id, repoId)
+    ui.portfolioChanged()
     await load()
   } catch (err) {
     handleError(err)
   }
 }
 
+watch(
+  () => ui.selectedPortfolioId,
+  () => syncDraft(selected.value),
+)
+watch(
+  () => ui.portfolioVersion,
+  () => void load(),
+)
+watch(selected, (value) => syncDraft(value))
+
 onMounted(load)
 </script>
 
 <template>
-  <div class="shell">
-    <PrivateHeader />
+  <div class="detail-inner">
+    <header class="detail-head">
+      <h1 class="detail-title">作品集</h1>
+      <p class="detail-sub">项目与代码仓库；公开首页会展示跳转链接。</p>
+    </header>
 
-    <main class="container">
-      <header class="page-head">
-        <div>
-          <h1 class="page-title">作品集</h1>
-          <p class="page-sub">
-            {{ loading ? '加载中…' : `${items.length} 个项目 · 公开首页会展示跳转链接` }}
-          </p>
-        </div>
-        <button class="btn btn--primary btn--lg" type="button" @click="showNew = !showNew">
-          {{ showNew ? '收起' : '添加作品' }}
-        </button>
-      </header>
+    <p v-if="error" class="notice notice--error" style="margin-bottom: 16px">{{ error }}</p>
 
-      <p v-if="error" class="notice notice--error">{{ error }}</p>
+    <!-- 新建 -->
+    <form v-if="ui.portfolioCreating" class="panel panel--pad" @submit.prevent="create">
+      <h2 class="row-item__title">添加作品</h2>
 
-      <form v-if="showNew" class="panel panel--pad" style="margin-bottom: var(--sp-4)" @submit.prevent="create">
-        <div class="field">
-          <label class="field__label" for="item-title">作品标题</label>
-          <input id="item-title" v-model="newItem.title" class="input" type="text" placeholder="Haven" required />
-        </div>
-        <div class="field">
-          <label class="field__label" for="item-desc">一句话简介</label>
-          <input id="item-desc" v-model="newItem.description" class="input" type="text" placeholder="自托管的个人知识中台" />
-        </div>
-        <div class="field">
-          <label class="field__label" for="item-order">排序（小的在前）</label>
-          <input id="item-order" v-model.number="newItem.sort_order" class="input" type="number" style="max-width: 140px" />
-        </div>
-        <div class="row" style="justify-content: flex-end">
-          <button class="btn" type="button" @click="showNew = false">取消</button>
-          <button class="btn btn--primary" type="submit" :disabled="busy">添加</button>
-        </div>
-      </form>
-
-      <div v-if="loading" class="panel panel--pad">
-        <div class="skeleton skeleton--title" style="width: 40%"></div>
+      <div class="field" style="margin-top: 16px">
+        <label class="field__label" for="item-title">作品标题</label>
+        <input id="item-title" v-model="newItem.title" class="input" type="text" placeholder="Haven" required />
+      </div>
+      <div class="field" style="margin-top: 12px">
+        <label class="field__label" for="item-desc">一句话简介</label>
+        <input id="item-desc" v-model="newItem.description" class="input" type="text" placeholder="自托管的个人知识中台" />
+      </div>
+      <div class="field" style="margin-top: 12px; max-width: 160px">
+        <label class="field__label" for="item-order">排序（小的在前）</label>
+        <input id="item-order" v-model.number="newItem.sort_order" class="input" type="number" />
       </div>
 
-      <div v-else-if="items.length === 0" class="panel empty">
-        <p class="empty__title">还没有作品</p>
-        <p class="empty__text">添加作品和代码仓库链接后，公开首页会展示它们。</p>
-        <button class="btn btn--primary" type="button" @click="showNew = true">添加作品</button>
+      <div class="row" style="justify-content: flex-end; margin-top: 16px">
+        <button class="btn" type="button" @click="ui.selectPortfolio(null)">取消</button>
+        <button class="btn btn--primary" type="submit" :disabled="busy">添加</button>
       </div>
+    </form>
 
-      <div v-else class="panel rows">
-        <div v-for="item in items" :key="item.id" class="row-item" style="display: block; padding: var(--sp-5)">
-          <div class="row row--wrap" style="align-items: baseline">
-            <span class="row-item__title">{{ item.title }}</span>
-            <span class="field__hint">#{{ item.sort_order }}</span>
-            <div class="spacer"></div>
-            <div class="row">
-              <button class="btn btn--sm" type="button" @click="move(item, -1)" aria-label="上移">↑</button>
-              <button class="btn btn--sm" type="button" @click="move(item, 1)" aria-label="下移">↓</button>
-              <button class="btn btn--sm" type="button" @click="expanded = expanded === item.id ? null : item.id">
-                {{ expanded === item.id ? '收起仓库' : '仓库' }}
-              </button>
-              <button class="btn btn--sm btn--danger" type="button" @click="remove(item)">删除</button>
+    <!-- 编辑已有作品 -->
+    <template v-else-if="selected">
+      <section class="panel panel--pad">
+        <div class="row" style="justify-content: space-between; align-items: baseline">
+          <h2 class="row-item__title">基本信息</h2>
+          <div class="row">
+            <button class="btn btn--sm" type="button" @click="move(selected, -1)" aria-label="上移">↑</button>
+            <button class="btn btn--sm" type="button" @click="move(selected, 1)" aria-label="下移">↓</button>
+          </div>
+        </div>
+
+        <div class="field" style="margin-top: 16px">
+          <label class="field__label" for="edit-title">标题</label>
+          <input id="edit-title" v-model="draft.title" class="input" type="text" />
+        </div>
+        <div class="field" style="margin-top: 12px">
+          <label class="field__label" for="edit-desc">一句话简介</label>
+          <input id="edit-desc" v-model="draft.description" class="input" type="text" />
+        </div>
+        <div class="field" style="margin-top: 12px; max-width: 160px">
+          <label class="field__label" for="edit-order">排序</label>
+          <input id="edit-order" v-model.number="draft.sort_order" class="input" type="number" />
+        </div>
+
+        <div class="row" style="justify-content: space-between; margin-top: 16px">
+          <button class="btn btn--danger btn--sm" type="button" @click="remove(selected)">删除作品</button>
+          <button class="btn btn--primary" type="button" :disabled="busy" @click="save">保存</button>
+        </div>
+      </section>
+
+      <section class="panel panel--pad" style="margin-top: 16px">
+        <h2 class="row-item__title">仓库链接</h2>
+
+        <ul v-if="selected.repos.length" class="rows" style="margin-top: 12px">
+          <li v-for="repo in selected.repos" :key="repo.id" class="row-item">
+            <div class="row-item__main">
+              <div class="row-item__title">
+                {{ repo.platform === 'gogs' ? 'Gogs' : 'GitHub' }} · {{ repo.repo_path }}
+                <span v-if="repo.is_primary" class="badge badge--public">主链接</span>
+              </div>
+              <a :href="repo.url" target="_blank" rel="noopener noreferrer" class="row-item__sub">
+                {{ repo.url }}
+              </a>
             </div>
-          </div>
+            <button class="btn btn--sm btn--danger" type="button" @click="removeLink(selected, repo.id)">
+              移除
+            </button>
+          </li>
+        </ul>
+        <p v-else class="field__hint" style="margin-top: 12px">还没有关联仓库。</p>
 
-          <p v-if="item.description" class="row-item__sub">{{ item.description }}</p>
+        <form class="row row--wrap" style="gap: 8px; margin-top: 16px" @submit.prevent="addLink(selected)">
+          <select v-model="repoDraft.platform" class="select" style="max-width: 116px" aria-label="平台">
+            <option value="gogs">Gogs</option>
+            <option value="github">GitHub</option>
+          </select>
+          <input
+            v-model="repoDraft.repo_path"
+            class="input"
+            type="text"
+            placeholder="kairo/haven"
+            aria-label="仓库路径"
+            style="flex: 1; min-width: 150px"
+          />
+          <label class="checkbox-row">
+            <input v-model="repoDraft.is_primary" type="checkbox" />
+            主链接
+          </label>
+          <button class="btn btn--sm" type="submit" :disabled="busy">添加仓库</button>
+        </form>
+      </section>
+    </template>
 
-          <div v-if="item.repos.length" class="tag-row" style="margin-top: 10px">
-            <span v-for="repo in item.repos" :key="repo.id" class="repo-link" :class="{ 'repo-link--primary': repo.is_primary }">
-              {{ repo.platform === 'gogs' ? 'Gogs' : 'GitHub' }}
-              <span style="opacity: 0.7">{{ repo.repo_path }}</span>
-            </span>
-          </div>
-          <p v-else class="field__hint" style="margin-top: 8px">还没有关联仓库。</p>
+    <!-- 未选中 -->
+    <div v-else-if="!loading" class="detail-empty" style="min-height: 40svh">
+      <p class="detail-empty__title">选择或添加一个作品</p>
+      <p class="detail-empty__text">从左侧选择作品，或点「添加」新建。</p>
+      <button class="btn btn--primary" type="button" @click="ui.startPortfolioCreate()">添加作品</button>
+    </div>
 
-          <div v-if="expanded === item.id" style="margin-top: var(--sp-4)">
-            <ul v-if="item.repos.length" class="rows" style="border: 1px solid var(--sep); border-radius: var(--r-md); overflow: hidden">
-              <li v-for="repo in item.repos" :key="repo.id" class="row-item">
-                <div class="row-item__main">
-                  <div class="row-item__title" style="font: var(--text-subheadline)">
-                    {{ repo.platform === 'gogs' ? 'Gogs' : 'GitHub' }} · {{ repo.repo_path }}
-                    <span v-if="repo.is_primary" class="badge badge--public">主链接</span>
-                  </div>
-                  <a :href="repo.url" target="_blank" rel="noopener noreferrer" class="row-item__sub">
-                    {{ repo.url }}
-                  </a>
-                </div>
-                <button class="btn btn--sm btn--danger" type="button" @click="removeRepo(item, repo.id)">
-                  移除
-                </button>
-              </li>
-            </ul>
-
-            <form class="row row--wrap" style="gap: var(--sp-2); margin-top: var(--sp-3)" @submit.prevent="add(item)">
-              <select v-model="repoDraft(item.id).platform" class="select" style="max-width: 118px" aria-label="平台">
-                <option value="gogs">Gogs</option>
-                <option value="github">GitHub</option>
-              </select>
-              <input
-                v-model="repoDraft(item.id).repo_path"
-                class="input"
-                type="text"
-                placeholder="kairo/haven"
-                aria-label="仓库路径"
-                style="flex: 1; min-width: 150px"
-              />
-              <label class="checkbox-row">
-                <input v-model="repoDraft(item.id).is_primary" type="checkbox" />
-                主链接
-              </label>
-              <button class="btn btn--sm" type="submit" :disabled="busy">添加仓库</button>
-            </form>
-          </div>
-        </div>
-      </div>
-    </main>
+    <ConfirmDialog
+      :open="pendingItem !== null"
+      title="删除作品"
+      :message="`删除作品「${pendingItem?.title ?? ''}」及其所有仓库链接？`"
+      :busy="deleting"
+      @confirm="confirmRemove"
+      @cancel="pendingItem = null"
+    />
   </div>
 </template>

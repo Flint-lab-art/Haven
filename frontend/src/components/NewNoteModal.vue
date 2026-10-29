@@ -1,28 +1,35 @@
 <script setup lang="ts">
 /**
- * 新建笔记弹窗：先定标题与标签，再进编辑页写正文。
+ * 新建笔记弹窗：定好标题与标签后立即创建，再进入编辑页写正文。
  *
- * 按用户选择，弹窗只把数据暂存在前端（不立刻建空笔记），
- * 首次保存时才真正 POST /api/notes。
+ * 立即创建是为了让新笔记马上出现在中间栏的目录树里，
+ * 不需要先在正文里输入内容触发自动保存。
  */
 import { nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { ApiError } from '@/api/client'
+import { createNote } from '@/api/notes'
 import { listTags, type Tag } from '@/api/tags'
+import { useUiStore } from '@/stores/ui'
 import TagPicker from './TagPicker.vue'
 
 const props = defineProps<{
   open: boolean
+  /** 新建后归入的文件夹；null / 不传 = 未分类。 */
+  folderId?: string | null
 }>()
 
 const emit = defineEmits<{ close: [] }>()
 
 const router = useRouter()
+const ui = useUiStore()
 
 const tags = ref<Tag[]>([])
 const loadingTags = ref(true)
 const title = ref('')
 const selected = ref<string[]>([])
 const error = ref('')
+const creating = ref(false)
 const titleInput = ref<HTMLInputElement | null>(null)
 
 async function loadTags(): Promise<void> {
@@ -36,23 +43,40 @@ async function loadTags(): Promise<void> {
   }
 }
 
-function start(): void {
+async function start(): Promise<void> {
   const value = title.value.trim()
   if (!value) {
     error.value = '先给笔记起个标题'
     titleInput.value?.focus()
     return
   }
+  if (creating.value) return
 
-  // 只带标题与标签进入编辑页；正文在编辑页写，首次保存才创建
-  void router.push({
-    name: 'note-create',
-    query: {
+  creating.value = true
+  error.value = ''
+  try {
+    // 立即创建：标题、标签、文件夹一次写入，笔记随即出现在目录树
+    const note = await createNote({
       title: value,
-      tag_ids: selected.value.length ? selected.value.join(',') : undefined,
-    },
-  })
-  emit('close')
+      content: '',
+      tag_ids: selected.value,
+      folder_id: props.folderId ?? null,
+    })
+
+    ui.notesChanged()
+    title.value = ''
+    selected.value = []
+    emit('close')
+    await router.push({ name: 'note-detail', params: { id: note.id } })
+  } catch (err) {
+    if (err instanceof ApiError) {
+      error.value = err.fields ? Object.values(err.fields).join('；') : err.message
+    } else {
+      error.value = '创建失败，请稍后重试'
+    }
+  } finally {
+    creating.value = false
+  }
 }
 
 function onKeydown(event: KeyboardEvent): void {
@@ -122,8 +146,10 @@ defineExpose({
         </div>
 
         <div class="modal__actions">
-          <button class="btn" type="button" @click="emit('close')">取消</button>
-          <button class="btn btn--primary" type="submit">开始写</button>
+          <button class="btn" type="button" :disabled="creating" @click="emit('close')">取消</button>
+          <button class="btn btn--primary" type="submit" :disabled="creating">
+            {{ creating ? '创建中…' : '开始写' }}
+          </button>
         </div>
       </form>
     </div>

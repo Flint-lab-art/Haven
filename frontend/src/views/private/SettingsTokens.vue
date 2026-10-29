@@ -5,8 +5,6 @@
  */
 import { onMounted, reactive, ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import PrivateHeader from '@/components/PrivateHeader.vue'
-import SettingsNav from '@/components/SettingsNav.vue'
 import { ApiError } from '@/api/client'
 import { createToken, listTokens, revokeToken, type CreatedToken, type TokenItem } from '@/api/tokens'
 import { formatDateTime, formatRelative } from '@/utils/format'
@@ -97,31 +95,25 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="shell">
-    <PrivateHeader />
+  <div class="detail-inner">
+    <header class="detail-head row" style="justify-content: space-between; align-items: flex-end">
+      <div>
+        <h1 class="detail-title">API Token</h1>
+        <p class="detail-sub">
+          {{ loading ? '加载中…' : `${tokens.filter((t) => !t.revoked_at).length} 个有效凭证` }}
+        </p>
+      </div>
+      <button
+        v-if="!forbidden"
+        class="btn btn--primary"
+        type="button"
+        @click="showNew = !showNew"
+      >
+        {{ showNew ? '收起' : '新建 Token' }}
+      </button>
+    </header>
 
-    <main class="container">
-      <header class="page-head">
-        <div>
-          <h1 class="page-title">API Token</h1>
-          <p class="page-sub">
-            {{ loading ? '加载中…' : `${tokens.filter((t) => !t.revoked_at).length} 个有效凭证` }}
-          </p>
-        </div>
-        <button
-          v-if="!forbidden"
-          class="btn btn--primary btn--lg"
-          type="button"
-          @click="showNew = !showNew"
-        >
-          {{ showNew ? '收起' : '新建 Token' }}
-        </button>
-      </header>
-
-      <div class="settings-layout">
-        <SettingsNav />
-
-        <div class="stack">
+    <div class="stack">
           <!-- 403：引导完成 TOTP 验证，不登出 -->
           <section v-if="forbidden" class="panel panel--pad">
             <h2 class="row-item__title" style="font: var(--text-title3)">管理 Token 需要完成动态码验证</h2>
@@ -213,8 +205,6 @@ onMounted(load)
               </li>
             </ul>
           </template>
-        </div>
-      </div>
-    </main>
+    </div>
   </div>
 </template>

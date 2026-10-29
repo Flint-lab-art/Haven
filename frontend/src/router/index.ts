@@ -11,31 +11,51 @@ import { useAuthStore } from '@/stores/auth'
 const publicRoutes: RouteRecordRaw[] = [
   {
     path: '/',
-    name: 'public-home',
-    component: () => import('@/views/public/PublicHome.vue'),
-    meta: { title: '笔记' },
-  },
-  {
-    path: '/notes/:id',
-    name: 'public-note',
-    component: () => import('@/views/public/PublicNote.vue'),
-    meta: { title: '笔记' },
-  },
-  {
-    path: '/search',
-    name: 'public-search',
-    component: () => import('@/views/public/PublicSearch.vue'),
-    meta: { title: '搜索' },
-  },
-  {
-    path: '/portfolio',
-    name: 'public-portfolio',
-    component: () => import('@/views/public/PublicPortfolio.vue'),
-    meta: { title: '作品集' },
+    component: () => import('@/components/PublicLayout.vue'),
+    children: [
+      {
+        path: '',
+        name: 'public-home',
+        component: () => import('@/views/public/PublicHome.vue'),
+        meta: { title: '笔记' },
+      },
+      {
+        path: 'notes/:id',
+        name: 'public-note',
+        component: () => import('@/views/public/PublicNote.vue'),
+        meta: { title: '笔记' },
+      },
+      {
+        path: 'search',
+        name: 'public-search',
+        component: () => import('@/views/public/PublicSearch.vue'),
+        meta: { title: '搜索' },
+      },
+      {
+        path: 'portfolio',
+        name: 'public-portfolio',
+        component: () => import('@/views/public/PublicPortfolio.vue'),
+        meta: { title: '作品集' },
+      },
+      {
+        path: ':pathMatch(.*)*',
+        name: 'public-not-found',
+        component: () => import('@/views/public/PublicNotFound.vue'),
+        meta: { title: '页面不存在' },
+      },
+    ],
   },
 ]
 
-/** 私有域路由（docs/frontend/frontend.md 第四节）。 */
+/**
+ * 私有域路由（docs/frontend/frontend.md 第四节）。
+ *
+ * 除 `/login` 外全部挂在三栏布局下（ui-design.md 第二节）：
+ * `default` 是右侧详情区，`list` 是中间列表栏。
+ * 同一分区共用同一个 `list` 组件，切换右侧笔记时左、中两栏不重建。
+ */
+const noteList = () => import('@/components/NoteListPanel.vue')
+
 const privateRoutes: RouteRecordRaw[] = [
   {
     path: '/login',
@@ -45,77 +65,129 @@ const privateRoutes: RouteRecordRaw[] = [
   },
   {
     path: '/',
-    name: 'workbench',
-    component: () => import('@/views/private/NoteListView.vue'),
-    meta: { title: '笔记' },
-  },
-  {
-    // 新建：标题与标签由弹窗通过 query 带进来（title / tag_ids），正文在编辑页写
-    path: '/notes/new',
-    name: 'note-create',
-    component: () => import('@/views/private/NoteEditView.vue'),
-    meta: { title: '新建笔记' },
-  },
-  {
-    path: '/notes/:id',
-    name: 'note-detail',
-    component: () => import('@/views/private/NoteEditView.vue'),
-    meta: { title: '笔记' },
-  },
-  {
-    path: '/search',
-    name: 'search',
-    component: () => import('@/views/private/SearchView.vue'),
-    meta: { title: '搜索' },
-  },
-  {
-    path: '/tags',
-    name: 'tags',
-    component: () => import('@/views/private/TagsView.vue'),
-    meta: { title: '标签' },
-  },
-  {
-    path: '/portfolio',
-    name: 'portfolio',
-    component: () => import('@/views/private/PortfolioView.vue'),
-    meta: { title: '作品集' },
-  },
-  {
-    path: '/settings',
-    name: 'settings',
-    component: () => import('@/views/private/SettingsHome.vue'),
-    meta: { title: '设置' },
-  },
-  {
-    path: '/settings/security',
-    name: 'settings-security',
-    component: () => import('@/views/private/SettingsSecurity.vue'),
-    meta: { title: '账号安全' },
-  },
-  {
-    path: '/settings/sessions',
-    name: 'settings-sessions',
-    component: () => import('@/views/private/SettingsSessions.vue'),
-    meta: { title: '会话' },
-  },
-  {
-    path: '/settings/devices',
-    name: 'settings-devices',
-    component: () => import('@/views/private/SettingsDevices.vue'),
-    meta: { title: '授信设备' },
-  },
-  {
-    path: '/settings/tokens',
-    name: 'settings-tokens',
-    component: () => import('@/views/private/SettingsTokens.vue'),
-    meta: { title: 'API Token' },
-  },
-  {
-    // 公开笔记预览（docs/frontend/frontend.md 第四节最后一行，可选）
-    path: '/preview/notes/:id',
-    name: 'note-preview',
-    component: () => import('@/views/public/PublicNote.vue'),
-    meta: { title: '预览' },
+    component: () => import('@/components/PrivateLayout.vue'),
+    children: [
+      {
+        path: '',
+        name: 'workbench',
+        components: {
+          default: () => import('@/components/EmptyDetail.vue'),
+          list: noteList,
+        },
+        meta: {
+          title: '笔记',
+          section: 'notes',
+          emptyTitle: '选择一篇笔记',
+          emptyText: '从左侧列表选择，或新建一篇；内容会显示在这里。',
+        },
+      },
+      {
+        // 新建：标题与标签由弹窗通过 query 带进来（title / tag_ids），正文在编辑页写
+        path: 'notes/new',
+        name: 'note-create',
+        components: {
+          default: () => import('@/views/private/NoteEditView.vue'),
+          list: noteList,
+        },
+        meta: { title: '新建笔记', section: 'notes' },
+      },
+      {
+        path: 'notes/:id',
+        name: 'note-detail',
+        components: {
+          default: () => import('@/views/private/NoteEditView.vue'),
+          list: noteList,
+        },
+        meta: { title: '笔记', section: 'notes' },
+      },
+      {
+        path: 'search',
+        name: 'search',
+        components: {
+          default: () => import('@/components/EmptyDetail.vue'),
+          list: () => import('@/components/SearchPanel.vue'),
+        },
+        meta: {
+          title: '搜索',
+          section: 'search',
+          emptyTitle: '搜索结果',
+          emptyText: '在中间栏输入关键词；点击结果会打开对应笔记。',
+        },
+      },
+      {
+        path: 'tags',
+        name: 'tags',
+        components: {
+          default: () => import('@/views/private/TagsView.vue'),
+          list: () => import('@/components/TagsPanel.vue'),
+        },
+        meta: { title: '标签', section: 'tags' },
+      },
+      {
+        path: 'portfolio',
+        name: 'portfolio',
+        components: {
+          default: () => import('@/views/private/PortfolioView.vue'),
+          list: () => import('@/components/PortfolioPanel.vue'),
+        },
+        meta: { title: '作品集', section: 'portfolio' },
+      },
+      {
+        path: 'settings',
+        name: 'settings',
+        components: {
+          default: () => import('@/views/private/SettingsHome.vue'),
+          list: () => import('@/components/SettingsPanel.vue'),
+        },
+        meta: { title: '设置', section: 'settings' },
+      },
+      {
+        path: 'settings/security',
+        name: 'settings-security',
+        components: {
+          default: () => import('@/views/private/SettingsSecurity.vue'),
+          list: () => import('@/components/SettingsPanel.vue'),
+        },
+        meta: { title: '账号安全', section: 'settings' },
+      },
+      {
+        path: 'settings/sessions',
+        name: 'settings-sessions',
+        components: {
+          default: () => import('@/views/private/SettingsSessions.vue'),
+          list: () => import('@/components/SettingsPanel.vue'),
+        },
+        meta: { title: '会话', section: 'settings' },
+      },
+      {
+        path: 'settings/devices',
+        name: 'settings-devices',
+        components: {
+          default: () => import('@/views/private/SettingsDevices.vue'),
+          list: () => import('@/components/SettingsPanel.vue'),
+        },
+        meta: { title: '授信设备', section: 'settings' },
+      },
+      {
+        path: 'settings/tokens',
+        name: 'settings-tokens',
+        components: {
+          default: () => import('@/views/private/SettingsTokens.vue'),
+          list: () => import('@/components/SettingsPanel.vue'),
+        },
+        meta: { title: 'API Token', section: 'settings' },
+      },
+      {
+        // 公开笔记预览（docs/frontend/frontend.md 第四节最后一行，可选）
+        path: 'preview/notes/:id',
+        name: 'note-preview',
+        components: {
+          default: () => import('@/views/private/PreviewNoteView.vue'),
+          list: noteList,
+        },
+        meta: { title: '预览', section: 'notes' },
+      },
+    ],
   },
   {
     path: '/:pathMatch(.*)*',

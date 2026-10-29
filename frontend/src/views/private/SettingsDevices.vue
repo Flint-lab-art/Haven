@@ -1,8 +1,6 @@
 <script setup lang="ts">
 /** 授信设备管理。 */
 import { onMounted, ref } from 'vue'
-import PrivateHeader from '@/components/PrivateHeader.vue'
-import SettingsNav from '@/components/SettingsNav.vue'
 import { ApiError } from '@/api/client'
 import { listDevices, revokeDevice, type TrustedDeviceItem } from '@/api/devices'
 import { formatDate, formatRelative } from '@/utils/format'
@@ -44,21 +42,13 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="shell">
-    <PrivateHeader />
+  <div class="detail-inner">
+    <header class="detail-head">
+      <h1 class="detail-title">授信设备</h1>
+      <p class="detail-sub">30 天内登录免动态码；只能在登录时勾选“信任这台设备”创建</p>
+    </header>
 
-    <main class="container">
-      <header class="page-head">
-        <div>
-          <h1 class="page-title">授信设备</h1>
-          <p class="page-sub">30 天内登录免动态码；只能在登录时勾选“信任这台设备”创建</p>
-        </div>
-      </header>
-
-      <div class="settings-layout">
-        <SettingsNav />
-
-        <div class="stack">
+    <div class="stack">
           <p v-if="error" class="notice notice--error">{{ error }}</p>
 
           <div v-if="loading" class="panel panel--pad">
@@ -85,8 +75,6 @@ onMounted(load)
           <p class="field__hint">
             网吧、酒店等公共电脑上不建议勾选“信任这台设备”；误勾选时可在这里撤销。
           </p>
-        </div>
-      </div>
-    </main>
+    </div>
   </div>
 </template>

@@ -1,118 +1,113 @@
 <script setup lang="ts">
 /**
- * 笔记详情 / 编辑 / 新建。
+ * 笔记编辑（默认即可写，无「编辑 / 保存」按钮）。
  *
- * 三种模式：
- *   - /notes/:id     已有笔记，默认阅读态，点「编辑」进入所见即所得编辑
- *   - /notes/new?title=&tag_ids=   刚在弹窗里定好标题与标签，正文从这里开始写，
- *                                  首次保存才真正创建笔记
+ * 按照 docs/frontend/ui-design.md 7.5：
+ * - Milkdown 无边框、无阴影，标题与正文处在同一个纯白容器里；
+ * - 正文变化由 `markdownUpdated` 回传后防抖 1000ms 自动保存；
+ * - 保存状态以轻量文字显示在标题栏右侧；
+ * - 添加标签、公开 / 私有、删除放在标题栏最右侧。
  *
- * 正文以 Markdown 原文存储（docs/backend/data-model.md 的 notes.content）。
+ * 新建笔记（/notes/new）首次自动保存时才真正 POST /api/notes，
+ * 随后换成 /notes/:id，刷新不会重复创建。
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
-import PrivateHeader from '@/components/PrivateHeader.vue'
 import MarkdownEditor from '@/components/MarkdownEditor.vue'
+import NoteOutline from '@/components/NoteOutline.vue'
 import TagDropdown from '@/components/TagDropdown.vue'
 import { ApiError } from '@/api/client'
 import {
   createNote,
-  deleteNote,
   getNote,
-  publishNote,
-  unpublishNote,
   updateNote,
   type Note,
 } from '@/api/notes'
 import { listTags, type Tag } from '@/api/tags'
-import { renderMarkdown, decorateLinks } from '@/utils/markdown'
-import { formatDateTime, formatRelative } from '@/utils/format'
+import { listFolders, type Folder } from '@/api/folders'
+import { useUiStore } from '@/stores/ui'
+import { extractHeadings } from '@/utils/markdown-headings'
+
+/** 自动保存防抖时间（ui-design.md 7.5.4）。 */
+const AUTOSAVE_DELAY = 1000
 
 const route = useRoute()
 const router = useRouter()
+const ui = useUiStore()
 
 const noteId = computed(() => (route.params.id ? String(route.params.id) : ''))
 const isNew = computed(() => !noteId.value)
 
 const note = ref<Note | null>(null)
 const tags = ref<Tag[]>([])
+const folders = ref<Folder[]>([])
 const title = ref('')
 const content = ref('')
+const folderId = ref<string | null>(null)
 const selectedTagIds = ref<string[]>([])
 
 const loading = ref(true)
 const saving = ref(false)
 const error = ref('')
-const notice = ref('')
-const editing = ref(false)
+/** 载入 / 回填期间不触发自动保存。 */
+const hydrating = ref(true)
+const saveState = ref<'idle' | 'dirty' | 'saving' | 'saved' | 'error'>('idle')
 
-/** 首次保存前的临时草稿：标题与标签来自弹窗，正文在这里写。 */
-const draftTitle = ref('')
 const editorRef = ref<InstanceType<typeof MarkdownEditor> | null>(null)
 
-const renderedHtml = computed(() => decorateLinks(renderMarkdown(content.value)))
+const outlineItems = computed(() => extractHeadings(content.value))
+const activeHeading = ref(-1)
+const editingMode = computed(() => Boolean(note.value || isNew.value))
 
-/** 有未保存改动时离开要确认（新建模式尤其重要，否则会丢草稿）。 */
-const dirty = ref(false)
-function markDirty(): void {
-  if (!dirty.value) dirty.value = true
-}
+/** 最近一次成功保存时的内容快照，用来判断是否真的需要再存一次。 */
+const lastSaved = ref('')
+/** 上次保存时的标签集合；只有标签变化或新建笔记时才重新拉标签计数。 */
+let lastSavedTags = ''
 
-watch([title, content, selectedTagIds], markDirty, { deep: true })
+let saveTimer: ReturnType<typeof setTimeout> | undefined
+let savePending = false
+/** 正处在离开守卫里：此时新建笔记后不再 replace 路由，避免打断原导航。 */
+let leaving = false
 
-onBeforeRouteLeave(() => {
-  if (!dirty.value) return true
-  return window.confirm('还有未保存的改动，确定离开？')
+const statusText = computed(() => {
+  switch (saveState.value) {
+    case 'dirty':
+      return '未保存'
+    case 'saving':
+      return '正在保存…'
+    case 'saved':
+      return '已保存'
+    case 'error':
+      return '保存失败'
+    default:
+      return ''
+  }
 })
 
-onBeforeUnmount(() => {
-  dirty.value = false
-})
-
-async function load(): Promise<void> {
-  loading.value = true
-  error.value = ''
-  try {
-    tags.value = (await listTags()).items
-
-    if (isNew.value) {
-      // 标题与标签来自新建弹窗（路由 query），正文留空
-      draftTitle.value = String(route.query.title ?? '')
-      title.value = draftTitle.value
-      const rawTagIds = route.query.tag_ids
-      selectedTagIds.value = typeof rawTagIds === 'string' && rawTagIds ? rawTagIds.split(',') : []
-      content.value = ''
-      editing.value = true
-      // 初始填充不算改动
-      requestAnimationFrame(() => {
-        dirty.value = false
-      })
-      return
-    }
-
-    const loaded = await getNote(noteId.value)
-    note.value = loaded
-    title.value = loaded.title
-    content.value = loaded.content
-    selectedTagIds.value = loaded.tags.map((t) => t.id)
-    editing.value = false
-    requestAnimationFrame(() => {
-      dirty.value = false
-    })
-  } catch (err) {
-    error.value = err instanceof ApiError && err.isNotFound ? '这篇笔记不存在' : '笔记加载失败'
-  } finally {
-    loading.value = false
-  }
+function snapshot(): string {
+  return JSON.stringify({
+    title: title.value,
+    content: content.value,
+    tags: selectedTagIds.value,
+    folder: folderId.value,
+  })
 }
 
-/** 标签被新建或删除后重新拉取（删除会影响其它笔记，需要最新列表）。 */
-async function reloadTags(): Promise<void> {
-  try {
-    tags.value = (await listTags()).items
-  } catch {
-    // 拉取失败不阻塞编辑
-  }
+/** 标题、正文、标签任一变化都走同一个防抖保存。 */
+watch(
+  [title, content, selectedTagIds, folderId],
+  () => {
+    if (hydrating.value) return
+    if (snapshot() === lastSaved.value) return
+    scheduleSave()
+  },
+  { deep: true },
+)
+
+function scheduleSave(): void {
+  saveState.value = 'dirty'
+  if (saveTimer) clearTimeout(saveTimer)
+  saveTimer = setTimeout(() => void save(), AUTOSAVE_DELAY)
 }
 
 function handleError(err: unknown): void {
@@ -125,188 +120,321 @@ function handleError(err: unknown): void {
   }
 }
 
-async function save(): Promise<void> {
-  if (saving.value) return
+/** 保存；`syncEditor` 用于离开页面 / 发布前把编辑器最新内容补进来。 */
+async function save(syncEditor = false): Promise<boolean> {
+  if (saveTimer) {
+    clearTimeout(saveTimer)
+    saveTimer = undefined
+  }
+  if (hydrating.value) return true
 
-  // 先把编辑器的最新内容同步回 content，避免存到上一拍的值
-  if (editing.value) {
-    editorRef.value?.sync()
+  if (syncEditor && editorRef.value) {
+    editorRef.value.sync()
     await nextTick()
   }
 
-  saving.value = true
-  error.value = ''
-  notice.value = ''
+  if (snapshot() === lastSaved.value) {
+    if (saveState.value !== 'saved' && saveState.value !== 'idle') saveState.value = 'saved'
+    return true
+  }
+  if (saving.value) {
+    savePending = true
+    return true
+  }
 
+  saving.value = true
+  saveState.value = 'saving'
+  error.value = ''
+
+  const pending = snapshot()
+  const tagKey = JSON.stringify(selectedTagIds.value)
   try {
     if (isNew.value) {
       const created = await createNote({
         title: title.value,
         content: content.value,
         tag_ids: selectedTagIds.value,
+        folder_id: folderId.value,
       })
       note.value = created
-      dirty.value = false
-      editing.value = false // 保存后进入阅读态，避免看起来像没保存
-      // 换成详情地址，刷新不会重复创建
-      await router.replace({ name: 'note-detail', params: { id: created.id } })
-      notice.value = '已保存'
+      lastSaved.value = pending
+      saveState.value = 'saved'
+      ui.notesChanged()
+      // 换成详情地址；路由监听会重新载入，hydrating 防止回填触发再次保存
+      if (!leaving) {
+        await router.replace({ name: 'note-detail', params: { id: created.id } })
+      }
+      lastSavedTags = tagKey
       await reloadTags()
-    } else {
-      const updated = await updateNote(noteId.value, {
-        title: title.value,
-        content: content.value,
-        tag_ids: selectedTagIds.value,
-      })
-      note.value = updated
-      dirty.value = false
-      notice.value = '已保存'
-      editing.value = false
-      // 标签计数变了：不再被使用的标签会自动从列表消失
+      return true
+    }
+
+    const updated = await updateNote(noteId.value, {
+      title: title.value,
+      content: content.value,
+      tag_ids: selectedTagIds.value,
+      folder_id: folderId.value,
+    })
+    note.value = updated
+    lastSaved.value = pending
+    saveState.value = 'saved'
+    ui.notesChanged()
+    // 标签计数变了：不再被使用的标签会自动从列表消失
+    if (tagKey !== lastSavedTags) {
+      lastSavedTags = tagKey
       await reloadTags()
     }
+    return true
   } catch (err) {
+    if (err instanceof ApiError && err.isNotFound) {
+      // 笔记已在目录树里被删除：放弃本次保存，并允许离开
+      lastSaved.value = snapshot()
+      saveState.value = 'idle'
+      return true
+    }
     handleError(err)
+    saveState.value = 'error'
+    return false
   } finally {
     saving.value = false
+    if (savePending) {
+      savePending = false
+      if (snapshot() !== lastSaved.value) scheduleSave()
+    }
   }
 }
 
-function cancelEditing(): void {
-  if (dirty.value && !window.confirm('放弃未保存的改动？')) return
-  if (note.value) {
-    title.value = note.value.title
-    content.value = note.value.content
-    selectedTagIds.value = note.value.tags.map((t) => t.id)
-  }
-  dirty.value = false
-  editing.value = false
-}
-
-async function toggleVisibility(): Promise<void> {
-  if (!note.value) return
+async function load(): Promise<void> {
+  hydrating.value = true
+  loading.value = true
   error.value = ''
-  notice.value = ''
+  activeHeading.value = -1
+  // 切换笔记时先清空，避免 404 或加载失败时还显示上一篇的正文 / 大纲
+  note.value = null
+  content.value = ''
   try {
-    note.value =
-      note.value.visibility === 'public' ? await unpublishNote(note.value.id) : await publishNote(note.value.id)
-    notice.value =
-      note.value.visibility === 'public' ? '已公开，任何人通过公开链接都能看到' : '已撤回为私有'
+    const [tagResult, folderResult] = await Promise.allSettled([listTags(), listFolders()])
+    if (tagResult.status === 'fulfilled') tags.value = tagResult.value.items
+    if (folderResult.status === 'fulfilled') folders.value = folderResult.value.items
+
+    if (isNew.value) {
+      // 标题与标签来自新建弹窗（路由 query），正文留空
+      title.value = String(route.query.title ?? '')
+      const rawTagIds = route.query.tag_ids
+      selectedTagIds.value = typeof rawTagIds === 'string' && rawTagIds ? rawTagIds.split(',') : []
+      const rawFolderId = route.query.folder_id
+      folderId.value = typeof rawFolderId === 'string' && rawFolderId ? rawFolderId : null
+      content.value = ''
+      note.value = null
+    } else {
+      const loaded = await getNote(noteId.value)
+      note.value = loaded
+      title.value = loaded.title
+      content.value = loaded.content
+      selectedTagIds.value = loaded.tags.map((t) => t.id)
+      folderId.value = loaded.folder_id
+    }
   } catch (err) {
-    handleError(err)
+    error.value = err instanceof ApiError && err.isNotFound ? '这篇笔记不存在' : '笔记加载失败'
+  } finally {
+    loading.value = false
+    // 新建时 URL 上的 folder_id 可能无效（手改地址），回退到未分类
+    if (folderId.value && !folders.value.some((folder) => folder.id === folderId.value)) {
+      folderId.value = null
+    }
+    // 等编辑器把初始内容同步完，再把当前状态记为「已保存」
+    requestAnimationFrame(() => {
+      lastSaved.value = snapshot()
+      lastSavedTags = JSON.stringify(selectedTagIds.value)
+      saveState.value = isNew.value ? 'idle' : 'saved'
+      hydrating.value = false
+    })
   }
 }
 
-async function remove(): Promise<void> {
-  if (!note.value) return
-  if (!window.confirm('删除后无法恢复，确定删除这篇笔记？')) return
-
+/** 标签被新建或删除后重新拉取（删除会影响其它笔记，需要最新列表）。 */
+async function reloadTags(): Promise<void> {
   try {
-    dirty.value = false
-    await deleteNote(note.value.id)
-    await router.push({ name: 'workbench' })
-  } catch (err) {
-    handleError(err)
+    tags.value = (await listTags()).items
+  } catch {
+    // 拉取失败不阻塞编辑
   }
 }
 
-onMounted(load)
+/** 文件夹被增删改后重新拉取；当前文件夹若被删除则回到未分类。 */
+async function reloadFolders(): Promise<void> {
+  try {
+    folders.value = (await listFolders()).items
+    if (folderId.value && !folders.value.some((folder) => folder.id === folderId.value)) {
+      folderId.value = null
+    }
+  } catch {
+    // 拉取失败不阻塞编辑
+  }
+}
+
+/** 用「父 / 子」形式显示文件夹，避免不同目录下的同名项混淆。 */
+function folderPath(folder: Folder): string {
+  const names = [folder.name]
+  const seen = new Set([folder.id])
+  let parent = folder.parent_id
+  while (parent && !seen.has(parent)) {
+    seen.add(parent)
+    const parentFolder = folders.value.find((item) => item.id === parent)
+    if (!parentFolder) break
+    names.unshift(parentFolder.name)
+    parent = parentFolder.parent_id
+  }
+  return names.join(' / ')
+}
+
+const folderOptions = computed(() =>
+  folders.value
+    .map((folder) => ({ id: folder.id, label: folderPath(folder) }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'zh-CN')),
+)
+
+function onFolderChange(event: Event): void {
+  folderId.value = (event.target as HTMLSelectElement).value || null
+}
+
+watch(
+  () => ui.foldersVersion,
+  () => void reloadFolders(),
+)
+
+/** 当前正在渲染的标题元素（ProseMirror 里的 H1–H3）。 */
+function headingElements(): HTMLElement[] {
+  return editorRef.value?.headingElements() ?? []
+}
+
+let activeFrame = 0
+
+/** 滚动时找出当前章节；用 rAF 合并高频滚动事件。 */
+function scheduleActiveUpdate(): void {
+  if (activeFrame) return
+  activeFrame = requestAnimationFrame(() => {
+    activeFrame = 0
+    const elements = headingElements()
+    if (elements.length === 0) {
+      activeHeading.value = -1
+      return
+    }
+
+    // 标题滚到视口顶部附近时算作当前章节；还没滚到第一个标题时高亮第一个
+    const threshold = 140
+    let current = 0
+    elements.forEach((element, index) => {
+      if (element.getBoundingClientRect().top <= threshold) current = index
+    })
+    activeHeading.value = Math.min(current, outlineItems.value.length - 1)
+  })
+}
+
+function goToHeading(index: number): void {
+  const element = headingElements()[index]
+  element?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  activeHeading.value = index
+}
+
+watch([outlineItems, loading], () => {
+  requestAnimationFrame(scheduleActiveUpdate)
+})
+
+// 三栏布局里本组件不会随笔记切换重建；新建页再次从树里点「新建」时
+// 参数也是 query 变化而不是 id 变化，所以这些来源都要监听
+watch(
+  () => [route.params.id, route.query.title, route.query.folder_id, route.query.tag_ids],
+  () => void load(),
+  { immediate: true },
+)
+
+onBeforeRouteLeave(async () => {
+  if (hydrating.value) return true
+  if (snapshot() === lastSaved.value) return true
+  leaving = true
+  const ok = await save(true)
+  leaving = false
+  if (ok) return true
+  if (window.confirm('保存失败，仍要离开？')) return true
+  if (snapshot() !== lastSaved.value) scheduleSave()
+  return false
+})
+
+onMounted(() => {
+  // scroll 不冒泡，但捕获阶段能收到编辑器内部和右侧容器的滚动
+  document.addEventListener('scroll', scheduleActiveUpdate, true)
+  ui.registerNoteFlush(() => save(true))
+})
+
+onBeforeUnmount(() => {
+  if (saveTimer) clearTimeout(saveTimer)
+  if (activeFrame) cancelAnimationFrame(activeFrame)
+  document.removeEventListener('scroll', scheduleActiveUpdate, true)
+  ui.registerNoteFlush(null)
+})
 </script>
 
 <template>
-  <div class="shell">
-    <PrivateHeader />
+  <div class="note-shell" :class="{ 'note-shell--editing': editingMode }">
+    <div class="note-view" :class="{ 'note-view--editing': editingMode }">
+      <div v-if="error" class="note-flash">
+        <p class="notice notice--error">{{ error }}</p>
+      </div>
 
-    <main class="container" :class="editing ? 'container--editor' : 'container--reading'">
-      <p v-if="error" class="notice notice--error">{{ error }}</p>
-      <p v-if="notice" class="notice notice--success" style="margin-bottom: var(--sp-4)">{{ notice }}</p>
-
-      <div v-if="loading" class="panel panel--pad">
+      <div v-if="loading" class="detail-inner">
         <div class="skeleton skeleton--title" style="width: 52%"></div>
-        <div class="skeleton skeleton--line" style="width: 92%"></div>
+        <div class="skeleton skeleton--line" style="width: 92%; margin-top: 16px"></div>
         <div class="skeleton skeleton--line" style="width: 76%"></div>
       </div>
 
-      <!-- 编辑态：标题与标签在上，正文撑满，操作在底部 -->
-      <section v-else-if="editing" class="editor-layout">
-        <div class="editor-layout__head">
-          <input
-            id="note-title"
-            v-model="title"
-            class="input editor-title"
-            type="text"
-            placeholder="标题"
-            aria-label="标题"
-          />
+      <template v-else>
+        <!-- 编辑态（默认）：标题与正文在同一个无边框容器里 -->
+        <section v-if="note || isNew" class="editor-page">
+          <header class="editor-header">
+            <input
+              id="note-title"
+              v-model="title"
+              class="editor-title"
+              type="text"
+              placeholder="标题"
+              aria-label="标题"
+            />
 
-          <div class="tag-field">
-            <TagDropdown v-model:selected="selectedTagIds" :tags="tags" @changed="reloadTags" />
-          </div>
-        </div>
+            <div class="editor-actions">
+              <span v-if="statusText" class="save-state" :class="`save-state--${saveState}`">{{ statusText }}</span>
 
-        <div class="editor-layout__body">
-          <MarkdownEditor ref="editorRef" v-model="content" :autofocus="isNew" />
-        </div>
+              <select class="select folder-select" :value="folderId ?? ''" aria-label="所属文件夹" @change="onFolderChange">
+                <option value="">未分类</option>
+                <option v-for="option in folderOptions" :key="option.id" :value="option.id">{{ option.label }}</option>
+              </select>
 
-        <div class="editor-layout__foot">
-          <span class="field__hint">
-            Markdown：**粗体**、`代码`、- 列表、&gt; 引用、``` 代码块
-          </span>
-          <div class="spacer"></div>
-          <button
-            class="btn"
-            type="button"
-            @click="isNew ? router.push({ name: 'workbench' }) : cancelEditing()"
-          >
-            取消
-          </button>
-          <button class="btn btn--primary" type="button" :disabled="saving" @click="save">
-            {{ saving ? '保存中…' : '保存' }}
-          </button>
-        </div>
-      </section>
-
-      <!-- 阅读态 -->
-      <article v-else-if="note" class="panel panel--pad">
-        <div class="row row--wrap" style="justify-content: space-between; margin-bottom: var(--sp-5)">
-          <span class="row" style="gap: var(--sp-2)">
-            <span class="badge" :class="note.visibility === 'public' ? 'badge--public' : 'badge--private'">
-              {{ note.visibility === 'public' ? '已公开' : '私有' }}
-            </span>
-            <span class="field__hint">
-              更新于 {{ formatRelative(note.updated_at) }}
-              <template v-if="note.published_at"> · 首发 {{ formatDateTime(note.published_at) }}</template>
-            </span>
-          </span>
-
-          <div class="row">
-            <button class="btn btn--sm btn--quiet" type="button" @click="toggleVisibility">
-              {{ note.visibility === 'public' ? '撤回' : '公开' }}
-            </button>
-            <button class="btn btn--sm btn--danger" type="button" @click="remove">删除</button>
-            <button class="btn btn--primary btn--sm" type="button" @click="editing = true">编辑</button>
-          </div>
-        </div>
-
-        <header class="article">
-          <h1 class="article__title">{{ note.title }}</h1>
-          <div v-if="note.tags.length" class="article__meta">
-            <div class="tag-row">
-              <span v-for="tag in note.tags" :key="tag.id" class="tag">{{ tag.name }}</span>
+              <TagDropdown v-model:selected="selectedTagIds" :tags="tags" @changed="reloadTags" />
             </div>
+          </header>
+
+          <div class="editor-body">
+            <MarkdownEditor ref="editorRef" v-model="content" :autofocus="isNew" @ready="scheduleActiveUpdate" />
           </div>
-        </header>
+        </section>
 
-        <!-- eslint-disable-next-line vue/no-v-html -- 已经过 DOMPurify 过滤 -->
-        <div v-if="note.content" class="md-body" v-html="renderedHtml"></div>
-        <p v-else class="field__hint">这篇笔记还没有正文。</p>
-      </article>
+        <div v-else class="detail-inner">
+          <div class="detail-empty">
+            <p class="detail-empty__title">这篇笔记不存在</p>
+            <p class="detail-empty__text">它可能已经被删除了。</p>
+            <button class="btn btn--primary" type="button" @click="router.push({ name: 'workbench' })">
+              返回笔记列表
+            </button>
+          </div>
+        </div>
+      </template>
+    </div>
 
-      <div v-else class="panel empty">
-        <p class="empty__title">这篇笔记不存在</p>
-        <p class="empty__text">它可能已经被删除了。</p>
-        <button class="btn" type="button" @click="router.push({ name: 'workbench' })">返回笔记列表</button>
-      </div>
-    </main>
+    <NoteOutline
+      v-if="!loading && outlineItems.length"
+      :items="outlineItems"
+      :active-index="activeHeading"
+      @select="goToHeading"
+    />
   </div>
 </template>

@@ -1,10 +1,10 @@
 <script setup lang="ts">
-/** 公开域首页：公开笔记列表。 */
+/** 公开域首页：公开笔记列表 + 搜索入口。 */
 import { onMounted, ref } from 'vue'
-import PublicHeader from '@/components/PublicHeader.vue'
-import NoteCard from '@/components/NoteCard.vue'
+import SearchBar from '@/components/SearchBar.vue'
+import PublicEmpty from '@/components/PublicEmpty.vue'
+import PublicNoteRow from '@/components/PublicNoteRow.vue'
 import { listPublicNotes, type PublicNoteSummary } from '@/api/notes'
-import { formatDate } from '@/utils/format'
 
 const PAGE_SIZE = 20
 
@@ -12,6 +12,7 @@ const notes = ref<PublicNoteSummary[]>([])
 const total = ref(0)
 const loading = ref(true)
 const error = ref('')
+const keyword = ref('')
 
 async function load(offset = 0): Promise<void> {
   loading.value = true
@@ -31,53 +32,49 @@ onMounted(() => load())
 </script>
 
 <template>
-  <div class="shell">
-    <PublicHeader />
+  <main class="container">
+    <header class="public-intro">
+      <h1 class="public-intro__title">公开笔记</h1>
+      <p class="public-intro__sub">写作、阅读与查资料记录。</p>
+      <SearchBar v-model="keyword" placeholder="搜索公开笔记" />
+    </header>
 
-    <main class="container">
-      <header class="page-head">
-        <div>
-          <h1 class="page-title">笔记</h1>
-          <p class="page-sub">
-            {{ total > 0 ? `共 ${total} 篇公开笔记` : '公开的写作与查资料记录' }}
-          </p>
-        </div>
-      </header>
+    <p v-if="error" class="notice notice--error">
+      {{ error }}
+      <span class="notice__actions">
+        <button class="btn btn--sm" type="button" @click="load()">重试</button>
+      </span>
+    </p>
 
-      <p v-if="error" class="notice notice--error">
-        {{ error }}
-        <span class="notice__actions">
-          <button class="btn btn--sm" type="button" @click="load()">重试</button>
-        </span>
-      </p>
-
-      <div v-else-if="loading" class="panel panel--pad">
-        <div class="skeleton skeleton--title" style="width: 44%"></div>
-        <div class="skeleton skeleton--line" style="width: 92%"></div>
-        <div class="skeleton skeleton--line" style="width: 70%"></div>
+    <div v-else-if="loading && notes.length === 0" class="public-list public-notes">
+      <div v-for="n in 3" :key="n" class="public-row">
+        <div class="skeleton skeleton--title" style="width: 46%"></div>
+        <div class="skeleton skeleton--line" style="width: 88%; margin-top: 12px"></div>
+        <div class="skeleton skeleton--line" style="width: 62%"></div>
       </div>
+    </div>
 
-      <div v-else-if="notes.length === 0" class="panel empty">
-        <p class="empty__title">还没有公开的笔记</p>
-        <p class="empty__text">发布后的笔记会出现在这里。</p>
-      </div>
+    <PublicEmpty
+      v-else-if="notes.length === 0"
+      title="这里还空空的"
+      text="等第一篇公开笔记出现时，这里就会热闹起来。"
+    />
 
-      <div v-else class="panel rows">
-        <NoteCard
-          v-for="note in notes"
-          :key="note.id"
-          :id="note.id"
-          :title="note.title"
-          :preview="note.content_preview"
-          :tags="note.tags"
-          :meta="formatDate(note.published_at)"
-          :to="`/notes/${note.id}`"
-        />
-      </div>
+    <div v-else class="public-list public-notes">
+      <PublicNoteRow
+        v-for="note in notes"
+        :key="note.id"
+        :id="note.id"
+        :title="note.title"
+        :preview="note.content_preview"
+        :published-at="note.published_at"
+      />
+    </div>
 
-      <div v-if="!loading && notes.length < total" class="row" style="margin-top: var(--sp-6); justify-content: center">
-        <button class="btn" type="button" @click="load(notes.length)">加载更多</button>
-      </div>
-    </main>
-  </div>
+    <div v-if="!loading && notes.length > 0 && notes.length < total" class="public-more">
+      <button class="btn" type="button" @click="load(notes.length)">加载更多</button>
+    </div>
+
+    <p v-if="!loading && notes.length > 0" class="public-count">共 {{ total }} 篇公开笔记</p>
+  </main>
 </template>

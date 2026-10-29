@@ -9,6 +9,7 @@ export interface TagBrief {
 
 export interface Note {
   id: string
+  folder_id: string | null
   title: string
   content: string
   visibility: 'private' | 'public'
@@ -20,6 +21,7 @@ export interface Note {
 
 export interface NoteSummary {
   id: string
+  folder_id: string | null
   title: string
   content_preview: string
   visibility: 'private' | 'public'
@@ -52,18 +54,22 @@ export interface ListNotesQuery {
   offset?: number
   visibility?: 'private' | 'public'
   tag_id?: string
+  /** 传空字符串表示未分类（folder_id IS NULL）；不传表示全部。 */
+  folder_id?: string
 }
 
 export interface CreateNoteInput {
   title: string
   content: string
   tag_ids: string[]
+  folder_id?: string | null
 }
 
 export interface UpdateNoteInput {
   title?: string
   content?: string
   tag_ids?: string[]
+  folder_id?: string | null
 }
 
 export function listNotes(query: ListNotesQuery = {}): Promise<ListResult<NoteSummary>> {

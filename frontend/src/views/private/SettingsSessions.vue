@@ -1,8 +1,6 @@
 <script setup lang="ts">
 /** 会话管理。 */
 import { onMounted, ref } from 'vue'
-import PrivateHeader from '@/components/PrivateHeader.vue'
-import SettingsNav from '@/components/SettingsNav.vue'
 import { ApiError } from '@/api/client'
 import { listSessions, revokeSession, type SessionItem } from '@/api/sessions'
 import { formatDateTime, deviceLabel, formatRelative } from '@/utils/format'
@@ -35,7 +33,7 @@ async function revoke(item: SessionItem): Promise<void> {
     await load()
   } catch (err) {
     if (err instanceof ApiError && err.status === 422) {
-      error.value = '当前会话请用右上角的“退出”结束'
+      error.value = '当前会话请用左下角的「退出」结束'
     } else {
       error.value = err instanceof ApiError ? err.message : '操作失败'
     }
@@ -46,21 +44,13 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="shell">
-    <PrivateHeader />
+  <div class="detail-inner">
+    <header class="detail-head">
+      <h1 class="detail-title">会话</h1>
+      <p class="detail-sub">在公共电脑上用完登录后，可以在这里结束那台设备的会话</p>
+    </header>
 
-    <main class="container">
-      <header class="page-head">
-        <div>
-          <h1 class="page-title">会话</h1>
-          <p class="page-sub">在公共电脑上用完登录后，可以在这里结束那台设备的会话</p>
-        </div>
-      </header>
-
-      <div class="settings-layout">
-        <SettingsNav />
-
-        <div class="stack">
+    <div class="stack">
           <p v-if="error" class="notice notice--error">{{ error }}</p>
 
           <div v-if="loading" class="panel panel--pad">
@@ -93,9 +83,7 @@ onMounted(load)
               </button>
               <span v-else class="field__hint">不可从这里结束</span>
             </li>
-          </ul>
-        </div>
-      </div>
-    </main>
+        </ul>
+    </div>
   </div>
 </template>

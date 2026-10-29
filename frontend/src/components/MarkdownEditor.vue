@@ -178,7 +178,18 @@ function sync(): void {
   emit('update:modelValue', editor.action(getMarkdown()))
 }
 
-defineExpose({ sync })
+/** 当前文档里的 H1–H3 元素，按文档顺序排列，供右侧大纲定位。 */
+function headingElements(): HTMLElement[] {
+  if (!container.value) return []
+  return Array.from(container.value.querySelectorAll<HTMLElement>('h1, h2, h3'))
+}
+
+/** 滚动到第 index 个标题（0 基，对应 headingElements 的顺序）。 */
+function scrollToHeading(index: number): void {
+  headingElements()[index]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+defineExpose({ sync, headingElements, scrollToHeading })
 
 onMounted(build)
 

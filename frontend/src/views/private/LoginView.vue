@@ -4,6 +4,7 @@
  */
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import HavenMark from '@/components/HavenMark.vue'
 import LoginForm from '@/components/LoginForm.vue'
 import TotpForm from '@/components/TotpForm.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -46,7 +47,7 @@ function onExpired(): void {
 <template>
   <div class="auth-shell">
     <main class="auth-card">
-      <div class="auth-card__mark" aria-hidden="true">H</div>
+      <HavenMark class="auth-card__mark brand-mark" :size="40" />
 
       <h1 class="auth-card__title">
         {{ step === 'password' ? '登录 Haven' : '两步验证' }}
