@@ -103,6 +103,7 @@
 ## 7. 验证与部署
 
 - [ ] `go vet ./...`、`go test ./...` 全绿；至少覆盖：可见性矩阵、Token scope、跨用户 404、publish 幂等性
+- [x] 全量路由鉴权不变量测试（2026-10-30）：`cmd/haven/route_auth_test.go` 遍历全部 `/api` 路由，白名单外匿名一律要求 401，非 GET 私有路由对 read Token 一律要求 403；不连库，`go test ./cmd/haven -run TestAPIRoutes` 可单独跑
 - [ ] `pnpm build`（含 `vue-tsc -b`）通过
 - [ ] 手工冒烟：匿名 → 公开列表/详情/搜索/作品集；登录 → TOTP → 笔记 CRUD → publish → 退出
 - [x] `deploy/`（README 与 `conventions.md` 提到但尚不存在）：构建脚本 + systemd unit + migration 执行

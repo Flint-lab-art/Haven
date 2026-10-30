@@ -10,7 +10,7 @@
 | 文件 | 作用 |
 |---|---|
 | `build.sh` | 构建后端二进制 + 前端 dist，产物集中到 `deploy/out/`（已 gitignore） |
-| `reload.sh` | 本地构建 → 安装到 `/opt/haven` → 重启服务（可选 `--migrate` / `--with-frontend`） |
+| `deploy.sh` | 一键构建前后端 → 安装 → migration → 重启；`--reset` 清空旧安装，`--caddy` 切换 Caddy |
 | `migrate.sh` | 执行 / 回滚 migration，带版本表，后端启动时不自动跑 |
 | `haven.service` | systemd unit，`ExecStart=/opt/haven/bin/haven` |
 | `haven.env.example` | 环境变量模板，安装到 `/etc/haven/haven.env` |
@@ -26,7 +26,7 @@
 ```bash
 sudo -u postgres psql <<'SQL'
 CREATE ROLE haven LOGIN PASSWORD '...';
-CREATE DATABASE haven_dev OWNER haven;
+CREATE DATABASE haven OWNER haven;
 SQL
 ```
 
@@ -54,7 +54,7 @@ deploy/out/
 后端启动不会自动建表，必须显式执行（`docs/architecture.md` 5.6）。
 
 ```bash
-export HAVEN_DB_DSN='postgres://haven:...@127.0.0.1:5432/haven_dev?sslmode=disable'
+export HAVEN_DB_DSN='postgres://haven:...@127.0.0.1:5432/haven?sslmode=disable'
 
 deploy/migrate.sh status    # 看哪些已应用
 deploy/migrate.sh up        # 按文件名顺序执行未应用的 *.up.sql
@@ -72,7 +72,46 @@ deploy/migrate.sh down 1    # 回滚最近 1 个版本
 HAVEN_DB_DSN='...' HAVEN_MIGRATIONS_DIR=/opt/haven/migrations /opt/haven/migrate.sh up
 ```
 
-## 三、安装与启动
+## 三、一键部署
+
+```bash
+cd <repo>
+./deploy/deploy.sh --reset --caddy --backup-db
+```
+
+完全重装（**数据库也删除**）：
+
+```bash
+./deploy/deploy.sh --reset --reset-db --caddy
+```
+
+`--reset-db` 会先 `pg_dump` 备份，再停服务、删除并重建数据库、跑 migration、
+用 `HAVEN_INIT_PASSWORD`（未设置则交互输入）重建唯一账号。
+
+脚本会：
+
+1. 从 `/etc/haven/haven.env` 读取 DSN、私有域、端口（首次不存在时生成模板并退出）；
+2. 用 `VITE_PRIVATE_HOST` 构建前后端（默认取 `HAVEN_COOKIE_DOMAIN`）；
+3. 可选 `--backup-db`：`pg_dump` 到 `/var/backups/haven/`；
+4. `--reset` 停止旧服务并清空 `/opt/haven`（**不动数据库和 env**）；
+   `--reset-db` 会先备份、停服务、删除并重建数据库（数据全部丢失）；
+5. 安装二进制、`dist`、migration、systemd unit；
+6. 执行 migration；`--reset-db` 时再重建唯一账号，重启 `haven`；
+7. `--caddy` 把 Caddyfile 里的 `127.0.0.1:5173` 改成后端端口，校验后 reload；
+8. 检查 `/api/health`。
+
+不要用 `sudo` 直接运行脚本；构建需要当前用户的 Go / pnpm，写 `/opt`、systemd 时脚本会自己提权。
+
+常用变体：
+
+```bash
+./deploy/deploy.sh                 # 日常更新
+./deploy/deploy.sh --skip-migrate  # 没有新 migration
+./deploy/deploy.sh --reset         # 清空 /opt/haven 后重装（保留数据库）
+```
+
+## 四、安装与启动
+
 
 ```bash
 # 1) 建运行账号（或改用已有账号，见 unit 顶部注释）
@@ -101,7 +140,7 @@ journalctl -u haven -f
 
 > `haven-init-user` 由 `build.sh` 一并构建到 `deploy/out/bin/`，服务器上可直接执行。
 
-## 四、升级
+## 五、升级
 
 ```bash
 git pull                      # dev 分支
@@ -112,7 +151,7 @@ export HAVEN_DB_DSN='...' HAVEN_MIGRATIONS_DIR=/opt/haven/migrations
 sudo systemctl restart haven
 ```
 
-## 五、验证
+## 六、验证
 
 ```bash
 curl -s http://127.0.0.1:8080/api/public/notes     # 期望 {"items":[],"total":0}
@@ -120,7 +159,7 @@ curl -sI http://127.0.0.1:8080/ | head -1          # 期望 200，返回 index.h
 curl -s http://127.0.0.1:8080/api/not-exist        # 期望 JSON 404，不是 HTML
 ```
 
-## 六、双域名（公开域 + 私有域）
+## 七、双域名（公开域 + 私有域）
 
 同一份二进制 + 同一份 dist 同时服务两个域名，后端**不按 Host 分支**，分工由两处配置决定：
 
@@ -145,7 +184,7 @@ HAVEN_COOKIE_SECURE=true          # 上 HTTPS 后必须为 true
 - 私有域用 IP 或另一个别名访问时 cookie 不生效，表现为登录成功但仍是匿名；
 - 反向代理必须原样透传 `Host`，不要重写路径，两个域名的 `server` 块都 `proxy_pass` 到同一个 `127.0.0.1:8080`。
 
-## 七、尚未定案（`docs/architecture.md` 第八节）
+## 八、尚未定案（`docs/architecture.md` 第八节）
 
 
 以下属于文档待定项，脚本里刻意没有写死，等人类补文档后再落：
