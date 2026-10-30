@@ -2,7 +2,7 @@
 //
 // 文件夹通过 parent_id 自引用实现无限嵌套；归属按 user_id 隔离。
 // 删除父文件夹时子文件夹由数据库 ON DELETE CASCADE 级联删除，
-// 笔记由 notes.folder_id 的 ON DELETE SET NULL 回到未分类。
+// 笔记由 notes.folder_id 的 ON DELETE SET NULL 回到收件箱。
 package folders
 
 import (
@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 
@@ -31,13 +32,27 @@ var (
 	ErrInvalidParent = errors.New("父文件夹不存在")
 	// ErrCycle 移动会造成循环引用（422）。
 	ErrCycle = errors.New("不能移动到自身或子文件夹下")
+	// ErrIconTooLong 图标超过长度上限（422）。
+	ErrIconTooLong = errors.New("图标最多 16 个字符")
+	// ErrIconInvalid 图标包含换行等非法内容（422）。
+	ErrIconInvalid = errors.New("图标只能是单行文本")
+	// ErrInboxDelete 收件箱不能删除（409）。
+	ErrInboxDelete = errors.New("收件箱不能删除")
+	// ErrInboxMove 收件箱不能移动（422）。
+	ErrInboxMove = errors.New("收件箱不能移动")
 )
+
+// MaxIconRunes 是文件夹图标的最大 rune 数。
+// 实现决策：data-model.md 只规定 icon 可空，未给数值；16 足够容纳家庭、旗帜等多码点 Emoji。
+const MaxIconRunes = 16
 
 // Folder 是文件夹响应（api.md 6.5.1）。
 type Folder struct {
 	ID        string  `json:"id"`
 	ParentID  *string `json:"parent_id"`
 	Name      string  `json:"name"`
+	Icon      *string `json:"icon"`
+	IsInbox   bool    `json:"is_inbox"`
 	SortOrder int     `json:"sort_order"`
 }
 
@@ -45,6 +60,7 @@ type Folder struct {
 type CreateInput struct {
 	Name     string
 	ParentID *string
+	Icon     *string
 }
 
 // UpdateInput 是 PATCH /api/folders/:id 的入参。
@@ -55,6 +71,8 @@ type UpdateInput struct {
 	ParentID    *string
 	ParentIDSet bool
 	SortOrder   *int
+	Icon        *string
+	IconSet     bool
 }
 
 // Service 承载文件夹领域逻辑。
@@ -70,10 +88,10 @@ func NewService(db *sql.DB) *Service {
 // List 返回当前用户的全部文件夹（平铺，由前端组合成树）。
 func (s *Service) List(ctx context.Context, userID string) ([]Folder, error) {
 	const q = `
-		SELECT id, parent_id, name, sort_order
+		SELECT id, parent_id, name, icon, is_inbox, sort_order
 		FROM folders
 		WHERE user_id = $1
-		ORDER BY sort_order, name, created_at`
+		ORDER BY is_inbox DESC, sort_order, name, created_at`
 
 	rows, err := s.db.QueryContext(ctx, q, userID)
 	if err != nil {
@@ -84,7 +102,7 @@ func (s *Service) List(ctx context.Context, userID string) ([]Folder, error) {
 	out := make([]Folder, 0, 8)
 	for rows.Next() {
 		var f Folder
-		if err := rows.Scan(&f.ID, &f.ParentID, &f.Name, &f.SortOrder); err != nil {
+		if err := rows.Scan(&f.ID, &f.ParentID, &f.Name, &f.Icon, &f.IsInbox, &f.SortOrder); err != nil {
 			return nil, fmt.Errorf("扫描文件夹失败: %w", err)
 		}
 		out = append(out, f)
@@ -100,6 +118,10 @@ func (s *Service) Create(ctx context.Context, userID string, in CreateInput) (Fo
 	name := strings.TrimSpace(in.Name)
 	if name == "" {
 		return Folder{}, ErrNameRequired
+	}
+	icon, err := normalizeIcon(in.Icon)
+	if err != nil {
+		return Folder{}, err
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -127,13 +149,13 @@ func (s *Service) Create(ctx context.Context, userID string, in CreateInput) (Fo
 	}
 
 	const q = `
-		INSERT INTO folders (user_id, parent_id, name)
-		VALUES ($1, $2, $3)
-		RETURNING id, parent_id, name, sort_order`
+		INSERT INTO folders (user_id, parent_id, name, icon)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id, parent_id, name, icon, is_inbox, sort_order`
 
 	var f Folder
-	if err := tx.QueryRowContext(ctx, q, userID, parentValue(in.ParentID), name).
-		Scan(&f.ID, &f.ParentID, &f.Name, &f.SortOrder); err != nil {
+	if err := tx.QueryRowContext(ctx, q, userID, parentValue(in.ParentID), name, iconValue(icon)).
+		Scan(&f.ID, &f.ParentID, &f.Name, &f.Icon, &f.IsInbox, &f.SortOrder); err != nil {
 		return Folder{}, fmt.Errorf("创建文件夹失败: %w", err)
 	}
 
@@ -152,9 +174,9 @@ func (s *Service) Update(ctx context.Context, userID, id string, in UpdateInput)
 	defer tx.Rollback()
 
 	var current Folder
-	const getQ = `SELECT id, parent_id, name, sort_order FROM folders WHERE id = $1 AND user_id = $2`
+	const getQ = `SELECT id, parent_id, name, icon, is_inbox, sort_order FROM folders WHERE id = $1 AND user_id = $2`
 	err = tx.QueryRowContext(ctx, getQ, id, userID).
-		Scan(&current.ID, &current.ParentID, &current.Name, &current.SortOrder)
+		Scan(&current.ID, &current.ParentID, &current.Name, &current.Icon, &current.IsInbox, &current.SortOrder)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Folder{}, ErrNotFound
 	}
@@ -171,6 +193,9 @@ func (s *Service) Update(ctx context.Context, userID, id string, in UpdateInput)
 	}
 
 	parent := current.ParentID
+	if current.IsInbox && in.ParentIDSet && in.ParentID != nil {
+		return Folder{}, ErrInboxMove
+	}
 	if in.ParentIDSet {
 		if in.ParentID != nil {
 			ok, err := parentExists(ctx, tx, userID, *in.ParentID)
@@ -202,37 +227,94 @@ func (s *Service) Update(ctx context.Context, userID, id string, in UpdateInput)
 	}
 
 	sortOrder := current.SortOrder
-	if in.SortOrder != nil {
+	if in.SortOrder != nil && !current.IsInbox {
 		sortOrder = *in.SortOrder
+	}
+
+	icon := current.Icon
+	if in.IconSet {
+		icon, err = normalizeIcon(in.Icon)
+		if err != nil {
+			return Folder{}, err
+		}
 	}
 
 	const q = `
 		UPDATE folders
-		SET name = $3, parent_id = $4, sort_order = $5, updated_at = now()
+		SET name = $3, parent_id = $4, sort_order = $5, icon = $6, updated_at = now()
 		WHERE id = $1 AND user_id = $2`
 
-	if _, err := tx.ExecContext(ctx, q, id, userID, name, parentValue(parent), sortOrder); err != nil {
+	if _, err := tx.ExecContext(ctx, q, id, userID, name, parentValue(parent), sortOrder, iconValue(icon)); err != nil {
 		return Folder{}, fmt.Errorf("更新文件夹失败: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
 		return Folder{}, fmt.Errorf("提交事务失败: %w", err)
 	}
-	return Folder{ID: id, ParentID: parent, Name: name, SortOrder: sortOrder}, nil
+	return Folder{
+		ID:        id,
+		ParentID:  parent,
+		Name:      name,
+		Icon:      icon,
+		IsInbox:   current.IsInbox,
+		SortOrder: sortOrder,
+	}, nil
 }
 
-// Delete 删除文件夹（api.md 6.5.4）。子文件夹级联删除，笔记由外键置空。
+// Delete 删除普通文件夹（api.md 6.5.4）。
+//
+// 收件箱不可删除；删除普通文件夹前，先把其子树内所有笔记移到收件箱。
+// 若用户没有收件箱（历史数据兜底），笔记回落到 folder_id = NULL。
 func (s *Service) Delete(ctx context.Context, userID, id string) error {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM folders WHERE id = $1 AND user_id = $2`, id, userID)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
+		return fmt.Errorf("开启事务失败: %w", err)
+	}
+	defer tx.Rollback()
+
+	var isInbox bool
+	err = tx.QueryRowContext(ctx,
+		`SELECT is_inbox FROM folders WHERE id = $1 AND user_id = $2`, id, userID).Scan(&isInbox)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("查询文件夹失败: %w", err)
+	}
+	if isInbox {
+		return ErrInboxDelete
+	}
+
+	// 找收件箱；没有则回落到 NULL（历史兜底）。
+	var inboxID *string
+	err = tx.QueryRowContext(ctx,
+		`SELECT id FROM folders WHERE user_id = $1 AND is_inbox`, userID).Scan(&inboxID)
+	if errors.Is(err, sql.ErrNoRows) {
+		inboxID = nil
+	} else if err != nil {
+		return fmt.Errorf("查询收件箱失败: %w", err)
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		WITH RECURSIVE subtree AS (
+			SELECT id FROM folders WHERE id = $1 AND user_id = $2
+			UNION ALL
+			SELECT f.id FROM folders f JOIN subtree s ON f.parent_id = s.id
+		)
+		UPDATE notes
+		SET folder_id = $3
+		WHERE user_id = $2 AND folder_id IN (SELECT id FROM subtree)`,
+		id, userID, parentValue(inboxID)); err != nil {
+		return fmt.Errorf("迁移文件夹内笔记失败: %w", err)
+	}
+
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM folders WHERE id = $1 AND user_id = $2`, id, userID); err != nil {
 		return fmt.Errorf("删除文件夹失败: %w", err)
 	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("读取删除结果失败: %w", err)
-	}
-	if n == 0 {
-		return ErrNotFound
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("提交事务失败: %w", err)
 	}
 	return nil
 }
@@ -296,6 +378,31 @@ func parentValue(parentID *string) any {
 	return *parentID
 }
 
+// normalizeIcon 把图标整理成 NULL 或去空白后的单行字符串。
+func normalizeIcon(icon *string) (*string, error) {
+	if icon == nil {
+		return nil, nil
+	}
+	value := strings.TrimSpace(*icon)
+	if value == "" {
+		return nil, nil
+	}
+	if strings.ContainsAny(value, "\r\n") {
+		return nil, ErrIconInvalid
+	}
+	if utf8.RuneCountInString(value) > MaxIconRunes {
+		return nil, ErrIconTooLong
+	}
+	return &value, nil
+}
+
+func iconValue(icon *string) any {
+	if icon == nil {
+		return nil
+	}
+	return *icon
+}
+
 // Handler 承载文件夹接口。
 type Handler struct {
 	svc *Service
@@ -309,11 +416,13 @@ func NewHandler(svc *Service) *Handler {
 type createRequest struct {
 	Name     string  `json:"name"`
 	ParentID *string `json:"parent_id"`
+	Icon     *string `json:"icon"`
 }
 
 type updateRequest struct {
 	Name      *string         `json:"name"`
 	ParentID  json.RawMessage `json:"parent_id"`
+	Icon      json.RawMessage `json:"icon"`
 	SortOrder *int            `json:"sort_order"`
 }
 
@@ -323,12 +432,18 @@ func fail(c *gin.Context, err error) {
 		httpx.FailNotFound(c)
 	case errors.Is(err, ErrDuplicate):
 		httpx.FailConflict(c, ErrDuplicate.Error())
+	case errors.Is(err, ErrInboxDelete):
+		httpx.FailConflict(c, ErrInboxDelete.Error())
 	case errors.Is(err, ErrNameRequired):
 		httpx.FailValidation(c, map[string]string{"name": ErrNameRequired.Error()})
 	case errors.Is(err, ErrInvalidParent):
 		httpx.FailValidation(c, map[string]string{"parent_id": ErrInvalidParent.Error()})
 	case errors.Is(err, ErrCycle):
 		httpx.FailValidation(c, map[string]string{"parent_id": ErrCycle.Error()})
+	case errors.Is(err, ErrInboxMove):
+		httpx.FailValidation(c, map[string]string{"parent_id": ErrInboxMove.Error()})
+	case errors.Is(err, ErrIconTooLong), errors.Is(err, ErrIconInvalid):
+		httpx.FailValidation(c, map[string]string{"icon": err.Error()})
 	default:
 		httpx.FailInternal(c, err)
 	}
@@ -359,6 +474,7 @@ func (h *Handler) Create(c *gin.Context) {
 	folder, err := h.svc.Create(c.Request.Context(), auth.UserID(c), CreateInput{
 		Name:     req.Name,
 		ParentID: req.ParentID,
+		Icon:     req.Icon,
 	})
 	if err != nil {
 		fail(c, err)
@@ -385,6 +501,17 @@ func (h *Handler) Update(c *gin.Context) {
 				return
 			}
 			in.ParentID = &parentID
+		}
+	}
+	if req.Icon != nil {
+		in.IconSet = true
+		if string(req.Icon) != "null" {
+			var icon string
+			if err := json.Unmarshal(req.Icon, &icon); err != nil {
+				httpx.FailValidation(c, map[string]string{"icon": "图标必须是字符串"})
+				return
+			}
+			in.Icon = &icon
 		}
 	}
 

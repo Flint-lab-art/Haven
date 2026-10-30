@@ -103,7 +103,7 @@ func TestFoldersCRUD(t *testing.T) {
 	}
 }
 
-func TestFoldersCascadeAndNoteUnclassified(t *testing.T) {
+func TestFoldersCascadeAndNoteInbox(t *testing.T) {
 	e, cookie := newUserEnv(t)
 
 	root := createFolder(t, e, cookie, "技术", nil)
@@ -119,7 +119,7 @@ func TestFoldersCascadeAndNoteUnclassified(t *testing.T) {
 	}
 	noteID := jsonBody(t, w.Body.Bytes())["id"].(string)
 
-	// 删除根目录：子目录级联删除，笔记回到未分类
+	// 删除根目录：子目录级联删除，笔记回到收件箱
 	if w := e.do(http.MethodDelete, "/api/folders/"+rootID, nil, cookie); w.Code != http.StatusNoContent {
 		t.Fatalf("删除根目录状态码 = %d: %s", w.Code, w.Body.String())
 	}
@@ -129,7 +129,7 @@ func TestFoldersCascadeAndNoteUnclassified(t *testing.T) {
 		t.Fatalf("笔记应仍存在，状态码 %d", w.Code)
 	}
 	if got := jsonBody(t, w.Body.Bytes()); got["folder_id"] != nil {
-		t.Errorf("删除文件夹后笔记应回到未分类，实际 folder_id=%v", got["folder_id"])
+		t.Errorf("删除文件夹后笔记应回到收件箱，实际 folder_id=%v", got["folder_id"])
 	}
 
 	if w := e.do(http.MethodGet, "/api/folders", nil, cookie); func() bool {
@@ -154,8 +154,8 @@ func TestNotesFolderBindingAndFilter(t *testing.T) {
 	}
 	folderNoteID := jsonBody(t, w.Body.Bytes())["id"].(string)
 
-	// 不带 folder_id 创建 → 未分类
-	w = e.do(http.MethodPost, "/api/notes", map[string]any{"title": "未分类"}, cookie)
+	// 不带 folder_id 创建 → 收件箱
+	w = e.do(http.MethodPost, "/api/notes", map[string]any{"title": "收件箱"}, cookie)
 	if w.Code != http.StatusCreated {
 		t.Fatalf("创建状态码 = %d: %s", w.Code, w.Body.String())
 	}
@@ -168,7 +168,7 @@ func TestNotesFolderBindingAndFilter(t *testing.T) {
 	}
 	w = e.do(http.MethodGet, "/api/notes/"+looseNoteID, nil, cookie)
 	if got := jsonBody(t, w.Body.Bytes()); got["folder_id"] != nil {
-		t.Errorf("未分类笔记 folder_id 应为 null，实际 %v", got["folder_id"])
+		t.Errorf("收件箱笔记 folder_id 应为 null，实际 %v", got["folder_id"])
 	}
 
 	// 按文件夹过滤
@@ -178,11 +178,11 @@ func TestNotesFolderBindingAndFilter(t *testing.T) {
 		t.Fatalf("按文件夹过滤结果异常: total=%d items=%v", total, items)
 	}
 
-	// 空字符串 = 未分类
+	// 空字符串 = 收件箱
 	w = e.do(http.MethodGet, "/api/notes?folder_id=", nil, cookie)
 	items, total = listBody(t, w.Body.Bytes())
 	if total != 1 || len(items) != 1 || items[0]["id"] != looseNoteID {
-		t.Fatalf("未分类过滤结果异常: total=%d items=%v", total, items)
+		t.Fatalf("收件箱过滤结果异常: total=%d items=%v", total, items)
 	}
 
 	// 不传 folder_id = 全部

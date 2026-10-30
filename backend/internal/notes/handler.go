@@ -57,10 +57,11 @@ type createRequest struct {
 }
 
 type updateRequest struct {
-	Title    *string         `json:"title"`
-	Content  *string         `json:"content"`
-	TagIDs   *[]string       `json:"tag_ids"`
-	FolderID json.RawMessage `json:"folder_id"`
+	Title     *string         `json:"title"`
+	Content   *string         `json:"content"`
+	TagIDs    *[]string       `json:"tag_ids"`
+	FolderID  json.RawMessage `json:"folder_id"`
+	SortOrder *int            `json:"sort_order"`
 }
 
 // fail 把领域错误映射成 api.md 1.4 的响应。
@@ -76,6 +77,8 @@ func fail(c *gin.Context, err error) {
 		httpx.FailValidation(c, map[string]string{"tag_ids": ErrInvalidTag.Error()})
 	case errors.Is(err, ErrInvalidFolder):
 		httpx.FailValidation(c, map[string]string{"folder_id": ErrInvalidFolder.Error()})
+	case errors.Is(err, ErrInvalidSortOrder):
+		httpx.FailValidation(c, map[string]string{"sort_order": ErrInvalidSortOrder.Error()})
 	default:
 		httpx.FailInternal(c, err)
 	}
@@ -99,10 +102,22 @@ func (h *Handler) List(c *gin.Context) {
 	}
 	if raw, ok := c.GetQuery("folder_id"); ok {
 		filter.FolderFilter = true
-		filter.FolderID = raw
-		if raw != "" && !httpx.IsUUID(raw) {
-			httpx.FailValidation(c, map[string]string{"folder_id": "文件夹 id 无效"})
-			return
+		if raw == "" {
+			// 空字符串是收件箱别名；没有收件箱的历史数据继续按 NULL 处理。
+			inboxID, err := h.svc.InboxID(c.Request.Context(), auth.UserID(c))
+			if err != nil {
+				fail(c, err)
+				return
+			}
+			if inboxID != nil {
+				filter.FolderID = *inboxID
+			}
+		} else {
+			if !httpx.IsUUID(raw) {
+				httpx.FailValidation(c, map[string]string{"folder_id": "文件夹 id 无效"})
+				return
+			}
+			filter.FolderID = raw
 		}
 	}
 
@@ -159,7 +174,7 @@ func (h *Handler) Update(c *gin.Context) {
 		return
 	}
 
-	in := UpdateInput{Title: req.Title, Content: req.Content}
+	in := UpdateInput{Title: req.Title, Content: req.Content, SortOrder: req.SortOrder}
 	if req.TagIDs != nil {
 		// 显式出现即全量替换；空数组表示清空（api.md 6.4）
 		in.TagIDs = *req.TagIDs
@@ -168,7 +183,7 @@ func (h *Handler) Update(c *gin.Context) {
 		}
 	}
 	if req.FolderID != nil {
-		// 显式出现才更新；null 表示移回未分类
+		// 显式出现才更新；null 表示移回收件箱
 		in.FolderIDSet = true
 		if string(req.FolderID) != "null" {
 			var folderID string

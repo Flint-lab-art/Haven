@@ -29,6 +29,8 @@ var (
 	ErrInvalidFolder = errors.New("文件夹不存在")
 	// ErrTitleRequired 标题为空（422）。
 	ErrTitleRequired = errors.New("标题不能为空")
+	// ErrInvalidSortOrder 排序值为负数（422）。
+	ErrInvalidSortOrder = errors.New("排序值不能为负数")
 )
 
 // PreviewRuneLimit 是列表里 content_preview 的截断长度（api.md 6.1 备注）。
@@ -44,6 +46,7 @@ type TagBrief struct {
 type Note struct {
 	ID          string     `json:"id"`
 	FolderID    *string    `json:"folder_id"`
+	SortOrder   int        `json:"sort_order"`
 	Title       string     `json:"title"`
 	Content     string     `json:"content"`
 	Visibility  string     `json:"visibility"`
@@ -57,6 +60,7 @@ type Note struct {
 type NoteSummary struct {
 	ID             string     `json:"id"`
 	FolderID       *string    `json:"folder_id"`
+	SortOrder      int        `json:"sort_order"`
 	Title          string     `json:"title"`
 	ContentPreview string     `json:"content_preview"`
 	Visibility     string     `json:"visibility"`
@@ -91,7 +95,7 @@ type ListFilter struct {
 	Visibility string // 空表示不过滤
 	TagID      string // 空表示不过滤
 	// FolderFilter 为 true 时按 FolderID 过滤；
-	// FolderID 为空串表示「未分类」（folder_id IS NULL）。
+	// FolderID 为空串表示「收件箱」（folder_id IS NULL）。
 	FolderFilter bool
 	FolderID     string
 }
@@ -110,13 +114,15 @@ type CreateInput struct {
 //
 // 字段为指针以区分「未出现」与「显式置空」（api.md 1.7 部分更新）。
 // TagIDs 为 nil 表示未出现；非 nil 表示全量替换（含空数组 = 清空标签）。
-// FolderIDSet 为 true 时，FolderID 为 nil 表示移回未分类。
+// FolderIDSet 为 true 时，FolderID 为 nil 表示移回收件箱。
+// SortOrder 为 nil 表示未出现；非 nil 时必须是 >= 0 的整数。
 type UpdateInput struct {
 	Title       *string
 	Content     *string
 	TagIDs      []string
 	FolderID    *string
 	FolderIDSet bool
+	SortOrder   *int
 }
 
 // Service 承载笔记领域逻辑，不依赖 gin。
@@ -161,8 +167,15 @@ func (s *Service) ListPrivate(ctx context.Context, userID string, f ListFilter, 
 		return nil, 0, fmt.Errorf("统计笔记数量失败: %w", err)
 	}
 
-	const q = `
-		SELECT id, folder_id, title, content, visibility, published_at, created_at, updated_at
+	// 传 folder_id 时（含空串 = 收件箱）按目录内自定义顺序；
+	// 不传 folder_id 时保持「最近更新」排序（api.md 6.1）。
+	orderBy := "updated_at DESC"
+	if f.FolderFilter {
+		orderBy = "sort_order ASC, updated_at DESC"
+	}
+
+	q := `
+		SELECT id, folder_id, sort_order, title, content, visibility, published_at, created_at, updated_at
 		FROM notes
 		WHERE user_id = $1
 		  AND ($2 = '' OR visibility = $2)
@@ -170,7 +183,7 @@ func (s *Service) ListPrivate(ctx context.Context, userID string, f ListFilter, 
 		  AND (NOT $4::boolean
 		       OR (folder_id IS NULL AND $5 = '')
 		       OR folder_id = NULLIF($5, '')::uuid)
-		ORDER BY updated_at DESC
+		ORDER BY ` + orderBy + `
 		LIMIT $6 OFFSET $7`
 
 	rows, err := s.db.QueryContext(ctx, q, userID, f.Visibility, tagID,
@@ -185,7 +198,7 @@ func (s *Service) ListPrivate(ctx context.Context, userID string, f ListFilter, 
 	for rows.Next() {
 		var content string
 		var item NoteSummary
-		if err := rows.Scan(&item.ID, &item.FolderID, &item.Title, &content, &item.Visibility,
+		if err := rows.Scan(&item.ID, &item.FolderID, &item.SortOrder, &item.Title, &content, &item.Visibility,
 			&item.PublishedAt, &item.CreatedAt, &item.UpdatedAt); err != nil {
 			return nil, 0, fmt.Errorf("扫描笔记失败: %w", err)
 		}
@@ -211,13 +224,13 @@ func (s *Service) ListPrivate(ctx context.Context, userID string, f ListFilter, 
 // Get 返回当前用户的一篇笔记详情（api.md 6.2）。
 func (s *Service) Get(ctx context.Context, userID, id string) (Note, error) {
 	const q = `
-		SELECT id, folder_id, title, content, visibility, published_at, created_at, updated_at
+		SELECT id, folder_id, sort_order, title, content, visibility, published_at, created_at, updated_at
 		FROM notes
 		WHERE id = $1 AND user_id = $2`
 
 	var n Note
 	err := s.db.QueryRowContext(ctx, q, id, userID).Scan(
-		&n.ID, &n.FolderID, &n.Title, &n.Content, &n.Visibility, &n.PublishedAt, &n.CreatedAt, &n.UpdatedAt)
+		&n.ID, &n.FolderID, &n.SortOrder, &n.Title, &n.Content, &n.Visibility, &n.PublishedAt, &n.CreatedAt, &n.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Note{}, ErrNotFound
 	}
@@ -248,8 +261,16 @@ func (s *Service) Create(ctx context.Context, userID string, in CreateInput) (No
 	}
 	defer tx.Rollback()
 
-	if in.FolderID != nil {
-		if err := validateFolder(ctx, tx, userID, *in.FolderID); err != nil {
+	// 不传 folder_id 时默认归入收件箱；没有收件箱的历史数据再回落到 NULL。
+	folderID := in.FolderID
+	if folderID == nil {
+		folderID, err = inboxFolderID(ctx, tx, userID)
+		if err != nil {
+			return Note{}, err
+		}
+	}
+	if folderID != nil {
+		if err := validateFolder(ctx, tx, userID, *folderID); err != nil {
 			return Note{}, err
 		}
 	}
@@ -257,7 +278,7 @@ func (s *Service) Create(ctx context.Context, userID string, in CreateInput) (No
 	var id string
 	if err := tx.QueryRowContext(ctx,
 		`INSERT INTO notes (user_id, folder_id, title, content) VALUES ($1, $2, $3, $4) RETURNING id`,
-		userID, folderValue(in.FolderID), title, in.Content).Scan(&id); err != nil {
+		userID, folderValue(folderID), title, in.Content).Scan(&id); err != nil {
 		return Note{}, fmt.Errorf("创建笔记失败: %w", err)
 	}
 
@@ -279,15 +300,20 @@ func (s *Service) Update(ctx context.Context, userID, id string, in UpdateInput)
 	}
 	defer tx.Rollback()
 
-	// 先确认归属，顺便区分 404
-	var exists bool
-	if err := tx.QueryRowContext(ctx,
-		`SELECT EXISTS (SELECT 1 FROM notes WHERE id = $1 AND user_id = $2)`,
-		id, userID).Scan(&exists); err != nil {
+	// 先确认归属并取出当前文件夹，顺便区分 404 与「是否真的移动」。
+	var currentFolderID *string
+	err = tx.QueryRowContext(ctx,
+		`SELECT folder_id FROM notes WHERE id = $1 AND user_id = $2`,
+		id, userID).Scan(&currentFolderID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Note{}, ErrNotFound
+	}
+	if err != nil {
 		return Note{}, fmt.Errorf("查询笔记失败: %w", err)
 	}
-	if !exists {
-		return Note{}, ErrNotFound
+
+	if in.SortOrder != nil && *in.SortOrder < 0 {
+		return Note{}, ErrInvalidSortOrder
 	}
 
 	if in.Title != nil {
@@ -314,22 +340,49 @@ func (s *Service) Update(ctx context.Context, userID, id string, in UpdateInput)
 		}
 	}
 
-	if in.FolderIDSet {
-		if in.FolderID != nil {
-			if err := validateFolder(ctx, tx, userID, *in.FolderID); err != nil {
-				return Note{}, err
-			}
-		}
-		if _, err := tx.ExecContext(ctx,
-			`UPDATE notes SET folder_id = $2 WHERE id = $1`, id, folderValue(in.FolderID)); err != nil {
-			return Note{}, fmt.Errorf("更新文件夹归属失败: %w", err)
+	// folder_id 为 null 表示「移到收件箱」；没有收件箱的历史数据再回落到 NULL。
+	targetFolder := in.FolderID
+	if in.FolderIDSet && targetFolder == nil {
+		targetFolder, err = inboxFolderID(ctx, tx, userID)
+		if err != nil {
+			return Note{}, err
 		}
 	}
 
-	// updated_at 由应用层更新（api.md 6.4 备注、data-model.md 第三节字段说明）
-	if _, err := tx.ExecContext(ctx,
-		`UPDATE notes SET updated_at = now() WHERE id = $1`, id); err != nil {
-		return Note{}, fmt.Errorf("更新笔记时间失败: %w", err)
+	// 只有 folder_id 真的变化才算「移动」；编辑器每次保存都带 folder_id，
+	// 不能因此把目录内自定义排序重置为 0（api.md 6.4）。
+	folderChanged := in.FolderIDSet && !sameFolder(currentFolderID, targetFolder)
+	if folderChanged {
+		if targetFolder != nil {
+			if err := validateFolder(ctx, tx, userID, *targetFolder); err != nil {
+				return Note{}, err
+			}
+		}
+		// 移动笔记时如未显式给 sort_order，按 0 处理，出现在目标目录顶部（api.md 6.4）。
+		sortOrder := 0
+		if in.SortOrder != nil {
+			sortOrder = *in.SortOrder
+		}
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE notes SET folder_id = $2, sort_order = $3 WHERE id = $1`,
+			id, folderValue(targetFolder), sortOrder); err != nil {
+			return Note{}, fmt.Errorf("更新文件夹归属失败: %w", err)
+		}
+	} else if in.SortOrder != nil {
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE notes SET sort_order = $2 WHERE id = $1`, id, *in.SortOrder); err != nil {
+			return Note{}, fmt.Errorf("更新笔记排序失败: %w", err)
+		}
+	}
+
+	// 仅调整 sort_order 不算内容更新，不刷新 updated_at（data-model.md 第三节规则 10）。
+	onlySortOrder := in.SortOrder != nil && !folderChanged &&
+		in.Title == nil && in.Content == nil && in.TagIDs == nil
+	if !onlySortOrder {
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE notes SET updated_at = now() WHERE id = $1`, id); err != nil {
+			return Note{}, fmt.Errorf("更新笔记时间失败: %w", err)
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -503,6 +556,38 @@ func validateFolder(ctx context.Context, tx *sql.Tx, userID, folderID string) er
 }
 
 // folderValue 把可选文件夹转成驱动可接受的值（nil → SQL NULL）。
+// rowQuerier 让 *sql.DB 与 *sql.Tx 共用同一个查询函数。
+type rowQuerier interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+// inboxFolderID 返回当前用户的收件箱 id；没有收件箱时返回 nil（历史数据兜底）。
+func inboxFolderID(ctx context.Context, q rowQuerier, userID string) (*string, error) {
+	var id string
+	err := q.QueryRowContext(ctx,
+		`SELECT id FROM folders WHERE user_id = $1 AND is_inbox`, userID).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("查询收件箱失败: %w", err)
+	}
+	return &id, nil
+}
+
+// InboxID 返回当前用户的收件箱 id，供 handler 解析 folder_id= 别名。
+func (s *Service) InboxID(ctx context.Context, userID string) (*string, error) {
+	return inboxFolderID(ctx, s.db, userID)
+}
+
+// sameFolder 判断两个可空文件夹 id 是否相同（nil == nil）。
+func sameFolder(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
+}
+
 func folderValue(folderID *string) any {
 	if folderID == nil {
 		return nil

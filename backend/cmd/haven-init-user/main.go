@@ -90,12 +90,29 @@ func run() error {
 		return fmt.Errorf("用户 %q 已存在，本期只允许一个账号", name)
 	}
 
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("开启事务失败: %w", err)
+	}
+	defer tx.Rollback()
+
 	var id string
-	if err := conn.QueryRowContext(ctx,
+	if err := tx.QueryRowContext(ctx,
 		`INSERT INTO users (username, password_hash) VALUES ($1, $2) RETURNING id`,
 		name, string(hash),
 	).Scan(&id); err != nil {
 		return fmt.Errorf("写入用户失败: %w", err)
+	}
+
+	// 每个用户建一个真实收件箱（data-model.md 第七点五节规则 4）。
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO folders (user_id, parent_id, name, is_inbox) VALUES ($1, NULL, '收件箱', true)`,
+		id); err != nil {
+		return fmt.Errorf("创建收件箱失败: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("提交事务失败: %w", err)
 	}
 
 	fmt.Printf("已创建用户 %s（id=%s，totp_enabled=false）\n", name, id)
