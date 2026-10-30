@@ -616,6 +616,34 @@ a:hover {
   color: var(--label);
 }
 
+.panel-title.panel-title--compact {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.3;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panel-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  flex: none;
+}
+
+.panel-actions .icon-btn {
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+}
+
+.panel-actions .icon-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
 .panel-tools {
   padding: 0 var(--sp-4) var(--sp-3);
 }
@@ -3105,30 +3133,6 @@ button.tag[aria-pressed='true'] {
 
 /* ============ 中间列表栏：文件夹树（ui-design.md 第九节） ============ */
 
-/* 新建笔记 / 新建文件夹固定在中栏底部：短列表贴底，长列表滚动时保持可见 */
-.list-actions {
-  position: sticky;
-  bottom: 0;
-  z-index: 2;
-  display: flex;
-  gap: var(--sp-1);
-  margin-top: auto;
-  padding: var(--sp-2) var(--sp-3);
-  background: var(--bg);
-  border-top: 1px solid var(--sep);
-}
-
-.list-actions .btn {
-  flex: 1;
-  min-width: 0;
-}
-
-.list-actions .btn svg {
-  width: 14px;
-  height: 14px;
-  flex: none;
-}
-
 .tree {
   display: flex;
   flex-direction: column;
@@ -3169,6 +3173,57 @@ button.tag[aria-pressed='true'] {
   font-weight: 600;
 }
 
+.tree-row {
+  user-select: none;
+}
+
+/* 拖拽：源行变淡，放置位置显示插入线或整行高亮 */
+.tree-row--dragging {
+  opacity: 0.4;
+}
+
+.tree-row--drop-before::before,
+.tree-row--drop-after::after {
+  content: '';
+  position: absolute;
+  left: var(--sp-2);
+  right: var(--sp-2);
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  z-index: 3;
+  pointer-events: none;
+}
+
+.tree-row--drop-before::before {
+  top: -1px;
+}
+
+.tree-row--drop-after::after {
+  bottom: -1px;
+}
+
+.tree-row--drop-inside {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.tree-root-drop {
+  margin: var(--sp-2) var(--sp-2) 0;
+  padding: var(--sp-2);
+  border: 1px dashed var(--sep);
+  border-radius: var(--r-md);
+  color: var(--label-2);
+  font: var(--text-footnote);
+  text-align: center;
+}
+
+.tree-root-drop--active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
 .tree-toggle {
   width: 16px;
   height: 16px;
@@ -3197,6 +3252,31 @@ button.tag[aria-pressed='true'] {
   height: 14px;
   flex: none;
   color: var(--label-2);
+}
+
+.tree-icon--emoji {
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  line-height: 1;
+}
+
+/* 文件夹图标本身就是“更改图标”的入口 */
+.tree-icon-btn {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  flex: none;
+  padding: 0;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  cursor: pointer;
+}
+
+.tree-icon-btn:hover {
+  background: var(--fill);
 }
 
 .tree-name {
@@ -3289,6 +3369,63 @@ button.tag[aria-pressed='true'] {
 
 .tree-menu__item--danger:hover {
   background: var(--danger-soft);
+}
+
+/* 文件夹图标选择面板 */
+.icon-picker {
+  position: absolute;
+  top: 100%;
+  right: var(--sp-2);
+  z-index: 60;
+  width: 236px;
+  padding: var(--sp-2);
+  background: var(--bg);
+  border: 1px solid var(--sep);
+  border-radius: var(--r-lg);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.14);
+}
+
+.icon-picker__grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 2px;
+}
+
+.icon-picker__choice {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.icon-picker__choice:hover {
+  background: var(--fill);
+}
+
+.icon-picker__custom {
+  display: flex;
+  gap: var(--sp-1);
+  margin-top: var(--sp-2);
+}
+
+.icon-picker__input {
+  flex: 1;
+  min-width: 0;
+  min-height: 28px;
+  padding: 2px var(--sp-2);
+  font: var(--text-footnote);
+}
+
+.icon-picker__actions {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-1);
+  margin-top: var(--sp-1);
 }
 
 .tree-input {

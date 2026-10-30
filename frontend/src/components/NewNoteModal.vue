@@ -15,7 +15,7 @@ import TagPicker from './TagPicker.vue'
 
 const props = defineProps<{
   open: boolean
-  /** 新建后归入的文件夹；null / 不传 = 未分类。 */
+  /** 新建后归入的文件夹；null / 不传 = 收件箱。 */
   folderId?: string | null
 }>()
 

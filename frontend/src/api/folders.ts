@@ -6,17 +6,23 @@ export interface Folder {
   id: string
   parent_id: string | null
   name: string
+  /** 自定义 Emoji 图标；null 表示使用默认文件夹图标。 */
+  icon: string | null
+  /** 是否为收件箱；固定在根目录第一位，不可删除、不可移动。 */
+  is_inbox: boolean
   sort_order: number
 }
 
 export interface CreateFolderInput {
   name: string
   parent_id?: string | null
+  icon?: string | null
 }
 
 export interface UpdateFolderInput {
   name?: string
   parent_id?: string | null
+  icon?: string | null
   sort_order?: number
 }
 

@@ -38,6 +38,8 @@ export const useUiStore = defineStore('ui', () => {
   const foldersVersion = ref(0)
   /** 作品集增删改后 +1。 */
   const portfolioVersion = ref(0)
+  /** 最近一次在目录树里移动的笔记；编辑器据此同步 folder_id。 */
+  const lastNoteMove = ref<{ id: string; folderId: string | null; seq: number } | null>(null)
 
   const selectedTagId = ref<string | null>(null)
   const selectedPortfolioId = ref<string | null>(null)
@@ -53,6 +55,15 @@ export const useUiStore = defineStore('ui', () => {
 
   function foldersChanged(): void {
     foldersVersion.value += 1
+  }
+
+  /** 目录树里移动笔记后通知编辑器，避免下一次自动保存把 folder_id 写回旧值。 */
+  function noteMoved(id: string, folderId: string | null): void {
+    lastNoteMove.value = {
+      id,
+      folderId,
+      seq: (lastNoteMove.value?.seq ?? 0) + 1,
+    }
   }
 
   function portfolioChanged(): void {
@@ -98,12 +109,14 @@ export const useUiStore = defineStore('ui', () => {
     tagsVersion,
     foldersVersion,
     portfolioVersion,
+    lastNoteMove,
     selectedTagId,
     selectedPortfolioId,
     portfolioCreating,
     notesChanged,
     tagsChanged,
     foldersChanged,
+    noteMoved,
     portfolioChanged,
     selectTag,
     selectPortfolio,

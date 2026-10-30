@@ -223,7 +223,8 @@ async function load(): Promise<void> {
       const rawTagIds = route.query.tag_ids
       selectedTagIds.value = typeof rawTagIds === 'string' && rawTagIds ? rawTagIds.split(',') : []
       const rawFolderId = route.query.folder_id
-      folderId.value = typeof rawFolderId === 'string' && rawFolderId ? rawFolderId : null
+      folderId.value =
+        typeof rawFolderId === 'string' && rawFolderId ? rawFolderId : defaultInboxId()
       content.value = ''
       note.value = null
     } else {
@@ -232,15 +233,15 @@ async function load(): Promise<void> {
       title.value = loaded.title
       content.value = loaded.content
       selectedTagIds.value = loaded.tags.map((t) => t.id)
-      folderId.value = loaded.folder_id
+      folderId.value = loaded.folder_id ?? defaultInboxId()
     }
   } catch (err) {
     error.value = err instanceof ApiError && err.isNotFound ? '这篇笔记不存在' : '笔记加载失败'
   } finally {
     loading.value = false
-    // 新建时 URL 上的 folder_id 可能无效（手改地址），回退到未分类
+    // 新建时 URL 上的 folder_id 可能无效（手改地址），回退到收件箱
     if (folderId.value && !folders.value.some((folder) => folder.id === folderId.value)) {
-      folderId.value = null
+      folderId.value = defaultInboxId()
     }
     // 等编辑器把初始内容同步完，再把当前状态记为「已保存」
     requestAnimationFrame(() => {
@@ -261,12 +262,17 @@ async function reloadTags(): Promise<void> {
   }
 }
 
-/** 文件夹被增删改后重新拉取；当前文件夹若被删除则回到未分类。 */
+/** 当前用户的收件箱 id；没有收件箱时返回 null（历史数据兜底）。 */
+function defaultInboxId(): string | null {
+  return folders.value.find((folder) => folder.is_inbox)?.id ?? null
+}
+
+/** 文件夹被增删改后重新拉取；当前文件夹若被删除则回到收件箱。 */
 async function reloadFolders(): Promise<void> {
   try {
     folders.value = (await listFolders()).items
     if (folderId.value && !folders.value.some((folder) => folder.id === folderId.value)) {
-      folderId.value = null
+      folderId.value = defaultInboxId()
     }
   } catch {
     // 拉取失败不阻塞编辑
@@ -301,6 +307,26 @@ function onFolderChange(event: Event): void {
 watch(
   () => ui.foldersVersion,
   () => void reloadFolders(),
+)
+
+// 目录树里拖动当前笔记后，同步 folder_id；只改 lastSaved 里的 folder，
+// 避免把尚未保存的标题 / 正文误判为已保存。
+watch(
+  () => ui.lastNoteMove,
+  (move) => {
+    if (!move || move.id !== noteId.value) return
+    if (lastSaved.value) {
+      try {
+        const saved = JSON.parse(lastSaved.value) as Record<string, unknown>
+        saved.folder = move.folderId
+        lastSaved.value = JSON.stringify(saved)
+      } catch {
+        // 快照格式异常时忽略，下一次保存会以当前 folder_id 为准
+      }
+    }
+    if (note.value) note.value = { ...note.value, folder_id: move.folderId }
+    folderId.value = move.folderId
+  },
 )
 
 /** 当前正在渲染的标题元素（ProseMirror 里的 H1–H3）。 */
@@ -405,7 +431,7 @@ onBeforeUnmount(() => {
               <span v-if="statusText" class="save-state" :class="`save-state--${saveState}`">{{ statusText }}</span>
 
               <select class="select folder-select" :value="folderId ?? ''" aria-label="所属文件夹" @change="onFolderChange">
-                <option value="">未分类</option>
+                <option v-if="!folders.some((folder) => folder.is_inbox)" value="">收件箱</option>
                 <option v-for="option in folderOptions" :key="option.id" :value="option.id">{{ option.label }}</option>
               </select>
 
