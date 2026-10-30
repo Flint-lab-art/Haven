@@ -3,7 +3,7 @@
 > 执行清单，不是事实来源。所有实现细节以 `docs/` 为准；本文件与 `docs/` 冲突时以 `docs/` 为准。
 > `docs/` 只读，需求变更请先改文档，再勾选这里的条目。
 
-当前阶段：**脚手架已建，业务代码未开始**（`main.go` 只有 `/api/health`，`internal/*` 为空目录，前端仍是 Vite 模板）。
+当前阶段：**前后端功能均已完成（第 0–6 章）**。剩余：第 1 章的 migration 执行脚本、第 7 章的 `deploy/` 与部署验证。
 
 图例：`[ ]` 未做 · `[x]` 已完成 · `[~]` 部分完成
 
@@ -11,85 +11,102 @@
 
 ## 0. 清理脚手架（最先做，避免旧写法被模仿）
 
-- [ ] `backend/cmd/haven/main.go` 重写为读环境变量的入口（见 `architecture.md` 第四节、5.2/5.3）：删除硬编码 `:8080`，改用 `HAVEN_LISTEN_ADDR`，接 `log/slog`
-- [ ] 删除 `frontend/src/components/HelloWorld.vue` 与模板样式（`style.css` 里的 demo 变量、`src/assets/{vue.svg,vite.svg,hero.png}`）
-- [ ] 删除 `frontend/README.md`（Vite 模板说明）与 `frontend/public/icons.svg` 等模板残留，保留 `favicon.svg` 或替换
-- [ ] `frontend/index.html`：`lang="zh-CN"`，标题改为 Haven
-- [ ] 接入 `vue-router`（History 模式）与 `pinia` 到 `main.ts`
-- [ ] 根目录 `.gitignore`（当前只有子目录里的，`backend/.gitignore` 里 `/backend/...` 这类路径是按仓库根写的，实际匹配不到）
+- [x] `backend/cmd/haven/main.go` 重写为读环境变量的入口（见 `architecture.md` 第四节、5.2/5.3）：删除硬编码 `:8080`，改用 `HAVEN_LISTEN_ADDR`，接 `log/slog`
+- [x] 删除 `frontend/src/components/HelloWorld.vue` 与模板样式（`style.css` 里的 demo 变量、`src/assets/{vue.svg,vite.svg,hero.png}`）
+- [x] 删除 `frontend/README.md`（Vite 模板说明）与 `frontend/public/icons.svg` 等模板残留，保留 `favicon.svg` 或替换
+- [x] `frontend/index.html`：`lang="zh-CN"`，标题改为 Haven
+- [x] 接入 `vue-router`（History 模式）与 `pinia` 到 `main.ts`
+- [x] 根目录 `.gitignore`（当前只有子目录里的，`backend/.gitignore` 里 `/backend/...` 这类路径是按仓库根写的，实际匹配不到）
 
-- [ ] 根目录 `AGENTS.md`：写文档驱动规则、Git 规范、TODO 边界、技术栈锁定（**已有初版**，剩余是人工复核：重点核对“AI 只读不写 docs”和“禁止自动提交”两条措辞没被软化，并补上 TODO 边界）
-- [ ] 根目录 `opencode.json`：`instructions` 只加载 `docs/conventions.md` 和 `docs/overview.md`，其余文档按需手动喂，不全量加载（**尚未创建**）
+- [x] 根目录 `AGENTS.md`：写文档驱动规则、Git 规范、TODO 边界、技术栈锁定（已含“AI 只读不写 docs”“禁止自动提交”“按 TODO 顺序执行”三条）
+- [x] 根目录 `opencode.json`：`instructions` 只加载 `docs/conventions.md` 和 `docs/overview.md`，其余文档按需手动喂，不全量加载
 
 ## 1. 配置与数据库基座
 
-- [ ] `internal/config`：读取并校验全部 `HAVEN_*` 变量，缺必填项拒绝启动；常量（cookie 名、有效期、bcrypt cost）写死不走配置
-- [ ] `internal/db`：`database/sql` + `pgx` 连接池，启动时 ping
-- [ ] `migrations/0001_init.up.sql` / `.down.sql`：按 `data-model.md` 依赖顺序建表（`users` → `sessions`/`pending_logins`/`trusted_devices`/`tokens`/`audit_events` → `notes`/`tags`/`portfolio_items` → `note_tags`/`portfolio_repos`），含全部索引与 CHECK
-- [ ] migration 要求 `CREATE EXTENSION IF NOT EXISTS pg_trgm;`；确认 `gen_random_uuid()` 可用
-- [ ] 初始化脚本：创建唯一用户（bcrypt cost 12）——**不暴露注册接口**
-- [ ] 后端启动**不**跑 migration（由脚本执行）；在 `deploy/` 或文档待定处补执行方式
+- [x] `internal/config`：读取并校验全部 `HAVEN_*` 变量，缺必填项拒绝启动；常量（cookie 名、有效期、bcrypt cost）写死不走配置
+- [x] `internal/db`：`database/sql` + `pgx` 连接池，启动时 ping
+- [x] `migrations/0001_init.up.sql` / `.down.sql`：按 `data-model.md` 依赖顺序建表（`users` → `sessions`/`pending_logins`/`trusted_devices`/`tokens`/`audit_events` → `notes`/`tags`/`portfolio_items` → `note_tags`/`portfolio_repos`），含全部索引与 CHECK
+- [x] migration 要求 `CREATE EXTENSION IF NOT EXISTS pg_trgm;`；确认 `gen_random_uuid()` 可用
+- [x] 初始化脚本：创建唯一用户（bcrypt cost 12）——**不暴露注册接口**（`backend/cmd/haven-init-user`）
+- [x] 后端启动**不**跑 migration（由脚本执行）；在 `deploy/` 或文档待定处补执行方式（已确认启动不迁移；执行方式见 `deploy/migrate.sh`）
 
 ## 2. 鉴权核心（`internal/auth`，按 `auth.md`）
 
-- [ ] 凭证生成与哈希工具：32 字节随机 + base64url，落库只存 SHA-256
-- [ ] 身份识别（auth.md 6.1）：`Authorization: Bearer` 优先于 cookie；`sessions` / `tokens` 两张表；`pending_logins` 不参与
-- [ ] 授权中间件（auth.md 6.2–6.4）：`anonymous_ok` / `login_required` / `write` / `totp_verified` 四档，并把可见性条件注入 context
-- [ ] cookie 下发：`haven_session` / `haven_trusted_device`，`HttpOnly`、`SameSite=Lax`、`Domain=HAVEN_COOKIE_DOMAIN`、`Secure` 跟随 `HAVEN_COOKIE_SECURE`
-- [ ] 登录两步：账密 → （未启用 TOTP / 授信设备有效则直接建会话）→ 否则 `pending_logins` + `temp_token`（5 分钟）
-- [ ] 每次请求更新 `sessions.last_used_at`，不延长 `expires_at`
-- [ ] TOTP：setup 不落库、verify 通过才落库并置 `totp_enabled`；disable 同时删除该用户全部授信设备
-- [ ] 改密码：同事务内删全部 `sessions` + `trusted_devices`，**不删** `tokens`，当前会话也失效
-- [ ] bcrypt cost 12；密码 ≥12 位且不能与旧密码相同
+- [x] 凭证生成与哈希工具：32 字节随机 + base64url，落库只存 SHA-256
+- [x] 身份识别（auth.md 6.1）：`Authorization: Bearer` 优先于 cookie；`sessions` / `tokens` 两张表；`pending_logins` 不参与
+- [x] 授权中间件（auth.md 6.2–6.4）：`anonymous_ok` / `login_required` / `write` / `totp_verified` 四档，并把可见性条件注入 context
+- [x] cookie 下发：`haven_session` / `haven_trusted_device`，`HttpOnly`、`SameSite=Lax`、`Domain=HAVEN_COOKIE_DOMAIN`、`Secure` 跟随 `HAVEN_COOKIE_SECURE`
+- [x] 登录两步：账密 → （未启用 TOTP / 授信设备有效则直接建会话）→ 否则 `pending_logins` + `temp_token`（5 分钟）
+- [x] 每次请求更新 `sessions.last_used_at`，不延长 `expires_at`
+- [x] TOTP：setup 不落库、verify 通过才落库并置 `totp_enabled`；disable 同时删除该用户全部授信设备
+- [x] 改密码：同事务内删全部 `sessions` + `trusted_devices`，**不删** `tokens`，当前会话也失效
+- [x] bcrypt cost 12；密码 ≥12 位且不能与旧密码相同
+
+> 补充实现（在章节内一并完成）：会话/授信设备/Token 的 `internal/auth` 业务与 handler、`internal/httpx` 统一错误响应、`cmd/haven` 路由装配。
+> 会话「是否通过过 TOTP」用 token 后缀 `:totp` 承载（`auth.md` 6.2 需要、`sessions` 表无该列），与 `pending_logins` 的 `trust_device` 后缀手法一致。
 
 ## 3. 审计（`internal/audit`，按 `audit.md`）
 
-- [ ] `audit_events` 写入器：只追加；`actor_user_id` 可为 NULL，`actor_username` 存快照
-- [ ] 实现第十三类事件（login_success/login_failure/logout/totp_bound/totp_disabled/password_changed/session_revoked/trusted_device_added|revoked/token_created|revoked/note_published|unpublished）
-- [ ] 写入时机：业务成功后、响应前；**失败只打错误日志，不影响业务结果**
-- [ ] 笔记 CRUD 不写审计；不记录笔记内容、密码、Token 明文、TOTP secret
+- [x] `audit_events` 写入器：只追加；`actor_user_id` 可为 NULL，`actor_username` 存快照
+- [x] 实现第十三类事件（login_success/login_failure/logout/totp_bound/totp_disabled/password_changed/session_revoked/trusted_device_added|revoked/token_created|revoked/note_published|unpublished）
+- [x] 写入时机：业务成功后、响应前；**失败只打错误日志，不影响业务结果**
+- [x] 笔记 CRUD 不写审计；不记录笔记内容、密码、Token 明文、TOTP secret
+
+> `note_published` / `note_unpublished` 已在第 4 章接入 `notes.Handler` 的钩子（`audit.UseNoteHooks`）。
+
+### 6.1 追加：Markdown 编辑（用户后续要求，2026-10-28）
+
+- [x] 正文以 Markdown 原文存储（`notes.content` 不变，后端零改动）
+- [x] 阅读态渲染：`marked` + `DOMPurify`（`utils/markdown.ts`），过滤脚本与内联事件
+- [x] 所见即所得编辑器：Milkdown 7.23（MIT），`components/MarkdownEditor.vue`，路由懒加载
+- [x] 新建笔记改为「弹窗定标题+标签 → 进编辑页」，草稿只在内存，首次保存才创建
+- [x] 保存前 `sync()` 编辑器内容，避免异步回写导致的空正文
+- [x] 离开页面有未保存改动时确认
+
+> 注意：`docs/` 里 `content` 字段仍写作「正文 text」，未声明 Markdown。若要把「Markdown 格式」定为正式需求，需由人类补 `data-model.md` / `api.md`。
 
 ## 4. 领域接口（按 `api.md` 逐条实现）
 
-- [ ] `/api/me`（11.1）：匿名/会话/Token 三种响应
-- [ ] 认证 `/api/auth`（二）：login、login/totp、logout、totp/setup|verify|disable、password
-- [ ] 会话 `/api/sessions`（三）：列表带 `is_current`；禁止撤销当前会话（422）；Token 访问 403
-- [ ] 授信设备 `/api/trusted-devices`（四）：**只读 + 删除，不提供 POST**
-- [ ] Token `/api/tokens`（五）：创建仅返回一次明文；撤销写 `revoked_at` 不删记录；需 TOTP
-- [ ] 笔记私有 `/api/notes`（六）：列表 `updated_at DESC` + `content_preview`（rune 截 200 + `…`）；创建不收 `visibility`；`tag_ids` 全量替换
-- [ ] publish / unpublish：`published_at` 首次写入、撤回保留；重复操作 409
-- [ ] 笔记公开 `/api/public/notes`（七）：`published_at DESC`，不可见统一 404
-- [ ] 标签 `/api/tags`（八）：`lower(name)` 唯一 → 409；无重命名接口；级联删除关联
-- [ ] 搜索（九）：`/api/search` 笔记查 `notes.search_text ILIKE '%q%'`、标签查 `tags.name ILIKE '%q%'`，返回 `{notes, tags}` 两块；`/api/public/search` 只查公开笔记的 `search_text`，不返回标签列表
-- [ ] 作品集 `/api/public/portfolio` + `/api/portfolio/*`（十）：`url` 由后端拼接（Gogs 用 `HAVEN_GOGS_BASE_URL`，GitHub 固定）；主链接唯一
-- [ ] `internal/httpx`：统一错误响应（`error`/`message`/可选 `fields`）+ 统一分页（`limit` 默认 20 上限 100）
-- [ ] 响应字段全 `snake_case`；列表空值返回 `{"items": [], "total": 0}`
-- [ ] 跨用户访问一律 404；read Token 写操作 403；凭证类操作对任何 Token 一律 403
+- [x] `/api/me`（11.1）：匿名/会话/Token 三种响应
+- [x] 认证 `/api/auth`（二）：login、login/totp、logout、totp/setup|verify|disable、password
+- [x] 会话 `/api/sessions`（三）：列表带 `is_current`；禁止撤销当前会话（422）；Token 访问 403
+- [x] 授信设备 `/api/trusted-devices`（四）：**只读 + 删除，不提供 POST**
+- [x] Token `/api/tokens`（五）：创建仅返回一次明文；撤销写 `revoked_at` 不删记录；需 TOTP
+- [x] 笔记私有 `/api/notes`（六）：列表 `updated_at DESC` + `content_preview`（rune 截 200 + `…`）；创建不收 `visibility`；`tag_ids` 全量替换
+- [x] publish / unpublish：`published_at` 首次写入、撤回保留；重复操作 409
+- [x] 笔记公开 `/api/public/notes`（七）：`published_at DESC`，不可见统一 404
+- [x] 标签 `/api/tags`（八）：`lower(name)` 唯一 → 409；无重命名接口；级联删除关联
+- [x] 搜索（九）：`/api/search` 笔记查 `notes.search_text ILIKE '%q%'`、标签查 `tags.name ILIKE '%q%'`，返回 `{notes, tags}` 两块；`/api/public/search` 只查公开笔记的 `search_text`，不返回标签列表
+- [x] 作品集 `/api/public/portfolio` + `/api/portfolio/*`（十）：`url` 由后端拼接（Gogs 用 `HAVEN_GOGS_BASE_URL`，GitHub 固定）；主链接唯一
+- [x] `internal/httpx`：统一错误响应（`error`/`message`/可选 `fields`）+ 统一分页（`limit` 默认 20 上限 100）
+- [x] 响应字段全 `snake_case`；列表空值返回 `{"items": [], "total": 0}`
+- [x] 跨用户访问一律 404；read Token 写操作 403；凭证类操作对任何 Token 一律 403
 
 ## 5. 静态托管
 
-- [ ] `r.Static` 托管 `/assets`（长缓存），`NoRoute` 兜底 `index.html`；`HAVEN_FRONTEND_DIR`
-- [ ] 确认 `/api/*` 不被 SPA 兜底吞掉
+- [x] `r.Static` 托管 `/assets`（长缓存），`NoRoute` 兜底 `index.html`；`HAVEN_FRONTEND_DIR`
+- [x] 确认 `/api/*` 不被 SPA 兜底吞掉
 
 ## 6. 前端（按 `frontend.md`）
 
-- [ ] `src/api/` 按领域拆文件（auth/notes/tags/search/portfolio/sessions/devices/tokens/me）+ 统一 `ApiError`；路径写相对 `/api/...`
-- [ ] `auth` store：启动调 `GET /api/me`；401 统一清空并跳 `/login`；403 只提示不跳转
-- [ ] 按 `window.location.hostname` 选择公开域/私有域路由表（同一份构建）
-- [ ] router guard：除 `/login` 外全部需登录，支持 `?redirect=`
-- [ ] 公开域页面：`/`、`/notes/:id`、`/search?q=`、`/portfolio`；**无登录入口、无后台链接**
-- [ ] 私有域页面：`/login`（含 TOTP 第二步，`temp_token` 只存内存）、`/`、`/notes/:id`、`/notes/new`、`/search`、`/tags`、`/portfolio`、`/settings`、`/settings/security`、`/settings/sessions`、`/settings/devices`、`/settings/tokens`
-- [ ] `/settings/tokens` 遇 403 时引导去 `/settings/security` 完成 TOTP，不登出
-- [ ] 公共组件：`NoteCard`、`TagBadge`、`SearchBar`、`LoginForm`、`TotpForm`、`SettingsNav`
-- [ ] 中文界面；不做深色模式切换、不做 PWA、不做多语言
-- [ ] 本地开发代理 `/api` 到后端（`vite.config.ts` 目前没有 server proxy）
+- [x] `src/api/` 按领域拆文件（auth/notes/tags/search/portfolio/sessions/devices/tokens/me）+ 统一 `ApiError`；路径写相对 `/api/...`
+- [x] `auth` store：启动调 `GET /api/me`；401 统一清空并跳 `/login`；403 只提示不跳转
+- [x] 按 `window.location.hostname` 选择公开域/私有域路由表（同一份构建）
+- [x] router guard：除 `/login` 外全部需登录，支持 `?redirect=`
+- [x] 公开域页面：`/`、`/notes/:id`、`/search?q=`、`/portfolio`；**无登录入口、无后台链接**
+- [x] 私有域页面：`/login`（含 TOTP 第二步，`temp_token` 只存内存）、`/`、`/notes/:id`、`/notes/new`、`/search`、`/tags`、`/portfolio`、`/settings`、`/settings/security`、`/settings/sessions`、`/settings/devices`、`/settings/tokens`
+- [x] `/settings/tokens` 遇 403 时引导去 `/settings/security` 完成 TOTP，不登出
+- [x] 公共组件：`NoteCard`、`TagBadge`、`SearchBar`、`LoginForm`、`TotpForm`、`SettingsNav`
+- [x] 中文界面；不做深色模式切换、不做 PWA、不做多语言
+- [x] 本地开发代理 `/api` 到后端（`vite.config.ts` 目前没有 server proxy）
 
 ## 7. 验证与部署
 
 - [ ] `go vet ./...`、`go test ./...` 全绿；至少覆盖：可见性矩阵、Token scope、跨用户 404、publish 幂等性
+- [x] 全量路由鉴权不变量测试（2026-10-30）：`cmd/haven/route_auth_test.go` 遍历全部 `/api` 路由，白名单外匿名一律要求 401，非 GET 私有路由对 read Token 一律要求 403；不连库，`go test ./cmd/haven -run TestAPIRoutes` 可单独跑
 - [ ] `pnpm build`（含 `vue-tsc -b`）通过
 - [ ] 手工冒烟：匿名 → 公开列表/详情/搜索/作品集；登录 → TOTP → 笔记 CRUD → publish → 退出
-- [ ] `deploy/`（README 与 `conventions.md` 提到但尚不存在）：构建脚本 + systemd unit + migration 执行
+- [x] `deploy/`（README 与 `conventions.md` 提到但尚不存在）：构建脚本 + systemd unit + migration 执行
 - [ ] 部署形态待定项（`architecture.md` 第八节）：端口、HTTPS/反代、`pg_dump` 备份定时任务
 - [ ] 更新根 `README.md` 的「快速开始」占位
 

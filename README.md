@@ -40,6 +40,7 @@
 
 | 文件 | 回答什么问题 |
 |---|---|
+| `ui-design.md` | 界面布局、色彩排版与组件规范 |
 | `frontend.md` | 公开域与私有域的页面清单、路由、登录流程 |
 | `clients.md` | TUI 与 Neovim 插件（第二版，本期占位） |
 
@@ -65,9 +66,30 @@ Haven/
 
 生成结果与文档不符时，是代码错，修代码或重新生成，不改文档去迁就代码。
 
-## 快速开始
+## 快速开始（本地开发）
 
-（占位，部署方式待 Gogs 备案通过后确定，届时补入。已知约束：不使用 Docker / K8s，宿主机直接运行。）
+前置：PostgreSQL ≥ 15、Go ≥ 1.22、Node ≥ 20 + pnpm。
+
+```bash
+# 1. 建库并建表（migration 不会随服务启动自动执行）
+createdb haven_dev
+psql "postgres://haven:haven_dev_pw@127.0.0.1:5432/haven_dev?sslmode=disable" \
+  -f backend/migrations/0001_init.up.sql
+
+# 2. 创建唯一账号（密码至少 12 位）
+cd backend
+HAVEN_DB_DSN="postgres://haven:haven_dev_pw@127.0.0.1:5432/haven_dev?sslmode=disable" \
+  HAVEN_INIT_PASSWORD='至少12位的密码' go run ./cmd/haven-init-user -username kairo
+cd ..
+
+# 3. 构建前端并启动
+cd frontend && pnpm install && pnpm build && cd ..
+./run-dev.sh
+```
+
+打开 <http://localhost:8080/>。本地开发时 `localhost` 按私有域渲染（见 `frontend/src/router/domain.ts`）。
+
+生产部署（systemd、反向代理、备份）待定，见 `docs/architecture.md` 第八节。
 
 ## 技术栈
 

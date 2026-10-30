@@ -1,0 +1,48 @@
+# ===== 环境与配置 =====
+# 环境变量统一由进程环境提供（HAVEN_*），不使用 .env 文件；这里只兜底本地误建的文件
+.env
+.env.*
+!.env.example
+*.local
+
+# ===== 后端（Go）=====
+# 编译产物。只忽略可执行文件本身，不要写 `backend/haven`——
+# 那里是 cmd/haven 的源码目录
+/backend/haven
+*.exe
+*.test
+*.out
+coverage.*
+go.work.sum
+
+# ===== 前端（Vite / Node）=====
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/.vite/
+*.tsbuildinfo
+pnpm-debug.log*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ===== 部署产物 =====
+deploy/build/
+deploy/out/
+
+# ===== 编辑器与 IDE =====
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
+
+# ===== 操作系统 =====
+.DS_Store
+Thumbs.db
+
+# ===== 日志与临时文件 =====
+*.log
+/tmp/

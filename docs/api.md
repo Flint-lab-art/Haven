@@ -25,6 +25,8 @@
 - 创建成功返回 `201` + 创建后的完整对象；
 - 更新成功返回 `200` + 更新后的完整对象；
 - 删除成功返回 `204`，无响应体。
+- 返回笔记对象的列表接口，item 中一律包含 `content_preview` 字段。正文截断规则见 6.1 备注。
+
 
 ### 1.4 错误响应
 
@@ -400,7 +402,8 @@
 
 - `limit`、`offset`：分页；
 - `visibility`：可选，`private` / `public`，按可见性过滤；
-- `tag_id`：可选，按标签过滤。
+- `tag_id`：可选，按标签过滤；
+- `folder_id`：可选，按文件夹过滤。传具体 uuid 查该文件夹下笔记；传空字符串（`folder_id=`）查收件箱；不传则查全部。
 
 **响应** `200`：
 
@@ -409,7 +412,10 @@
   "items": [
     {
       "id": "...",
+      "folder_id": "uuid",
+      "sort_order": 0,
       "title": "...",
+      "content_preview": "笔记正文前 200 字...",
       "visibility": "private",
       "published_at": null,
       "created_at": "...",
@@ -421,7 +427,15 @@
 }
 ```
 
-**备注**：列表不返回 `content`（正文），正文只在详情接口返回。按 `updated_at DESC` 排序。
+**备注**：列表不返回 `content`（正文），正文只在详情接口返回。列表返回 `content_preview`：正文按 rune 截断至 200 字符，超出部分以 `…` 结尾；正文为空时返回空串。截断由后端完成，前端直接展示。
+
+**排序**：
+
+- 传 `folder_id` 时（含空字符串，即收件箱）：按 `sort_order ASC, updated_at DESC`；
+- 不传 `folder_id` 时：按 `updated_at DESC`；
+- 公开列表不受 `sort_order` 影响，仍按 `published_at DESC`。
+
+**收件箱**：收件箱是真实文件夹；`folder_id` 正常返回收件箱或所在文件夹的 uuid。历史未迁移数据可能为 `null`，服务端按收件箱处理。
 
 ### 6.2 GET `/api/notes/:id`
 
@@ -432,6 +446,8 @@
 ```json
 {
   "id": "...",
+  "folder_id": "uuid",
+  "sort_order": 0,
   "title": "...",
   "content": "...",
   "visibility": "private",
@@ -453,18 +469,20 @@
 **请求**：
 
 ```json
-{ "title": "...", "content": "...", "tag_ids": ["...", "..."] }
+{ "title": "...", "content": "...", "folder_id": null, "tag_ids": ["...", "..."] }
 ```
 
 - `title`：必填；
 - `content`：可选，默认空串；
-- `tag_ids`：可选，标签 id 数组；后端校验每个 tag 属于当前用户。
+- `folder_id`：可选，所属文件夹 id；不传或 `null` 表示收件箱；
+- `tag_ids`：可选，标签 id 数组；后端校验每个 tag 属于当前用户；
+- `sort_order` 不接受，新建笔记固定为 `0`，出现在目标目录顶部。
 
 **响应** `201`：同 6.2 的笔记对象。
 
 **错误**：
 
-- `422 validation_failed` — title 为空、tag_ids 含无效 id。
+- `422 validation_failed` — title 为空、folder_id 无效、tag_ids 含无效 id。
 
 **备注**：**不接受 `visibility` 参数**，新建一律 private；写操作成功不写审计事件（笔记 CRUD 不审计）。
 
@@ -475,10 +493,14 @@
 **请求**（部分更新）：
 
 ```json
-{ "title": "...", "content": "...", "tag_ids": ["..."] }
+{ "title": "...", "content": "...", "folder_id": "uuid 或 null", "sort_order": 0, "tag_ids": ["..."] }
 ```
 
 - 只更新出现的字段；
+- `folder_id` 如出现，`null` 表示移动到收件箱；
+- `sort_order` 如出现，必须是 `>= 0` 的整数；
+- 移动笔记到新文件夹时，如未显式传 `sort_order`，按 `0` 处理，出现在目标目录顶部；
+- 仅修改 `sort_order` 时不更新 `updated_at`；同时修改其他字段时仍按原规则更新 `updated_at`；
 - `tag_ids` 如出现，为**全量替换**。
 
 **响应** `200`：同 6.2 的笔记对象。
@@ -488,7 +510,6 @@
 - `404 not_found` — 笔记不存在或不属于当前用户；
 - `422 validation_failed` — 字段校验失败。
 
-**备注**：`updated_at` 由应用层更新。
 
 ### 6.5 DELETE `/api/notes/:id`
 
@@ -530,6 +551,41 @@
 
 **备注**：写 `note_unpublished` 审计事件。
 
+## 六点五、文件夹管理 `/api/folders`
+
+### 6.5.1 GET `/api/folders`
+**鉴权**：登录
+**说明**：获取当前用户的**所有**文件夹（平铺数组，由前端组合成树），包含收件箱。
+**响应** `200`：
+{
+  "items": [
+    { "id": "uuid", "parent_id": null, "name": "收件箱", "icon": null, "is_inbox": true, "sort_order": 0 },
+    { "id": "uuid2", "parent_id": null, "name": "技术", "icon": "📚", "is_inbox": false, "sort_order": 1 }
+  ],
+  "total": 2
+}
+
+### 6.5.2 POST `/api/folders`
+**鉴权**：登录 + write
+**请求**：
+{ "name": "新文件夹", "parent_id": "父uuid或null", "icon": "📚" }
+**响应** `201`：返回创建的文件夹对象，`is_inbox` 固定为 `false`。
+**备注**：`is_inbox` 由服务端维护，不接受传入。
+
+### 6.5.3 PATCH `/api/folders/:id`
+**鉴权**：登录 + write
+**请求**：
+{ "name": "新名字", "parent_id": "新父uuid", "icon": "📚", "sort_order": 1 }
+**备注**：支持改名、移动目录、调整排序和更改图标；`is_inbox` 不接受修改。收件箱不允许移动，`parent_id` 必须保持 `null`。
+
+### 6.5.4 DELETE `/api/folders/:id`
+**鉴权**：登录 + write
+**响应** `204`
+**错误**：
+- `409 conflict` — 收件箱不能删除。
+**备注**：删除普通文件夹及其所有子文件夹；删除前先把子树内所有笔记移到收件箱，再删除文件夹，绝不删除笔记。
+
+
 ---
 
 ## 七、笔记（公开侧）`/api/public/notes`
@@ -548,6 +604,7 @@
     {
       "id": "...",
       "title": "...",
+      "content_preview": "...",
       "published_at": "...",
       "updated_at": "...",
       "tags": [{ "id": "...", "name": "编程" }]
@@ -640,7 +697,8 @@
 
 **查询参数**：`limit`、`offset`
 
-**响应** `200`：结构同 6.1（含私有和公开）。
+**响应** `200`：结构同 6.1，含 `content_preview`。
+
 
 **错误**：
 
@@ -668,6 +726,7 @@
       {
         "id": "...",
         "title": "...",
+        "content_preview": "...",
         "visibility": "private",
         "published_at": null,
         "updated_at": "...",
@@ -703,6 +762,7 @@
     {
       "id": "...",
       "title": "...",
+      "content_preview": "...",
       "published_at": "...",
       "updated_at": "...",
       "tags": [{ "id": "...", "name": "编程" }]

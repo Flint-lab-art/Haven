@@ -27,23 +27,27 @@
 |---|---|---|
 | `note_visibility` | `private` / `public` | 笔记可见性 |
 | `repo_platform` | `gogs` / `github` | 作品集仓库托管平台 |
-| `token_scope` | `read` / `read_write` | API Token 权限档位（用于 tokens 表，待补） |
+| `token_scope` | `read` / `read_write` | API Token 权限档位 |
+
 
 ## 三、notes — 笔记
 
 **用途**：存储所有笔记内容，私有与公开共用一张表，靠 `visibility` 区分。
+`content` 字段内容为 Markdown 源文本，前端负责渲染。
 
 | 字段 | 类型 | 约束 | 默认值 | 说明 |
 |---|---|---|---|---|
 | `id` | uuid | PRIMARY KEY | `gen_random_uuid()` | 主键 |
 | `user_id` | uuid | NOT NULL, FK → users(id) ON DELETE CASCADE | — | 所属用户 |
+| `folder_id` | uuid | NULL, FK → folders(id) ON DELETE SET NULL | NULL | 所属文件夹；正常笔记都归属收件箱，`NULL` 仅作历史兜底 |
+| `sort_order` | int | NOT NULL | `0` | 同一文件夹内排序，小的在前 |
 | `title` | text | NOT NULL | — | 标题 |
 | `content` | text | NOT NULL | `''` | 正文，允许空串 |
 | `visibility` | text | NOT NULL, CHECK (visibility IN ('private','public')) | `'private'` | 可见性，默认私有 |
 | `published_at` | timestamptz | NULL | NULL | 首次公开发布时间，仅 public 时有意义 |
 | `search_text` | text | GENERATED ALWAYS AS (`title || ' ' || content`) STORED | — | 搜索用合并字段，数据库自动维护，应用层只读不写 |
 | `created_at` | timestamptz | NOT NULL | `now()` | 创建时间 |
-| `updated_at` | timestamptz | NOT NULL | `now()` | 最后更新时间，由应用层在每次写入时更新 |
+| `updated_at` | timestamptz | NOT NULL | `now()` | 最后更新时间，由应用层在每次写入时更新；仅调整 `sort_order` 时不更新 |
 
 **索引**：
 
@@ -57,6 +61,9 @@ CREATE INDEX idx_notes_updated_at ON notes (user_id, updated_at DESC);
 
 -- 模糊搜索：search_text trigram 索引
 CREATE INDEX idx_notes_search_trgm ON notes USING gin (search_text gin_trgm_ops);
+
+-- 目录内自定义排序
+CREATE INDEX idx_notes_folder_sort ON notes (user_id, folder_id, sort_order);
 ```
 
 **规则**：
@@ -69,6 +76,9 @@ CREATE INDEX idx_notes_search_trgm ON notes USING gin (search_text gin_trgm_ops)
 6. **`search_text` 由数据库自动维护**：应用层不得在 INSERT / UPDATE 时写入该字段，也不得在 Go 代码中手动拼接。搜索查询统一使用 `search_text`，不直接查 `title` 或 `content`。
 7. **搜索结果受可见性约束**：搜索查询同样要经过授权中间件的 visibility 过滤（未登录只能搜到 public 笔记）。具体过滤规则见 `docs/backend/auth.md`，本表不重复定义。
 8. **笔记归属唯一用户**：所有笔记读写操作必须以当前登录用户为过滤条件，即 `WHERE user_id = current_user_id`。授权中间件在 visibility 过滤之外，必须叠加用户归属过滤。跨用户访问视为越权，返回 404 而非 403（不泄露笔记存在性）。
+9. **文件夹归属**：笔记必须归属某个文件夹；不传 `folder_id` 时归入当前用户的收件箱。`NULL` 仅作为历史数据兜底，正常写入不应产生。
+10. **目录内排序**：`sort_order` 只在同一文件夹内生效，小的在前；列表按 `sort_order ASC, updated_at DESC` 排序。允许重复，重复时以 `updated_at DESC` 兜底。新建笔记和移入新文件夹的笔记 `sort_order` 置 `0`，出现在该目录顶部。仅调整 `sort_order` 不更新 `updated_at`。
+11. **收件箱**：每个用户有且只有一个 `is_inbox = true` 的文件夹；收件箱固定在根目录第一位，不可删除、不可移动，默认名为“收件箱”，允许改名和更换图标。删除普通文件夹时，先把该文件夹及子文件夹内的所有笔记移到收件箱，再删除文件夹。
 
 ## 四、tags — 标签
 
@@ -177,6 +187,39 @@ CREATE UNIQUE INDEX idx_portfolio_repos_primary ON portfolio_repos (portfolio_it
 3. **主链接不强制存在**：作品可以没有 `is_primary = true` 的仓库，主页展示逻辑需处理这种情况。
 4. **仓库归属通过作品间接确定**：`portfolio_repos` 不单独带 `user_id`，归属由所属作品决定。任何仓库操作必须先校验所属作品的 `user_id = current_user_id`。
 
+## 七点五、folders — 文件夹目录树
+
+**用途**：支持无限嵌套的目录结构，用于整理笔记。
+
+| 字段 | 类型 | 约束 | 默认值 | 说明 |
+|---|---|---|---|---|
+| `id` | uuid | PRIMARY KEY | `gen_random_uuid()` | 主键 |
+| `user_id` | uuid | NOT NULL, FK → users(id) ON DELETE CASCADE | — | 所属用户 |
+| `parent_id` | uuid | NULL, FK → folders(id) ON DELETE CASCADE | NULL | 父文件夹；NULL 表示根目录 |
+| `name` | text | NOT NULL | — | 文件夹名称 |
+| `sort_order` | int | NOT NULL | `0` | 排序权重，小的在前 |
+| `icon` | text | NULL | NULL | 自定义图标（Emoji 或图标名），为空则前端显示默认文件夹图标 |
+| `is_inbox` | boolean | NOT NULL | `false` | 是否为收件箱；每个用户最多一个 |
+| `created_at` | timestamptz | NOT NULL | `now()` | 创建时间 |
+| `updated_at` | timestamptz | NOT NULL | `now()` | 更新时间 |
+
+**索引**：
+```sql
+CREATE INDEX idx_folders_user_parent ON folders (user_id, parent_id);
+
+CREATE UNIQUE INDEX idx_folders_inbox ON folders (user_id) WHERE is_inbox;
+```
+
+**规则**：
+
+1. **无限嵌套**：通过 `parent_id` 实现无限层级。
+2. **删除策略**：删除普通文件夹时，先把该文件夹及子文件夹内的所有笔记移到收件箱，再删除文件夹；收件箱不可删除。子文件夹仍通过 `ON DELETE CASCADE` 清理，笔记绝不级联删除。
+3. **命名唯一性**：同一个父目录下，不允许有同名的文件夹（应用层校验）。
+4. **收件箱**：每个用户有且只有一个 `is_inbox = true` 的文件夹，`parent_id` 必须为 `NULL`，固定显示在根目录第一位，不参与排序；允许改名和更换图标，不允许删除或移动。
+5. **默认归属**：新建笔记未指定 `folder_id` 时归入收件箱。
+
+**迁移**：为每个用户创建/复用收件箱，把 `notes.folder_id IS NULL` 的笔记归入收件箱；此后正常写入不再产生 `NULL`。
+
 ## 八、搜索设计说明
 
 **范围**：笔记标题、笔记正文、标签名。三处都支持模糊包含查询。
@@ -186,6 +229,8 @@ CREATE UNIQUE INDEX idx_portfolio_repos_primary ON portfolio_repos (portfolio_it
 - 笔记标题 + 正文：通过 `notes.search_text` 生成列合并，对合并字段建 `pg_trgm` GIN 索引，查询 `WHERE user_id = ? AND search_text ILIKE '%关键词%'`。
 - 标签名：对 `tags.name` 建 `pg_trgm` GIN 索引，查询 `WHERE user_id = ? AND name ILIKE '%关键词%'`。
 - 不安装中文分词扩展。1–2 个字的查询会退化为全表扫描，接受这一代价（数据量小，且实际使用中很少只搜一两个字）。
+
+**已知限制**：本期搜索为子串匹配，只处理“包含”语义。不处理同义词（如“知识中台”搜不到“知识管理平台”）、不处理繁体与简体互通、不纠正错别字。这是刻意的取舍：自用场景、数据量小，子串匹配足够日常检索；语义检索与分词留到第二版评估。
 
 **返回**：
 
@@ -204,4 +249,4 @@ CREATE UNIQUE INDEX idx_portfolio_repos_primary ON portfolio_repos (portfolio_it
 - `tokens` — 长期 API Token（见 auth.md 第五节）
 - `audit_events` — 审计事件（见 audit.md 第二节）
 
-**migration 顺序：**users 必须最先创建；sessions、pending_logins、trusted_devices、tokens、audit_events 依赖 users；notes、tags、portfolio_items 也依赖 users。
+ **migration 顺序**：`users` 必须最先创建；`sessions`、`pending_logins`、`trusted_devices`、`tokens`、`audit_events` 依赖 `users`；`folders` 依赖 `users`（且通过 `parent_id` 自引用）；`notes`、`tags`、`portfolio_items` 依赖 `users`，且 `notes` 依赖 `folders`。

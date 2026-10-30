@@ -105,9 +105,3 @@ CREATE INDEX idx_audit_events_actor ON audit_events (actor_user_id, created_at D
 `audit_events` 表结构本身就是查询入口，索引已覆盖常见查询（按时间倒序、按事件类型、按用户）。
 
 如果后期需要界面，另开文档，不在本期范围。
-
-## 七、对 data-model.md 的回写
-
-贴完本文件后，回头修改 `docs/backend/data-model.md` 第九节，将 `audit_events` 那一行改为指向本文件：
-
-> - `audit_events` — 审计事件（见 audit.md）
