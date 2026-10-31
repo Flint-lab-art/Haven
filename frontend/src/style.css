@@ -4188,3 +4188,185 @@ select:focus-visible {
 .theme-card__check:empty {
   display: none;
 }
+
+/* ---------------------------------------------------------------------------
+ * 历史版本浮层（docs/v2/frontend/frontend.md 第五节）
+ * ------------------------------------------------------------------------- */
+
+.version-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-end;
+  background: var(--overlay);
+}
+
+.version-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(760px, 100%);
+  max-height: 100%;
+  background: var(--bg-elevated);
+  border-left: 1px solid var(--sep);
+  box-shadow: var(--shadow-modal);
+}
+
+.version-dialog__head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--sep);
+}
+
+.version-dialog__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.version-dialog__stats {
+  display: inline-flex;
+  gap: var(--sp-2);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.version-dialog__head .icon-btn {
+  margin-left: auto;
+}
+
+.diff-count--add {
+  color: var(--success);
+}
+
+.diff-count--del {
+  color: var(--danger);
+}
+
+.version-dialog__body {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.version-timeline {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  border-right: 1px solid var(--sep);
+  padding: var(--sp-2);
+  gap: 2px;
+}
+
+.version-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+
+.version-item:hover {
+  background: var(--fill);
+}
+
+.version-item--active {
+  background: var(--fill);
+  border-color: var(--sep);
+}
+
+.version-item__time {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.version-item__title {
+  font-size: 12px;
+  color: var(--label-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.version-diff {
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  min-width: 0;
+}
+
+.version-diff__title-note {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  font-size: 13px;
+  color: var(--label-2);
+  border-bottom: 1px solid var(--sep);
+}
+
+.diff-view {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 13px;
+  line-height: 1.6;
+  padding: var(--sp-2) 0;
+}
+
+.diff-line {
+  display: grid;
+  grid-template-columns: 40px 40px 18px 1fr;
+  gap: 0;
+  padding: 0 var(--sp-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.diff-line__no {
+  color: var(--label-3);
+  text-align: right;
+  padding-right: 8px;
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.diff-line__sign {
+  color: var(--label-2);
+  user-select: none;
+}
+
+.diff-line--added {
+  background: color-mix(in srgb, var(--success) 12%, transparent);
+}
+
+.diff-line--added .diff-line__sign {
+  color: var(--success);
+}
+
+.diff-line--removed {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+
+.diff-line--removed .diff-line__sign {
+  color: var(--danger);
+}
+
+.version-dialog__foot {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-top: 1px solid var(--sep);
+}
+
+.version-dialog__foot .btn {
+  margin-left: auto;
+}

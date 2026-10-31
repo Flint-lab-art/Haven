@@ -16,6 +16,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import MarkdownEditor from '@/components/MarkdownEditor.vue'
 import TagDropdown from '@/components/TagDropdown.vue'
+import VersionHistoryDialog from '@/components/VersionHistoryDialog.vue'
 import { ApiError } from '@/api/client'
 import {
   createNote,
@@ -54,6 +55,22 @@ const hydrating = ref(true)
 const saveState = ref<'idle' | 'dirty' | 'saving' | 'saved' | 'error'>('idle')
 
 const editorRef = ref<InstanceType<typeof MarkdownEditor> | null>(null)
+
+/** 历史版本浮层（docs/v2/frontend/frontend.md 第五节）。 */
+const historyOpen = ref(false)
+
+function openHistory(): void {
+  // 先把编辑器当前内容交回来，DIFF 的新侧才是用户眼前的正文
+  editorRef.value?.sync()
+  historyOpen.value = true
+}
+
+/** 还原成功后重新拉取笔记内容并重置保存基线。 */
+async function onVersionRestored(): Promise<void> {
+  if (!noteId.value) return
+  await load()
+  ui.notesChanged()
+}
 
 const editingMode = computed(() => Boolean(note.value || isNew.value))
 
@@ -391,6 +408,21 @@ onBeforeUnmount(() => {
                 {{ wordCount }} 字
               </span>
 
+              <button
+                v-if="!isNew"
+                class="icon-btn"
+                type="button"
+                title="历史版本"
+                aria-label="历史版本"
+                @click="openHistory"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M3 12a9 9 0 1 0 3-6.7" />
+                  <path d="M3 4v5h5" />
+                  <path d="M12 8v4l3 2" />
+                </svg>
+              </button>
+
               <select class="select folder-select" :value="folderId ?? ''" aria-label="所属文件夹" @change="onFolderChange">
                 <option v-if="!folders.some((folder) => folder.is_inbox)" value="">收件箱</option>
                 <option v-for="option in folderOptions" :key="option.id" :value="option.id">{{ option.label }}</option>
@@ -403,6 +435,15 @@ onBeforeUnmount(() => {
           <div class="editor-body">
             <MarkdownEditor ref="editorRef" v-model="content" :autofocus="isNew" />
           </div>
+
+          <VersionHistoryDialog
+            :open="historyOpen"
+            :note-id="noteId"
+            :current-content="content"
+            :current-title="title"
+            @close="historyOpen = false"
+            @restored="onVersionRestored"
+          />
         </section>
 
         <div v-else class="detail-inner">
