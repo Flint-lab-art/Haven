@@ -1,6 +1,7 @@
 <script setup lang="ts">
 /** 公开作品集：平铺条目，主链接最显眼。 */
 import { onMounted, ref } from 'vue'
+import { RouterLink } from 'vue-router'
 import PublicEmpty from '@/components/PublicEmpty.vue'
 import { listPortfolio, type PortfolioItem } from '@/api/portfolio'
 
@@ -25,7 +26,7 @@ function sortedRepos(item: PortfolioItem) {
 </script>
 
 <template>
-  <main class="container">
+  <main class="container container--wide">
     <header class="public-page-head">
       <h1 class="public-page-head__title">作品集</h1>
       <p class="public-page-head__sub">
@@ -49,8 +50,15 @@ function sortedRepos(item: PortfolioItem) {
     />
 
     <div v-else class="public-list">
-      <article v-for="item in items" :key="item.id" class="public-project">
-        <h2 class="public-project__title">{{ item.title }}</h2>
+      <div v-for="item in items" :key="item.id" class="public-project">
+        <h2 class="public-project__title">
+          <RouterLink
+            :to="{ name: 'public-portfolio-detail', params: { id: item.id } }"
+            class="public-project__link"
+          >
+            {{ item.title }}
+          </RouterLink>
+        </h2>
         <p v-if="item.description" class="public-project__desc">{{ item.description }}</p>
 
         <div v-if="item.repos.length" class="tag-row public-project__repos">
@@ -68,7 +76,7 @@ function sortedRepos(item: PortfolioItem) {
           </a>
         </div>
         <p v-else class="field__hint">暂无仓库链接</p>
-      </article>
+      </div>
     </div>
   </main>
 </template>

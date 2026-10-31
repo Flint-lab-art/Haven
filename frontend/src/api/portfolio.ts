@@ -15,6 +15,8 @@ export interface PortfolioItem {
   id: string
   title: string
   description: string
+  /** 作品介绍正文（Markdown），仅详情接口返回，列表接口省略。 */
+  content?: string
   sort_order: number
   repos: PortfolioRepo[]
 }
@@ -22,12 +24,14 @@ export interface PortfolioItem {
 export interface CreateItemInput {
   title: string
   description: string
+  content?: string
   sort_order: number
 }
 
 export interface UpdateItemInput {
   title?: string
   description?: string
+  content?: string
   sort_order?: number
 }
 
@@ -44,6 +48,16 @@ export interface UpdateRepoInput {
 
 export function listPortfolio(): Promise<ListResult<PortfolioItem>> {
   return request<ListResult<PortfolioItem>>('/api/public/portfolio')
+}
+
+/** 私有域的作品详情，含介绍正文（docs/v3/api.md 1.2）。 */
+export function getPortfolioItem(id: string): Promise<PortfolioItem> {
+  return request<PortfolioItem>(`/api/portfolio/${id}`)
+}
+
+/** 公开的作品详情，含介绍正文（docs/v3/api.md 2.2）。 */
+export function getPublicPortfolioItem(id: string): Promise<PortfolioItem> {
+  return request<PortfolioItem>(`/api/public/portfolio/${id}`)
 }
 
 export function createItem(input: CreateItemInput): Promise<PortfolioItem> {

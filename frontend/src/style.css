@@ -422,6 +422,11 @@ a:hover {
   padding: var(--sp-10) var(--sp-6) var(--sp-16);
 }
 
+/* 公开域内容区放宽到 960px（docs/v3/frontend/frontend.md 第二节），私有不受影响 */
+.container--wide {
+  max-width: 960px;
+}
+
 .container--reading {
   max-width: 800px;
 }
@@ -570,10 +575,17 @@ a:hover {
 
 /* ============ 私有域三栏布局 ============ */
 
+/*
+ * 私有域整体布局：高度锁在视口内，滚动只发生在中间栏与详情区内部。
+ * 公开域是长页面，走 body 滚动，不受这里影响。
+ */
 .app {
-  flex: 1;
+  /* 私有域铺满 #app 的剩余高度；min-height: 0 防止被内部内容撑高 */
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   height: 100svh;
+  max-height: 100svh;
   overflow: hidden;
   background: var(--bg);
 }
@@ -584,6 +596,9 @@ a:hover {
   z-index: 10;
   width: 240px;
   flex: none;
+  /* flex 子项默认 min-height: auto，内容多时会被撑高、把 .app 顶出滚动条，
+     表现为「导航栏跟着滚」。显式归零后高度由 align-items: stretch 决定。 */
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -671,6 +686,7 @@ a:hover {
 .sidebar__spacer {
   flex: 1;
 }
+
 
 .sidebar__user {
   position: relative;
@@ -801,7 +817,8 @@ a:hover {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  overflow-y: auto;
+  /* 整栏不滚动：标题栏固定，只有下方列表滚动（见 .list-panel / .list-rows） */
+  overflow: hidden;
   background: var(--bg);
   border-right: 1px solid var(--sep);
   overscroll-behavior: contain;
@@ -1958,21 +1975,6 @@ button.tag[aria-pressed='true'] {
   overscroll-behavior: contain;
 }
 
-.editor-surface::-webkit-scrollbar {
-  width: 10px;
-}
-
-.editor-surface::-webkit-scrollbar-thumb {
-  background: var(--label-4);
-  border-radius: var(--r-capsule);
-  border: 3px solid transparent;
-  background-clip: content-box;
-}
-
-.editor-surface::-webkit-scrollbar-track {
-  background: transparent;
-}
-
 .milkdown {
   font: var(--text-body);
   color: var(--label);
@@ -2814,14 +2816,43 @@ button.tag[aria-pressed='true'] {
 /* ============ 三栏布局：列表栏通用行 ============ */
 
 .list-panel {
-  min-height: 100%;
+  /*
+   * .app__list 是 flex 列容器，这里用 flex: 1 撑满它。
+   * 不能用 height: 100%：flex 子项里的百分比高度会退化成 auto，
+   * 结果就是整栏内容一起超出、滚动条落在 .app__list 上。
+   */
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
+  /* 只有内部列表滚动，标题栏保持固定 */
+  overflow: hidden;
 }
 
 .list-rows {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: var(--sp-4);
+}
+
+/*
+ * 空状态、骨架屏等非列表内容同样要能滚动，
+ * 否则在小窗口里会被 list-panel 的 overflow: hidden 裁掉。
+ */
+.list-panel > .detail-empty {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* 标题栏与提示条不参与压缩，始终固定在顶部 */
+.list-panel > .panel-head,
+.list-panel > .notice {
+  flex: 0 0 auto;
 }
 
 .list-row {
@@ -3376,20 +3407,41 @@ button.tag[aria-pressed='true'] {
 
 /* ============ 隐藏滚动条（仍可滚轮 / 触控板 / 键盘滚动） ============ */
 
+/*
+ * 全局隐藏滚动条：滚轮 / 触控板 / 键盘照常可用，只是不画滚动条。
+ * 新增的滚动容器（中间栏列表、文件夹树、空状态等）一律加进这里，
+ * 避免出现系统默认的粗滚动条，与整体风格不一致。
+ */
 .app__list,
 .app__detail,
+.list-rows,
+.tree,
+.list-panel > .detail-empty,
 .editor-surface,
 .note-outline,
-.modal {
+.modal,
+.tag-picker__suggest,
+.tag-dropdown__list,
+.version-timeline,
+.version-diff,
+.tag-notes-modal__body {
   scrollbar-width: none; /* Firefox */
   -ms-overflow-style: none; /* 旧 Edge */
 }
 
 .app__list::-webkit-scrollbar,
 .app__detail::-webkit-scrollbar,
+.list-rows::-webkit-scrollbar,
+.tree::-webkit-scrollbar,
+.list-panel > .detail-empty::-webkit-scrollbar,
 .editor-surface::-webkit-scrollbar,
 .note-outline::-webkit-scrollbar,
-.modal::-webkit-scrollbar {
+.modal::-webkit-scrollbar,
+.tag-picker__suggest::-webkit-scrollbar,
+.tag-dropdown__list::-webkit-scrollbar,
+.version-timeline::-webkit-scrollbar,
+.version-diff::-webkit-scrollbar,
+.tag-notes-modal__body::-webkit-scrollbar {
   width: 0;
   height: 0;
   display: none;
@@ -3400,6 +3452,10 @@ button.tag[aria-pressed='true'] {
 .tree {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding-bottom: var(--sp-4);
 }
 
@@ -4374,4 +4430,406 @@ select:focus-visible {
 
 .version-dialog__foot .btn {
   margin-left: auto;
+}
+
+/* ============ 公开域首页（docs/v3/frontend/frontend.md 第三节） ============ */
+
+.home {
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: var(--sp-16) var(--sp-6) var(--sp-16);
+}
+
+.home-hero {
+  padding: 0 0 var(--sp-10);
+}
+
+.home-hero__title {
+  font: 700 32px/1.25 var(--font-ui);
+  letter-spacing: -0.5px;
+  color: var(--label);
+}
+
+.home-hero__sub {
+  margin-top: var(--sp-2);
+  font: var(--text-callout);
+  color: var(--label-2);
+}
+
+/* 段与段之间用 1px 分割线 + 40px 留白 */
+.home-section {
+  padding: var(--sp-10) 0 0;
+  border-top: 1px solid var(--sep);
+}
+
+.home-section__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+
+.home-section__title {
+  font: 600 16px/1.4 var(--font-ui);
+  color: var(--label);
+}
+
+.home-section__more {
+  font: var(--text-footnote);
+  color: var(--label-2);
+  transition: color var(--dur-fast) var(--ease-smooth);
+}
+
+.home-section__more:hover {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+/* 作品卡片：宽屏双列，窄屏单列 */
+.project-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-4);
+}
+
+.project-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--sp-5);
+  background: var(--fill-3);
+  border: 1px solid var(--sep);
+  border-radius: var(--r-xl);
+  color: inherit;
+  transition:
+    border-color var(--dur-base) var(--ease-smooth),
+    transform var(--dur-base) var(--ease-smooth);
+}
+
+.project-card:hover {
+  border-color: var(--sep-strong);
+  transform: translateY(-2px);
+  text-decoration: none;
+}
+
+.project-card__title {
+  font: 600 17px/1.35 var(--font-ui);
+  letter-spacing: -0.2px;
+  color: var(--label);
+}
+
+.project-card__desc {
+  font: var(--text-subheadline);
+  line-height: 1.6;
+  color: var(--label-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.project-card__repos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.repo-pill {
+  padding: 4px 10px;
+  font: var(--text-caption);
+  color: var(--label-2);
+  background: var(--fill);
+  border-radius: var(--r-capsule);
+}
+
+.repo-pill--primary {
+  color: var(--accent);
+}
+
+/* 近期笔记：比 /notes 页更紧凑 */
+.home-notes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+
+.home-notes .public-row__title {
+  font: 700 18px/1.35 var(--font-ui);
+}
+
+.home-notes .public-row__preview {
+  font-size: 14px;
+}
+
+.home-empty {
+  padding: var(--sp-16) 0;
+  text-align: center;
+  font: var(--text-subheadline);
+  color: var(--label-2);
+}
+
+/* 全部公开笔记页的列表 */
+.notes-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+}
+
+@media (max-width: 767px) {
+  .home {
+    padding: var(--sp-10) var(--sp-4) var(--sp-12);
+  }
+
+  .project-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .home-hero__title {
+    font-size: 26px;
+  }
+}
+
+/* ============ 公开作品详情（docs/v3/frontend/frontend.md 第六节） ============ */
+
+.portfolio-back {
+  padding: var(--sp-8) 0 0;
+  font: var(--text-footnote);
+}
+
+.portfolio-back a {
+  color: var(--label-2);
+}
+
+.portfolio-back a:hover {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.portfolio-detail {
+  padding: var(--sp-6) 0 var(--sp-16);
+}
+
+.portfolio-detail__head {
+  padding-bottom: var(--sp-6);
+  border-bottom: 1px solid var(--sep);
+  margin-bottom: var(--sp-8);
+}
+
+.portfolio-detail__title {
+  font: var(--text-large-title);
+  letter-spacing: -0.5px;
+  color: var(--label);
+}
+
+.portfolio-detail__sub {
+  margin-top: var(--sp-2);
+  font: var(--text-callout);
+  color: var(--label-2);
+}
+
+/* 列表页作品标题可点击进入详情 */
+.public-project__link {
+  color: inherit;
+}
+
+.public-project__link:hover {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+/* 详情页的仓库胶囊是外链 */
+.repo-pill--link {
+  text-decoration: none;
+}
+
+.repo-pill--link:hover {
+  text-decoration: none;
+  opacity: 0.8;
+}
+
+/* 多行文本输入（作品介绍正文） */
+.textarea {
+  min-height: 120px;
+  resize: vertical;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* 作品编辑：基本信息在左、仓库链接在右，避免右侧大片留白 */
+.portfolio-editor {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-4);
+  align-items: start;
+}
+
+/*
+ * 两列各需至少约 300px；详情区宽度 = 窗口 − 侧栏 240 − 列表栏 320，
+ * 所以窗口窄于 ~1200px 时退化为单列，避免输入框被挤变形。
+ */
+@media (max-width: 1200px) {
+  .portfolio-editor {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/*
+ * 详情区宽度策略（v3）：
+ *   表单与列表页（作品集、标签、设置）用满详情区宽度，
+ *   否则宽屏下右侧会留下一大片空白。
+ *
+ *   阅读正文的页面（笔记预览）在根上带 .detail-inner--reading，继续守 800px。
+ *   笔记编辑页的根是 .note-shell，已有独立规则，不受这里影响。
+ */
+.detail-pane > .detail-inner:not(.detail-inner--reading) {
+  max-width: none;
+}
+
+.detail-pane > .detail-inner--reading {
+  max-width: 800px;
+}
+
+/* ============ 标签页（docs/v3/frontend/frontend.md 第十节） ============ */
+
+/* 卡片网格：按内容自动填充列，窄屏自然降列 */
+.tag-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: var(--sp-3);
+  padding-bottom: var(--sp-8);
+}
+
+.tag-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 88px;
+  padding: var(--sp-4);
+  border: 1px solid var(--sep);
+  border-radius: var(--r-xl);
+  background: var(--fill-3);
+  cursor: pointer;
+  font: inherit;
+  transition:
+    border-color var(--dur-base) var(--ease-smooth),
+    transform var(--dur-base) var(--ease-smooth);
+}
+
+.tag-card:hover {
+  border-color: var(--sep-strong);
+  transform: translateY(-2px);
+}
+
+.tag-card__name {
+  font: 500 15px/1.35 var(--font-ui);
+  color: var(--label);
+  text-align: center;
+  word-break: break-word;
+}
+
+.tag-card__count {
+  font: var(--text-caption);
+  color: var(--label-2);
+}
+
+/* 引用次数分三档：多的更醒目，一眼能看出常用标签 */
+.tag-card--high {
+  background: var(--label);
+  border-color: var(--label);
+}
+
+.tag-card--high .tag-card__name {
+  color: var(--bg);
+}
+
+.tag-card--high .tag-card__count {
+  color: color-mix(in srgb, var(--bg) 70%, transparent);
+}
+
+.tag-card--mid {
+  background: var(--fill);
+  border-color: var(--sep-strong);
+}
+
+.tag-card--low {
+  background: var(--fill-3);
+  border-color: var(--sep);
+}
+
+.tag-card--low .tag-card__name {
+  color: var(--label-2);
+}
+
+/* 标签引用笔记的居中弹窗 */
+.tag-notes-modal {
+  width: min(520px, calc(100vw - 32px));
+  max-height: min(560px, calc(100svh - 96px));
+  display: flex;
+  flex-direction: column;
+}
+
+.tag-notes-modal__head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding-bottom: var(--sp-3);
+  border-bottom: 1px solid var(--sep);
+  margin-bottom: var(--sp-3);
+}
+
+.tag-notes-modal__title {
+  font: var(--text-title3);
+  color: var(--label);
+  margin: 0;
+}
+
+.tag-notes-modal__head .icon-btn {
+  margin-left: auto;
+}
+
+.tag-notes-modal__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tag-note-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.tag-note-row:hover {
+  background: var(--fill);
+}
+
+.tag-note-row__title {
+  font: var(--text-subheadline-med);
+  color: var(--label);
+}
+
+.tag-note-row__meta {
+  font: var(--text-caption);
+  color: var(--label-2);
 }

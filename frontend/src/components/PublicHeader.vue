@@ -13,7 +13,7 @@ import HavenMark from './HavenMark.vue'
       </RouterLink>
 
       <nav class="topbar__links" aria-label="主导航">
-        <RouterLink :to="{ name: 'public-home' }" class="nav-link">笔记</RouterLink>
+        <RouterLink :to="{ name: 'public-notes' }" class="nav-link">笔记</RouterLink>
         <RouterLink :to="{ name: 'public-portfolio' }" class="nav-link">作品集</RouterLink>
       </nav>
     </div>
