@@ -55,8 +55,11 @@ type Item struct {
 	ID          string `json:"id"`
 	Title       string `json:"title"`
 	Description string `json:"description"`
-	SortOrder   int    `json:"sort_order"`
-	Repos       []Repo `json:"repos"`
+	// Content 是作品介绍正文（Markdown 源文本），公开详情页渲染用（docs/v3/api.md 第二节）。
+	// 列表接口不返回它，避免公开列表带上大段正文。
+	Content   string `json:"content,omitempty"`
+	SortOrder int    `json:"sort_order"`
+	Repos     []Repo `json:"repos"`
 }
 
 // Service 承载作品集逻辑。
@@ -119,15 +122,43 @@ func (s *Service) ListPublic(ctx context.Context) ([]Item, error) {
 	return items, nil
 }
 
+// GetPublic 返回单个作品的公开详情（docs/v3/api.md 2.2），含介绍正文。
+//
+// 列表接口（ListPublic）不返回正文，只有详情页需要。
+func (s *Service) GetPublic(ctx context.Context, id string) (Item, error) {
+	const q = `
+		SELECT id, title, description, content, sort_order
+		FROM portfolio_items
+		WHERE id = $1`
+
+	var it Item
+	err := s.db.QueryRowContext(ctx, q, id).Scan(
+		&it.ID, &it.Title, &it.Description, &it.Content, &it.SortOrder)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Item{}, ErrItemNotFound
+	}
+	if err != nil {
+		return Item{}, fmt.Errorf("查询作品失败: %w", err)
+	}
+
+	repos, err := s.reposFor(ctx, []string{id})
+	if err != nil {
+		return Item{}, err
+	}
+	it.Repos = repos[id]
+	return it, nil
+}
+
 // Get 返回单个作品（含 repos），用于 CRUD 响应。
 func (s *Service) Get(ctx context.Context, userID, id string) (Item, error) {
 	const q = `
-		SELECT id, title, description, sort_order
+		SELECT id, title, description, content, sort_order
 		FROM portfolio_items
 		WHERE id = $1 AND user_id = $2`
 
 	var it Item
-	err := s.db.QueryRowContext(ctx, q, id, userID).Scan(&it.ID, &it.Title, &it.Description, &it.SortOrder)
+	err := s.db.QueryRowContext(ctx, q, id, userID).Scan(
+		&it.ID, &it.Title, &it.Description, &it.Content, &it.SortOrder)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Item{}, ErrItemNotFound
 	}
@@ -144,7 +175,7 @@ func (s *Service) Get(ctx context.Context, userID, id string) (Item, error) {
 }
 
 // Create 新建作品（api.md 10.2）。
-func (s *Service) Create(ctx context.Context, userID, title, description string, sortOrder int) (Item, error) {
+func (s *Service) Create(ctx context.Context, userID, title, description, content string, sortOrder int) (Item, error) {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		return Item{}, ErrTitleRequired
@@ -152,9 +183,9 @@ func (s *Service) Create(ctx context.Context, userID, title, description string,
 
 	var id string
 	err := s.db.QueryRowContext(ctx,
-		`INSERT INTO portfolio_items (user_id, title, description, sort_order)
-		 VALUES ($1, $2, $3, $4) RETURNING id`,
-		userID, title, description, sortOrder).Scan(&id)
+		`INSERT INTO portfolio_items (user_id, title, description, content, sort_order)
+		 VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+		userID, title, description, content, sortOrder).Scan(&id)
 	if err != nil {
 		return Item{}, fmt.Errorf("创建作品失败: %w", err)
 	}
@@ -165,6 +196,7 @@ func (s *Service) Create(ctx context.Context, userID, title, description string,
 type UpdateInput struct {
 	Title       *string
 	Description *string
+	Content     *string
 	SortOrder   *int
 }
 
@@ -187,6 +219,11 @@ func (s *Service) Update(ctx context.Context, userID, id string, in UpdateInput)
 	if in.Description != nil {
 		if _, err := s.db.ExecContext(ctx, `UPDATE portfolio_items SET description = $2 WHERE id = $1`, id, *in.Description); err != nil {
 			return Item{}, fmt.Errorf("更新作品简介失败: %w", err)
+		}
+	}
+	if in.Content != nil {
+		if _, err := s.db.ExecContext(ctx, `UPDATE portfolio_items SET content = $2 WHERE id = $1`, id, *in.Content); err != nil {
+			return Item{}, fmt.Errorf("更新作品正文失败: %w", err)
 		}
 	}
 	if in.SortOrder != nil {
@@ -508,6 +545,7 @@ func (h *Handler) ListPublic(c *gin.Context) {
 type createRequest struct {
 	Title       string `json:"title"`
 	Description string `json:"description"`
+	Content     string `json:"content"`
 	SortOrder   int    `json:"sort_order"`
 }
 
@@ -519,7 +557,7 @@ func (h *Handler) Create(c *gin.Context) {
 		return
 	}
 
-	item, err := h.svc.Create(c.Request.Context(), auth.UserID(c), req.Title, req.Description, req.SortOrder)
+	item, err := h.svc.Create(c.Request.Context(), auth.UserID(c), req.Title, req.Description, req.Content, req.SortOrder)
 	if err != nil {
 		fail(c, err)
 		return
@@ -530,6 +568,7 @@ func (h *Handler) Create(c *gin.Context) {
 type updateRequest struct {
 	Title       *string `json:"title"`
 	Description *string `json:"description"`
+	Content     *string `json:"content"`
 	SortOrder   *int    `json:"sort_order"`
 }
 
@@ -542,7 +581,7 @@ func (h *Handler) Update(c *gin.Context) {
 	}
 
 	item, err := h.svc.Update(c.Request.Context(), auth.UserID(c), c.Param("id"),
-		UpdateInput{Title: req.Title, Description: req.Description, SortOrder: req.SortOrder})
+		UpdateInput{Title: req.Title, Description: req.Description, Content: req.Content, SortOrder: req.SortOrder})
 	if err != nil {
 		fail(c, err)
 		return
@@ -614,8 +653,34 @@ func (h *Handler) DeleteRepo(c *gin.Context) {
 }
 
 // RegisterRoutes 注册作品集路由（api.md 第十节）。
+// Get 实现 GET /api/portfolio/:id（docs/v3/api.md 1.2）：私有域作品详情，含正文。
+//
+// 私有域列表用的是公开列表接口（不返回正文），编辑器打开作品时需要单独取一次详情。
+func (h *Handler) Get(c *gin.Context) {
+	item, err := h.svc.Get(c.Request.Context(), auth.UserID(c), c.Param("id"))
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	c.JSON(200, item)
+}
+
+// GetPublic 实现 GET /api/public/portfolio/:id（docs/v3/api.md 2.2）：公开的作品详情，含正文。
+func (h *Handler) GetPublic(c *gin.Context) {
+	item, err := h.svc.GetPublic(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	c.JSON(200, item)
+}
+
 func RegisterRoutes(r gin.IRouter, h *Handler) {
 	r.GET("/api/public/portfolio", h.ListPublic)
+	r.GET("/api/public/portfolio/:id", h.GetPublic)
+
+	read := r.Group("/api/portfolio", auth.RequireLogin())
+	read.GET("/:id", h.Get)
 
 	write := r.Group("/api/portfolio", auth.RequireWrite())
 	write.POST("", h.Create)

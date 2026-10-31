@@ -44,6 +44,8 @@ var publicAPIRoutes = map[string]bool{
 	"GET /api/public/notes/:id": true,
 	"GET /api/public/search":    true,
 	"GET /api/public/portfolio": true,
+	// docs/v3/api.md 2.2：公开的作品详情，供作品集详情页渲染介绍正文
+	"GET /api/public/portfolio/:id": true,
 }
 
 // routeAuthStore 只实现鉴权中间件用到的最小接口，供 Token 权限兜底测试使用。
