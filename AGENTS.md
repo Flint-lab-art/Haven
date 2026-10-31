@@ -42,19 +42,16 @@
 - `backend/internal/audit`：只追加的审计写入器 + 事件形状表（`events.go` 的 `specs`）。`Record` 先过 `Validate`（键名/ target_type / 必填 target_id / 敏感键），失败只打日志。`audit.UseAuthHooks` 由 `main` 接线到 `auth.Handler` 的钩子。
 - `backend/cmd/haven`：入口 + `router.go` 路由装配；`cmd/haven-init-user` 建唯一账号。
 - `backend/internal/notes`：私有 CRUD + publish/unpublish + 公开只读；`internal/tags`、`internal/search`、`internal/portfolio` 各有 Service + Handler + `RegisterRoutes`。
-- `backend/internal/llm` 仍是空目录（本期只定义接口，见 `docs/backend/llm-extension.md`）；`migrations/` 已有 `0001_init`；`deploy/` 尚不存在。
+- `backend/internal/llm`：**只有接口**（`Provider` / `TranslateRequest` / `TranslateResponse`），本期不实现任何 provider、不引 SDK（见 `docs/backend/llm-extension.md`）；`migrations/` 已有 `0001_init` 到 `0005_inbox_folder`；`deploy/` 已有 `build.sh` / `migrate.sh` / `deploy.sh` / `haven.service` / `haven.env.example`。
 - 全部业务路由已挂在 `cmd/haven/router.go`，前端静态托管在同一处 `mountStatic`。
 - `frontend/`：完整 Vue 3 应用。`src/api/` 按领域拆文件（含 `ApiError`）；`src/stores/auth.ts` 管登录态；`src/router/` 按 `window.location.hostname` 选公开域/私有域路由表；`src/views/{public,private}/` 是页面；`src/components/` 是公共组件。
 - 前端样式写在 `src/style.css`（HIG 语义色 + 字号阶梯 + 8pt 节奏），**不引入组件库**（`docs/frontend/frontend.md` 第八节）。
 - **正文是 Markdown 原文**：`notes.content` 存 Markdown 文本，阅读态用 `utils/markdown.ts`（marked + DOMPurify）渲染，编辑态用 `components/MarkdownEditor.vue`（Milkdown，路由懒加载）。
-- **新建笔记流程**：工作台点「新建笔记」→ `NewNoteModal` 收标题与标签 → 带 query 跳 `/notes/new` → 首次保存才 `POST /api/notes`。
-- **标签语义跟随笔记生命周期（类思源）**：统一用 `components/TagPicker.vue`。弹窗与编辑页**不提供物理删除**；编辑页点标签上的 × 只是解除本篇关联。选择器只列出 `note_count > 0` 的标签，计数归零自动隐藏（数据仍留在库里，下次被使用会重新出现）。新建遇到 409 时自动选中同名已有标签。
+- **新建笔记流程**：工作台点「新建笔记」→ 直接跳 `/notes/new` 空白编辑页（标题、正文、标签都空，**没有弹窗**）→ 首次自动保存才 `POST /api/notes`，成功后地址换成 `/notes/:id`。顶部按钮把当前选中目录作为 `folder_id` 带过去，未选中时归收件箱。
+- **新建文件夹**：中间栏顶部按钮固定建在**根目录**，不跟随当前选中目录；「新建子文件夹」菜单建在该文件夹下。
+- **标签只用 `components/TagDropdown.vue`**：已选标签以胶囊显示在「添加标签」按钮左侧，点 × 解除本篇关联（**不提供物理删除**）；点按钮向下展开面板（含搜索框 + 候选列表），输入实时匹配全部标签（含 `note_count = 0` 的，标「未使用」），回车新建或选中首项；点外部 / Esc 关闭。`TagPicker.vue`（旧的平铺式选择器）与 `NewNoteModal.vue` 已删除，不要再加回来。
 - 物理删除标签只在 `/tags` 页（`DELETE /api/tags/:id`）。
-- **两个页面的标签交互不同，不要合并**：
-  - 新建弹窗用 `components/TagPicker.vue`：已选标签 + **平铺展示 `note_count > 0` 的未选标签** + 末尾圆形 `+`。点 `+` 在行内展开输入框（与胶囊同高 22px/12px），回车确认、空值退格关闭、点组件外部收起；输入时匹配全部标签（含 0 计数的）。
-  - 编辑页用 `components/TagDropdown.vue`：**不并排展示标签**，只有一个「添加标签」按钮。点击向下展开面板（含搜索框 + 候选列表），输入实时匹配全部标签（含 0 计数的，标「未使用」），回车新建或选中首项；点外部 / Esc 关闭。
-- 标签语义跟随笔记生命周期（类思源）：两处都**不做物理删除**，编辑页点 × 只解除本篇关联；选择范围默认只列 `note_count > 0`。
-- **收起用 `pointerdown` 判断是否点在组件外，不要用 `focusout`/`blur`**：点「+」时焦点从按钮转到刚渲染的输入框，focusout 会在重渲染期间判定为移出组件，把输入框瞬间关掉。
+- **收起浮层用 `pointerdown` 判断是否点在组件外，不要用 `focusout`/`blur`**：下拉面板展开时焦点会在按钮与面板之间转移，focusout 会在这次转移期间就判定为移出组件，把面板瞬间关掉。
 - `frontend/dist/` 是构建产物，已被 gitignore，不要手改、不要提交。
 
 ## 常用命令

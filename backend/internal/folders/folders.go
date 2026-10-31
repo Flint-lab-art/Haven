@@ -26,6 +26,8 @@ var (
 	ErrNotFound = errors.New("文件夹不存在")
 	// ErrNameRequired 文件夹名为空（422）。
 	ErrNameRequired = errors.New("文件夹名不能为空")
+	// ErrNameTooLong 文件夹名超过长度上限（422）。
+	ErrNameTooLong = errors.New("文件夹名最多 32 个字符")
 	// ErrDuplicate 同一个父目录下已有同名文件夹（409）。
 	ErrDuplicate = errors.New("同一目录下已有同名文件夹")
 	// ErrInvalidParent 父文件夹不存在或不属于当前用户（422）。
@@ -41,6 +43,9 @@ var (
 	// ErrInboxMove 收件箱不能移动（422）。
 	ErrInboxMove = errors.New("收件箱不能移动")
 )
+
+// MaxNameRunes 是文件夹名的最大 rune 数（api.md 7.2 / data-model.md 第九节规则 3）。
+const MaxNameRunes = 32
 
 // MaxIconRunes 是文件夹图标的最大 rune 数。
 // 实现决策：data-model.md 只规定 icon 可空，未给数值；16 足够容纳家庭、旗帜等多码点 Emoji。
@@ -113,11 +118,14 @@ func (s *Service) List(ctx context.Context, userID string) ([]Folder, error) {
 	return out, nil
 }
 
-// Create 新建文件夹（api.md 6.5.2）。
+// Create 新建文件夹（api.md 7.2）。
 func (s *Service) Create(ctx context.Context, userID string, in CreateInput) (Folder, error) {
 	name := strings.TrimSpace(in.Name)
 	if name == "" {
 		return Folder{}, ErrNameRequired
+	}
+	if utf8.RuneCountInString(name) > MaxNameRunes {
+		return Folder{}, ErrNameTooLong
 	}
 	icon, err := normalizeIcon(in.Icon)
 	if err != nil {
@@ -189,6 +197,9 @@ func (s *Service) Update(ctx context.Context, userID, id string, in UpdateInput)
 		name = strings.TrimSpace(*in.Name)
 		if name == "" {
 			return Folder{}, ErrNameRequired
+		}
+		if utf8.RuneCountInString(name) > MaxNameRunes {
+			return Folder{}, ErrNameTooLong
 		}
 	}
 
@@ -436,6 +447,8 @@ func fail(c *gin.Context, err error) {
 		httpx.FailConflict(c, ErrInboxDelete.Error())
 	case errors.Is(err, ErrNameRequired):
 		httpx.FailValidation(c, map[string]string{"name": ErrNameRequired.Error()})
+	case errors.Is(err, ErrNameTooLong):
+		httpx.FailValidation(c, map[string]string{"name": ErrNameTooLong.Error()})
 	case errors.Is(err, ErrInvalidParent):
 		httpx.FailValidation(c, map[string]string{"parent_id": ErrInvalidParent.Error()})
 	case errors.Is(err, ErrCycle):

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"path/filepath"
 
@@ -32,6 +33,10 @@ type deps struct {
 	searchHandler  *search.Handler
 	portfolio      *portfolio.Handler
 
+	// usernameByID 供笔记审计填充 actor_username 快照（audit.md 2 规则 3）。
+	// 为 nil 时审计里的用户名留空（测试装配可用）。
+	usernameByID func(ctx context.Context, id string) (string, error)
+
 	// frontendDir 是 HAVEN_FRONTEND_DIR，用于托管 SPA 构建产物。
 	frontendDir string
 }
@@ -51,6 +56,12 @@ func newRouter(d deps) *gin.Engine {
 		httpx.FailUnauthorizedWith,
 		httpx.FailUnprocessable,
 	)
+
+	// 笔记 publish/unpublish 的审计要带用户名快照；auth 与 audit 不能互相 import，
+	// 因此由这里注入一个只读查询函数（笔记包不感知 auth 的 Store 接口）。
+	if d.usernameByID != nil && d.notesHandler != nil {
+		d.notesHandler.SetUsernameLookup(d.usernameByID)
+	}
 
 	r := gin.New()
 	r.Use(gin.Recovery())
@@ -84,7 +95,13 @@ func mountStatic(r *gin.Engine, dir string) {
 		return
 	}
 
-	r.Static("/assets", filepath.Join(dir, "assets"))
+	// /assets 下的文件名都带内容 hash，可以放心长缓存；
+	// gin 的 Static 只会回 Last-Modified，因此包一层补 Cache-Control（architecture.md 第七节）。
+	assets := http.Dir(filepath.Join(dir, "assets"))
+	r.GET("/assets/*filepath", func(c *gin.Context) {
+		c.Header("Cache-Control", "public, max-age=31536000, immutable")
+		c.FileFromFS(c.Param("filepath"), assets)
+	})
 	r.StaticFile("/favicon.svg", filepath.Join(dir, "favicon.svg"))
 
 	index := filepath.Join(dir, "index.html")

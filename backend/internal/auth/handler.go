@@ -105,6 +105,9 @@ type passwordChangeRequest struct {
 type userBriefResponse struct {
 	ID       string `json:"id"`
 	Username string `json:"username"`
+	// TotpEnabled 只用于 GET /api/me（api.md 12.1），login 响应不带该字段。
+	// 声明为指针才能在 false 时也序列化出来（bool + omitempty 会把 false 丢掉）。
+	TotpEnabled *bool `json:"totp_enabled,omitempty"`
 }
 
 type loginResponse struct {

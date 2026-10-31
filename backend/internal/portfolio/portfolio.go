@@ -224,9 +224,28 @@ func (s *Service) AddRepo(ctx context.Context, userID, itemID string, in RepoInp
 		return Repo{}, err
 	}
 
+	// 先查后插必须放在同一个事务里：仅靠查询无法阻止并发写入，
+	// 而主链接的唯一部分索引在冲突时只会报 500。事务内先锁住作品行，
+	// 让同作品的并发新增串行化，命中索引时统一映射成 409（api.md 11.5）。
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Repo{}, fmt.Errorf("开启事务失败: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var locked string
+	if err := tx.QueryRowContext(ctx,
+		`SELECT id FROM portfolio_items WHERE id = $1 AND user_id = $2 FOR UPDATE`,
+		itemID, userID).Scan(&locked); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Repo{}, ErrItemNotFound
+		}
+		return Repo{}, fmt.Errorf("锁定作品失败: %w", err)
+	}
+
 	if in.IsPrimary {
 		var exists bool
-		if err := s.db.QueryRowContext(ctx,
+		if err := tx.QueryRowContext(ctx,
 			`SELECT EXISTS (SELECT 1 FROM portfolio_repos WHERE portfolio_item_id = $1 AND is_primary)`,
 			itemID).Scan(&exists); err != nil {
 			return Repo{}, fmt.Errorf("查询主链接失败: %w", err)
@@ -243,13 +262,20 @@ func (s *Service) AddRepo(ctx context.Context, userID, itemID string, in RepoInp
 		RETURNING id`
 
 	var id string
-	err := s.db.QueryRowContext(ctx, q, itemID, in.Platform, in.RepoPath, in.IsPrimary).Scan(&id)
+	err = tx.QueryRowContext(ctx, q, itemID, in.Platform, in.RepoPath, in.IsPrimary).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		// 命中 idx_portfolio_repos_unique
 		return Repo{}, ErrDuplicateRepo
 	}
 	if err != nil {
+		if isUniqueViolation(err) {
+			// 命中 idx_portfolio_repos_primary（并发下仍有极小概率）
+			return Repo{}, ErrPrimaryExists
+		}
 		return Repo{}, fmt.Errorf("添加仓库失败: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return Repo{}, fmt.Errorf("提交事务失败: %w", err)
 	}
 
 	return Repo{
@@ -259,6 +285,15 @@ func (s *Service) AddRepo(ctx context.Context, userID, itemID string, in RepoInp
 		URL:       s.buildURL(in.Platform, in.RepoPath),
 		IsPrimary: in.IsPrimary,
 	}, nil
+}
+
+// isUniqueViolation 判断错误是否为 PostgreSQL 唯一约束冲突（SQLSTATE 23505）。
+// 不引入 pgconn 依赖，直接比对驱动错误文本里的状态码。
+func isUniqueViolation(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "23505")
 }
 
 // RepoInput 是新增 / 修改仓库的入参。
@@ -287,10 +322,8 @@ type UpdateRepoInput struct {
 
 // UpdateRepo 修改仓库（api.md 10.6）。
 func (s *Service) UpdateRepo(ctx context.Context, userID, itemID, repoID string, in UpdateRepoInput) (Repo, error) {
-	if _, err := s.Get(ctx, userID, itemID); err != nil {
-		return Repo{}, err
-	}
-
+	// 归属校验与写入必须在同一事务里：先 Get 再开新事务的话，
+	// 两次查询之间作品可能已被删除或转手。
 	var repo Repo
 	var platform string
 	err := s.db.QueryRowContext(ctx,
@@ -304,13 +337,33 @@ func (s *Service) UpdateRepo(ctx context.Context, userID, itemID, repoID string,
 		return Repo{}, fmt.Errorf("查询仓库失败: %w", err)
 	}
 
+	// 与 AddRepo 同理：先查后改放在同一事务内，并锁住作品行。
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Repo{}, fmt.Errorf("开启事务失败: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var locked string
+	if err := tx.QueryRowContext(ctx,
+		`SELECT id FROM portfolio_items WHERE id = $1 AND user_id = $2 FOR UPDATE`,
+		itemID, userID).Scan(&locked); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Repo{}, ErrItemNotFound
+		}
+		return Repo{}, fmt.Errorf("锁定作品失败: %w", err)
+	}
+
 	if in.RepoPath != nil {
 		path := strings.TrimSpace(*in.RepoPath)
 		if path == "" {
 			return Repo{}, ErrRepoPathRequired
 		}
-		if _, err := s.db.ExecContext(ctx,
+		if _, err := tx.ExecContext(ctx,
 			`UPDATE portfolio_repos SET repo_path = $2 WHERE id = $1`, repoID, path); err != nil {
+			if isUniqueViolation(err) {
+				return Repo{}, ErrDuplicateRepo
+			}
 			return Repo{}, fmt.Errorf("更新仓库路径失败: %w", err)
 		}
 		repo.RepoPath = path
@@ -318,7 +371,7 @@ func (s *Service) UpdateRepo(ctx context.Context, userID, itemID, repoID string,
 
 	if in.IsPrimary != nil && *in.IsPrimary {
 		var exists bool
-		if err := s.db.QueryRowContext(ctx,
+		if err := tx.QueryRowContext(ctx,
 			`SELECT EXISTS (SELECT 1 FROM portfolio_repos
 			 WHERE portfolio_item_id = $1 AND is_primary AND id <> $2)`,
 			itemID, repoID).Scan(&exists); err != nil {
@@ -327,17 +380,24 @@ func (s *Service) UpdateRepo(ctx context.Context, userID, itemID, repoID string,
 		if exists {
 			return Repo{}, ErrPrimaryExists
 		}
-		if _, err := s.db.ExecContext(ctx,
+		if _, err := tx.ExecContext(ctx,
 			`UPDATE portfolio_repos SET is_primary = true WHERE id = $1`, repoID); err != nil {
+			if isUniqueViolation(err) {
+				return Repo{}, ErrPrimaryExists
+			}
 			return Repo{}, fmt.Errorf("更新主链接失败: %w", err)
 		}
 		repo.IsPrimary = true
 	} else if in.IsPrimary != nil {
-		if _, err := s.db.ExecContext(ctx,
+		if _, err := tx.ExecContext(ctx,
 			`UPDATE portfolio_repos SET is_primary = false WHERE id = $1`, repoID); err != nil {
 			return Repo{}, fmt.Errorf("更新主链接失败: %w", err)
 		}
 		repo.IsPrimary = false
+	}
+
+	if err := tx.Commit(); err != nil {
+		return Repo{}, fmt.Errorf("提交事务失败: %w", err)
 	}
 
 	repo.Platform = platform
@@ -424,9 +484,12 @@ func fail(c *gin.Context, err error) {
 		httpx.FailNotFound(c)
 	case errors.Is(err, ErrDuplicateRepo), errors.Is(err, ErrPrimaryExists):
 		httpx.FailConflict(c, err.Error())
-	case errors.Is(err, ErrTitleRequired), errors.Is(err, ErrRepoPathRequired),
-		errors.Is(err, ErrInvalidPlatform):
-		httpx.FailValidation(c, map[string]string{"message": err.Error()})
+	case errors.Is(err, ErrTitleRequired):
+		httpx.FailValidation(c, map[string]string{"title": err.Error()})
+	case errors.Is(err, ErrRepoPathRequired):
+		httpx.FailValidation(c, map[string]string{"repo_path": err.Error()})
+	case errors.Is(err, ErrInvalidPlatform):
+		httpx.FailValidation(c, map[string]string{"platform": err.Error()})
 	default:
 		httpx.FailInternal(c, err)
 	}

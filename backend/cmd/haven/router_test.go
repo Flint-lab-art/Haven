@@ -115,6 +115,13 @@ func newTestEnv(t *testing.T) *testEnv {
 		authStore:      store,
 		authHandler:    h,
 		notesHandler:   notesHandler,
+		usernameByID: func(ctx context.Context, id string) (string, error) {
+			u, err := store.GetUser(ctx, id)
+			if err != nil {
+				return "", err
+			}
+			return u.Username, nil
+		},
 		foldersHandler: folders.NewHandler(folders.NewService(conn)),
 		tagsHandler:    tags.NewHandler(tags.NewService(conn)),
 		searchHandler:  search.NewHandler(search.NewService(conn)),

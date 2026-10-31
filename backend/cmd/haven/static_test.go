@@ -58,6 +58,10 @@ func TestStaticServesAssetsAndSPA(t *testing.T) {
 		if body := w.Body.String(); body != "console.log(1)" {
 			t.Errorf("内容不符: %q", body)
 		}
+		// architecture.md 第七节：文件名含 hash，必须带长缓存头
+		if got := w.Header().Get("Cache-Control"); got != "public, max-age=31536000, immutable" {
+			t.Errorf("Cache-Control = %q", got)
+		}
 	})
 
 	t.Run("SPA 路由回 index.html", func(t *testing.T) {

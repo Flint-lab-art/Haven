@@ -1,6 +1,7 @@
 package notes
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -18,6 +19,9 @@ import (
 // Handler 承载笔记接口。
 type Handler struct {
 	svc *Service
+	// usernameByID 用于审计的 actor_username 快照（audit.md 2 规则 3）。
+	// 由 router 注入；为 nil 时快照留空。
+	usernameByID func(ctx context.Context, id string) (string, error)
 	// OnNotePublished / OnNoteUnpublished 用于写审计事件（audit.md 第三节）。
 	// 钩子内部不返回错误：审计失败不影响业务。
 	OnNotePublished   func(c *gin.Context, ac AuditContext, noteID, title string)
@@ -27,6 +31,11 @@ type Handler struct {
 // NewHandler 构造 Handler。
 func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc}
+}
+
+// SetUsernameLookup 注入用户名查询函数，供审计快照使用。
+func (h *Handler) SetUsernameLookup(fn func(ctx context.Context, id string) (string, error)) {
+	h.usernameByID = fn
 }
 
 // AuditContext 是写笔记审计所需的信息。
@@ -40,11 +49,17 @@ type AuditContext struct {
 // auditContext 组装审计上下文；用户名只是快照，取不到时留空。
 func (h *Handler) auditContext(c *gin.Context) AuditContext {
 	id := auth.CurrentIdentity(c)
-	return AuditContext{
+	ac := AuditContext{
 		UserID: id.UserID,
 		IP:     c.ClientIP(),
 		UA:     c.Request.UserAgent(),
 	}
+	if ac.UserID != "" && h.usernameByID != nil {
+		if name, err := h.usernameByID(c.Request.Context(), ac.UserID); err == nil {
+			ac.Username = name
+		}
+	}
+	return ac
 }
 
 // 请求体。
@@ -121,7 +136,8 @@ func (h *Handler) List(c *gin.Context) {
 		}
 	}
 
-	items, total, err := h.svc.ListPrivate(c.Request.Context(), auth.UserID(c), filter, page.Limit, page.Offset)
+	items, total, err := h.svc.ListPrivate(c.Request.Context(), auth.UserID(c), auth.CurrentVisibility(c),
+		filter, page.Limit, page.Offset)
 	if err != nil {
 		fail(c, err)
 		return

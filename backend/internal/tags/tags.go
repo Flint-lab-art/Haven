@@ -14,6 +14,7 @@ import (
 
 	"github.com/kairo/haven/internal/auth"
 	"github.com/kairo/haven/internal/httpx"
+	"github.com/kairo/haven/internal/notes"
 
 	"github.com/gin-gonic/gin"
 )
@@ -183,7 +184,7 @@ func (s *Service) NotesByTag(ctx context.Context, userID, tagID string, limit, o
 			"id":              id,
 			"folder_id":       folderID,
 			"title":           title,
-			"content_preview": preview(content),
+			"content_preview": notes.Preview(content),
 			"visibility":      visibility,
 			"published_at":    publishedAt,
 			"created_at":      createdAt,
@@ -203,15 +204,6 @@ func (s *Service) NotesByTag(ctx context.Context, userID, tagID string, limit, o
 		item["tags"] = noteTags[item["id"].(string)]
 	}
 	return items, total, nil
-}
-
-// preview 与 notes.Preview 保持同一规则（按 rune 截 200 + …）。
-func preview(content string) string {
-	runes := []rune(content)
-	if len(runes) <= 200 {
-		return content
-	}
-	return string(runes[:200]) + "…"
 }
 
 // Handler 承载标签接口。

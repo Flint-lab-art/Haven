@@ -202,7 +202,8 @@ const privateRoutes: RouteRecordRaw[] = [
     path: '/:pathMatch(.*)*',
     name: 'not-found',
     component: () => import('@/views/private/NotFoundView.vue'),
-    meta: { title: '页面不存在', public: true },
+    // 不标 public：私有域下未登录访问未知路径也应先去登录（frontend.md 第四节）
+    meta: { title: '页面不存在' },
   },
 ]
 

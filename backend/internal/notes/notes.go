@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kairo/haven/internal/auth"
 	"github.com/kairo/haven/internal/httpx"
 )
 
@@ -146,24 +147,36 @@ func Preview(content string) string {
 }
 
 // ListPrivate 返回当前用户的笔记列表（api.md 6.1）。
-func (s *Service) ListPrivate(ctx context.Context, userID string, f ListFilter, limit, offset int) ([]NoteSummary, int, error) {
+//
+// vis 由授权中间件注入（auth.md 6.3）：登录用户为「自己的 OR 公开」。
+// $1 恒为当前用户 id，既供可见性条件使用，也是归属过滤（auth.md 6.4）。
+func (s *Service) ListPrivate(ctx context.Context, userID string, vis auth.Visibility, f ListFilter, limit, offset int) ([]NoteSummary, int, error) {
+	if vis.Condition == "" {
+		// 没有可见性条件 = 什么都不可见（auth.Visibility 注释）
+		return []NoteSummary{}, 0, nil
+	}
+
 	var tagID any
 	if f.TagID != "" {
 		tagID = f.TagID
 	}
 
-	const countQ = `
-		SELECT count(*) FROM notes
-		WHERE user_id = $1
+	// 可见性条件必须整体加括号：它自身含 OR（auth.md 6.3），
+	// 不括起来会与后面的 AND 条件混在一起，把可见性过滤绕开。
+	const whereTmpl = `
+		WHERE (%VIS%)
 		  AND ($2 = '' OR visibility = $2)
 		  AND ($3::uuid IS NULL OR id IN (SELECT note_id FROM note_tags WHERE tag_id = $3))
 		  AND (NOT $4::boolean
 		       OR (folder_id IS NULL AND $5 = '')
 		       OR folder_id = NULLIF($5, '')::uuid)`
 
+	base := strings.Replace(whereTmpl, "%VIS%", vis.Condition, 1)
+	// 参数：$1 = userID（可见性条件与归属过滤共用）
+	args := append([]any{userID}, f.Visibility, tagID, f.FolderFilter, f.FolderID)
+
 	var total int
-	if err := s.db.QueryRowContext(ctx, countQ, userID, f.Visibility, tagID,
-		f.FolderFilter, f.FolderID).Scan(&total); err != nil {
+	if err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM notes`+base, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("统计笔记数量失败: %w", err)
 	}
 
@@ -176,18 +189,13 @@ func (s *Service) ListPrivate(ctx context.Context, userID string, f ListFilter, 
 
 	q := `
 		SELECT id, folder_id, sort_order, title, content, visibility, published_at, created_at, updated_at
-		FROM notes
-		WHERE user_id = $1
-		  AND ($2 = '' OR visibility = $2)
-		  AND ($3::uuid IS NULL OR id IN (SELECT note_id FROM note_tags WHERE tag_id = $3))
-		  AND (NOT $4::boolean
-		       OR (folder_id IS NULL AND $5 = '')
-		       OR folder_id = NULLIF($5, '')::uuid)
+		FROM notes` + base + `
 		ORDER BY ` + orderBy + `
 		LIMIT $6 OFFSET $7`
 
-	rows, err := s.db.QueryContext(ctx, q, userID, f.Visibility, tagID,
-		f.FolderFilter, f.FolderID, limit, offset)
+	listArgs := append(append([]any{}, args...), limit, offset)
+
+	rows, err := s.db.QueryContext(ctx, q, listArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("查询笔记列表失败: %w", err)
 	}
@@ -538,8 +546,9 @@ func (s *Service) GetPublic(ctx context.Context, id string) (PublicNote, error) 
 	return n, nil
 }
 
-// authVisibilityPublic 是全库唯一的公开可见条件（data-model.md 第三节规则 4）。
-const authVisibilityPublic = `visibility = 'public' AND published_at IS NOT NULL`
+// authVisibilityPublic 是全库唯一的公开可见条件（data-model.md 第十节规则 4）。
+// 直接引用 auth 包的常量，避免同一条件出现第二份定义。
+const authVisibilityPublic = auth.VisibilityPublic
 
 // validateFolder 校验文件夹属于当前用户（data-model.md 第三节规则 9）。
 func validateFolder(ctx context.Context, tx *sql.Tx, userID, folderID string) error {

@@ -14,7 +14,6 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ConfirmDialog from './ConfirmDialog.vue'
-import NewNoteModal from './NewNoteModal.vue'
 import { ApiError } from '@/api/client'
 import {
   createFolder,
@@ -76,9 +75,6 @@ const renameDraft = ref('')
 /** 正在设置图标的文件夹，以及手动输入的 Emoji。 */
 const iconFolderId = ref<string | null>(null)
 const iconDraft = ref('')
-
-const showNew = ref(false)
-const modal = ref<InstanceType<typeof NewNoteModal> | null>(null)
 
 /** 待确认的删除目标。 */
 const pendingDelete = ref<{
@@ -227,10 +223,18 @@ function actionError(err: unknown, fallback: string): string {
   return fallback
 }
 
-async function openModal(): Promise<void> {
-  showNew.value = true
-  await nextTick()
-  void modal.value?.focusTitle()
+/**
+ * 新建笔记：直接进入空白编辑页，标题与正文都为空。
+ *
+ * 不再弹窗收标题——空白编辑页本身就让标题始终可见可改，
+ * 也省掉「先起名才能动笔」这一步。草稿只在内存，首次保存才 POST /api/notes。
+ */
+function startNewNote(): void {
+  const folderId = targetFolderId.value
+  void router.push({
+    name: 'note-create',
+    query: folderId ? { folder_id: folderId } : {},
+  })
 }
 
 function toggleFolder(id: string): void {
@@ -253,10 +257,10 @@ function selectFolder(folder: Folder): void {
   menuFolderId.value = null
 }
 
-/** 文件夹行右侧的「新建笔记」：先选中该文件夹，再打开弹窗。 */
+/** 文件夹行菜单的「新建笔记」：先选中该文件夹，再进入空白编辑页。 */
 function createNoteIn(folder: Folder): void {
   selectFolder(folder)
-  void openModal()
+  startNewNote()
 }
 
 function noteTarget(note: NoteSummary): { name: string; params: { id: string } } {
@@ -318,10 +322,17 @@ function submitIcon(folder: Folder): void {
   void saveIcon(folder, iconDraft.value)
 }
 
+/** 顶部「新建文件夹」：建在根目录，不跟随当前选中的目录。 */
+function startCreateRoot(): void {
+  selectedFolder.value = null
+  void startCreate(null)
+}
+
 async function startCreate(parentId: string | null): Promise<void> {
   menuFolderId.value = null
   creatingUnder.value = parentId
   createDraft.value = ''
+  // 根目录输入框渲染在树的顶部，不受展开状态影响（ui-design.md 9.1）
   if (parentId) expand(parentId)
   await nextTick()
   document.querySelector<HTMLInputElement>('.tree-input .input')?.focus()
@@ -894,14 +905,14 @@ onBeforeUnmount(() => {
     <header class="panel-head">
       <h1 class="panel-title panel-title--compact">{{ panelTitle }}</h1>
       <div class="panel-actions">
-        <button class="icon-btn" type="button" title="新建笔记" aria-label="新建笔记" @click="openModal">
+        <button class="icon-btn" type="button" title="新建笔记" aria-label="新建笔记" @click="startNewNote">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M6 3h7l5 5v13H6z" />
             <path d="M13 3v5h5" />
             <path d="M12 12v5M9.5 14.5h5" />
           </svg>
         </button>
-        <button class="icon-btn" type="button" title="新建文件夹" aria-label="新建文件夹" @click="startCreate(targetFolderId)">
+        <button class="icon-btn" type="button" title="新建文件夹" aria-label="新建文件夹" @click="startCreateRoot">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
             <path d="M12 11v5M9.5 13.5h5" />
@@ -1172,7 +1183,6 @@ onBeforeUnmount(() => {
       </p>
     </div>
 
-    <NewNoteModal ref="modal" :open="showNew" :folder-id="targetFolderId" @close="showNew = false" />
 
     <ConfirmDialog
       :open="pendingDelete !== null"

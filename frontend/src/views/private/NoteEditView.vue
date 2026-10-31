@@ -8,7 +8,8 @@
  * - 保存状态以轻量文字显示在标题栏右侧；
  * - 添加标签、公开 / 私有、删除放在标题栏最右侧。
  *
- * 新建笔记（/notes/new）首次自动保存时才真正 POST /api/notes，
+ * 新建笔记（/notes/new）是空白编辑页：标题与正文都为空，直接开写。
+ * 首次自动保存时才真正 POST /api/notes，
  * 随后换成 /notes/:id，刷新不会重复创建。
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -217,10 +218,9 @@ async function load(): Promise<void> {
     if (folderResult.status === 'fulfilled') folders.value = folderResult.value.items
 
     if (isNew.value) {
-      // 标题与标签来自新建弹窗（路由 query），正文留空
-      title.value = String(route.query.title ?? '')
-      const rawTagIds = route.query.tag_ids
-      selectedTagIds.value = typeof rawTagIds === 'string' && rawTagIds ? rawTagIds.split(',') : []
+      // 空白编辑页：标题、正文、标签都从空开始，只沿用目录树传来的 folder_id
+      title.value = ''
+      selectedTagIds.value = []
       const rawFolderId = route.query.folder_id
       folderId.value =
         typeof rawFolderId === 'string' && rawFolderId ? rawFolderId : defaultInboxId()
@@ -331,7 +331,7 @@ watch(
 // 三栏布局里本组件不会随笔记切换重建；新建页再次从树里点「新建」时
 // 参数也是 query 变化而不是 id 变化，所以这些来源都要监听
 watch(
-  () => [route.params.id, route.query.title, route.query.folder_id, route.query.tag_ids],
+  () => [route.params.id, route.query.folder_id],
   () => void load(),
   { immediate: true },
 )

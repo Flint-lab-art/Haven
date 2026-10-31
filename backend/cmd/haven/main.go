@@ -65,7 +65,14 @@ func run() error {
 		tagsHandler:    tags.NewHandler(tagsSvc),
 		searchHandler:  search.NewHandler(searchSvc),
 		portfolio:      portfolio.NewHandler(portfolioSvc),
-		frontendDir:    cfg.FrontendDir,
+		usernameByID: func(ctx context.Context, id string) (string, error) {
+			u, err := store.GetUser(ctx, id)
+			if err != nil {
+				return "", err
+			}
+			return u.Username, nil
+		},
+		frontendDir: cfg.FrontendDir,
 	})
 
 	logger.Info("后端启动", "listen_addr", cfg.ListenAddr)
