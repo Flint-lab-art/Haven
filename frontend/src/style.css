@@ -3233,6 +3233,11 @@ button.tag[aria-pressed='true'] {
   flex-shrink: 0;
 }
 
+/* 回收站详情：内容只有标题与 200 字预览，不受 800px 阅读列宽限制 */
+.detail-pane > .detail-inner--trash {
+  max-width: none;
+}
+
 /* 空状态是例外：它要占满整个面板（宽度与高度）才能真居中 */
 .detail-pane > .detail-empty {
   flex: 1 1 auto;

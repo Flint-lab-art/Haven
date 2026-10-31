@@ -108,48 +108,47 @@ watch(
 </script>
 
 <template>
-  <div class="detail">
-    <EmptyDetail v-if="!selected" />
+  <!-- 空状态必须是 .detail-pane 的直接子元素才能垂直居中（style.css 的 .detail-pane > .detail-empty） -->
+  <EmptyDetail v-if="!selected" />
 
-    <div v-else-if="loading" class="detail-inner">
-      <div class="skeleton skeleton--title" style="width: 40%"></div>
-    </div>
-
-    <div v-else class="detail-inner">
-      <header class="detail-head">
-        <div>
-          <h2 class="detail-title">{{ selected.title }}</h2>
-          <p class="detail-meta">
-            <span v-if="selected.folder_path">{{ selected.folder_path }}</span>
-            <span v-if="selected.folder_path" class="meta-dot"></span>
-            <span>删除于 {{ formatDateTime(selected.deleted_at) }}</span>
-          </p>
-        </div>
-        <div class="editor-actions">
-          <button class="btn btn--primary btn--sm" type="button" :disabled="busy" @click="restore">
-            还原
-          </button>
-          <button class="btn btn--danger btn--sm" type="button" :disabled="busy" @click="confirmPurge = true">
-            永久删除
-          </button>
-        </div>
-      </header>
-
-      <p v-if="notice" class="notice notice--success" style="margin: 0 0 12px">{{ notice }}</p>
-      <p v-if="error" class="notice notice--error" style="margin: 0 0 12px">{{ error }}</p>
-
-      <!-- eslint-disable-next-line vue/no-v-html -- 已经过 DOMPurify 过滤 -->
-      <div v-if="renderedPreview" class="md-body" v-html="renderedPreview"></div>
-      <p v-else class="field__hint">这篇笔记没有正文。</p>
-    </div>
-
-    <ConfirmDialog
-      :open="confirmPurge"
-      title="永久删除"
-      :message="`永久删除「${selected?.title ?? ''}」后无法恢复。`"
-      :busy="busy"
-      @confirm="purge"
-      @cancel="confirmPurge = false"
-    />
+  <div v-else-if="loading" class="detail-inner">
+    <div class="skeleton skeleton--title" style="width: 40%"></div>
   </div>
+
+  <div v-else class="detail-inner detail-inner--trash">
+    <header class="detail-head">
+      <div>
+        <h2 class="detail-title">{{ selected.title }}</h2>
+        <p class="detail-meta">
+          <span v-if="selected.folder_path">{{ selected.folder_path }}</span>
+          <span v-if="selected.folder_path" class="meta-dot"></span>
+          <span>删除于 {{ formatDateTime(selected.deleted_at) }}</span>
+        </p>
+      </div>
+      <div class="editor-actions">
+        <button class="btn btn--primary btn--sm" type="button" :disabled="busy" @click="restore">
+          还原
+        </button>
+        <button class="btn btn--danger btn--sm" type="button" :disabled="busy" @click="confirmPurge = true">
+          永久删除
+        </button>
+      </div>
+    </header>
+
+    <p v-if="notice" class="notice notice--success" style="margin: 0 0 12px">{{ notice }}</p>
+    <p v-if="error" class="notice notice--error" style="margin: 0 0 12px">{{ error }}</p>
+
+    <!-- eslint-disable-next-line vue/no-v-html -- 已经过 DOMPurify 过滤 -->
+    <div v-if="renderedPreview" class="md-body" v-html="renderedPreview"></div>
+    <p v-else class="field__hint">这篇笔记没有正文。</p>
+  </div>
+
+  <ConfirmDialog
+    :open="confirmPurge"
+    title="永久删除"
+    :message="`永久删除「${selected?.title ?? ''}」后无法恢复。`"
+    :busy="busy"
+    @confirm="purge"
+    @cancel="confirmPurge = false"
+  />
 </template>
