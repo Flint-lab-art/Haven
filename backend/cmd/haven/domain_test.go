@@ -390,6 +390,15 @@ func TestTagsCRUD(t *testing.T) {
 		t.Errorf("新标签 note_count 应为 0，实际 %v", tag["note_count"])
 	}
 
+	// 挂一篇笔记：引用归零的标签会在查询时被清理（docs/v3/api.md 第六节），
+	// 这里先建立引用，后续的列表与删除断言才有意义。
+	if w := e.do(http.MethodPost, "/api/notes", map[string]any{
+		"title":   "带标签的笔记",
+		"tag_ids": []string{tag["id"].(string)},
+	}, cookie); w.Code != http.StatusCreated {
+		t.Fatalf("创建带标签的笔记失败: %d: %s", w.Code, w.Body.String())
+	}
+
 	// 大小写不同视为重名：409（data-model.md 第四节规则 2）
 	if w := e.do(http.MethodPost, "/api/tags", map[string]any{"name": "编程"}, cookie); w.Code != http.StatusConflict {
 		t.Errorf("重名应 409，实际 %d", w.Code)
@@ -563,41 +572,64 @@ func TestPortfolioCRUD(t *testing.T) {
 		t.Errorf("新作品 repos 应为空数组，实际 %v", item["repos"])
 	}
 
-	// 加两个仓库：gogs 主链接 + github
+	// 加两条链接：gogs 主链接 + github（URL 直接填完整地址，不再拼接）
 	w = e.do(http.MethodPost, "/api/portfolio/"+id+"/repos",
-		map[string]any{"platform": "gogs", "repo_path": "kairo/haven", "is_primary": true}, cookie)
+		map[string]any{"url": "https://gogs.example.com/kairo/haven", "is_primary": true}, cookie)
 	if w.Code != http.StatusCreated {
-		t.Fatalf("加仓库状态码 = %d: %s", w.Code, w.Body.String())
+		t.Fatalf("加链接状态码 = %d: %s", w.Code, w.Body.String())
 	}
 	gogsRepo := jsonBody(t, w.Body.Bytes())
-	// url 由后端拼接（data-model.md 第七节规则 1）
 	if gogsRepo["url"] != "https://gogs.example.com/kairo/haven" {
-		t.Errorf("gogs url 拼接错误: %v", gogsRepo["url"])
+		t.Errorf("url 应按原样保存: %v", gogsRepo["url"])
+	}
+	if gogsRepo["kind"] != "gogs" {
+		t.Errorf("gogs 域名的链接 kind 应为 gogs，实际 %v", gogsRepo["kind"])
 	}
 
 	w = e.do(http.MethodPost, "/api/portfolio/"+id+"/repos",
-		map[string]any{"platform": "github", "repo_path": "kairo/haven"}, cookie)
+		map[string]any{"url": "https://github.com/kairo/haven"}, cookie)
 	ghRepo := jsonBody(t, w.Body.Bytes())
 	if ghRepo["url"] != "https://github.com/kairo/haven" {
-		t.Errorf("github url 拼接错误: %v", ghRepo["url"])
+		t.Errorf("github url 错了: %v", ghRepo["url"])
+	}
+	if ghRepo["kind"] != "github" {
+		t.Errorf("github 链接 kind 应为 github，实际 %v", ghRepo["kind"])
 	}
 
-	// 重复仓库：409
+	// 任意链接：kind 为 link，可带标题
+	w = e.do(http.MethodPost, "/api/portfolio/"+id+"/repos",
+		map[string]any{"url": "https://go.dev/blog/", "title": "Go 官方博客"}, cookie)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("加任意链接状态码 = %d: %s", w.Code, w.Body.String())
+	}
+	linkRepo := jsonBody(t, w.Body.Bytes())
+	if linkRepo["kind"] != "link" {
+		t.Errorf("非仓库链接 kind 应为 link，实际 %v", linkRepo["kind"])
+	}
+	if linkRepo["title"] != "Go 官方博客" {
+		t.Errorf("标题应保存，实际 %v", linkRepo["title"])
+	}
+
+	// 重复 URL：409
 	if w := e.do(http.MethodPost, "/api/portfolio/"+id+"/repos",
-		map[string]any{"platform": "github", "repo_path": "kairo/haven"}, cookie); w.Code != http.StatusConflict {
-		t.Errorf("重复仓库应 409，实际 %d", w.Code)
+		map[string]any{"url": "https://github.com/kairo/haven"}, cookie); w.Code != http.StatusConflict {
+		t.Errorf("重复链接应 409，实际 %d", w.Code)
 	}
 
 	// 第二个主链接：409
 	if w := e.do(http.MethodPost, "/api/portfolio/"+id+"/repos",
-		map[string]any{"platform": "github", "repo_path": "other/repo", "is_primary": true}, cookie); w.Code != http.StatusConflict {
+		map[string]any{"url": "https://github.com/other/repo", "is_primary": true}, cookie); w.Code != http.StatusConflict {
 		t.Errorf("已有主链接时再加主链接应 409，实际 %d", w.Code)
 	}
 
-	// 非法 platform：422
+	// 非法 URL：422
 	if w := e.do(http.MethodPost, "/api/portfolio/"+id+"/repos",
-		map[string]any{"platform": "gitlab", "repo_path": "a/b"}, cookie); w.Code != http.StatusUnprocessableEntity {
-		t.Errorf("非法 platform 应 422，实际 %d", w.Code)
+		map[string]any{"url": "kairo/haven"}, cookie); w.Code != http.StatusUnprocessableEntity {
+		t.Errorf("非完整地址应 422，实际 %d", w.Code)
+	}
+	if w := e.do(http.MethodPost, "/api/portfolio/"+id+"/repos",
+		map[string]any{"url": "ftp://example.com/a"}, cookie); w.Code != http.StatusUnprocessableEntity {
+		t.Errorf("非 http(s) 协议应 422，实际 %d", w.Code)
 	}
 
 	// 公开列表
@@ -607,8 +639,8 @@ func TestPortfolioCRUD(t *testing.T) {
 		t.Fatalf("作品集应 1 条，实际 %d", total)
 	}
 	repos, _ := items[0]["repos"].([]any)
-	if len(repos) != 2 {
-		t.Fatalf("应含 2 个仓库，实际 %d", len(repos))
+	if len(repos) != 3 {
+		t.Fatalf("应含 3 条链接，实际 %d", len(repos))
 	}
 	// 主链接优先排在前面
 	first, _ := repos[0].(map[string]any)
@@ -616,15 +648,15 @@ func TestPortfolioCRUD(t *testing.T) {
 		t.Error("列表应把主链接排在前面")
 	}
 
-	// 改仓库路径
+	// 改链接地址
 	ghID, _ := ghRepo["id"].(string)
 	w = e.do(http.MethodPatch, "/api/portfolio/"+id+"/repos/"+ghID,
-		map[string]any{"repo_path": "kairo/haven-v2"}, cookie)
+		map[string]any{"url": "https://github.com/kairo/haven-v2"}, cookie)
 	if w.Code != http.StatusOK {
-		t.Fatalf("改仓库状态码 = %d: %s", w.Code, w.Body.String())
+		t.Fatalf("改链接状态码 = %d: %s", w.Code, w.Body.String())
 	}
 	if updated := jsonBody(t, w.Body.Bytes()); updated["url"] != "https://github.com/kairo/haven-v2" {
-		t.Errorf("改路径后 url 应重算，实际 %v", updated["url"])
+		t.Errorf("改地址后 url 应更新，实际 %v", updated["url"])
 	}
 
 	// 删仓库

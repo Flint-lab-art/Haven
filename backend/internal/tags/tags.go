@@ -59,6 +59,12 @@ func NewService(db *sql.DB) *Service {
 //
 // note_count 含私有笔记：查询本身就限定在 user_id 内（data-model.md 第四节规则 4）。
 func (s *Service) List(ctx context.Context, userID string) ([]Tag, error) {
+	// 引用归零的标签直接删除（docs/v3/api.md 第六节）。
+	// 放在列表查询前，保证接口永远不会返回 note_count = 0 的标签。
+	if err := s.pruneOrphans(ctx, userID); err != nil {
+		return nil, err
+	}
+
 	const q = `
 		SELECT t.id, t.name, t.created_at, count(n.id)
 		FROM tags t
@@ -86,6 +92,27 @@ func (s *Service) List(ctx context.Context, userID string) ([]Tag, error) {
 		return nil, fmt.Errorf("读取标签失败: %w", err)
 	}
 	return out, nil
+}
+
+// pruneOrphans 删除当前用户下没有任何笔记引用的标签。
+//
+// 回收站里的笔记不算引用：与 List 的计数口径保持一致（只数 deleted_at IS NULL 的笔记），
+// 否则会出现「列表显示 0 篇但标签还在」的情况。
+func (s *Service) pruneOrphans(ctx context.Context, userID string) error {
+	const q = `
+		DELETE FROM tags t
+		WHERE t.user_id = $1
+		  AND NOT EXISTS (
+		      SELECT 1
+		      FROM note_tags nt
+		      JOIN notes n ON n.id = nt.note_id AND n.deleted_at IS NULL
+		      WHERE nt.tag_id = t.id
+		  )`
+
+	if _, err := s.db.ExecContext(ctx, q, userID); err != nil {
+		return fmt.Errorf("清理空标签失败: %w", err)
+	}
+	return nil
 }
 
 // Create 新建标签（api.md 8.2）。重名（lower(name)）返回 ErrDuplicate。
