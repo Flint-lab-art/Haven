@@ -142,6 +142,15 @@ const privateRoutes: RouteRecordRaw[] = [
         meta: { title: '设置', section: 'settings' },
       },
       {
+        path: 'settings/appearance',
+        name: 'settings-appearance',
+        components: {
+          default: () => import('@/views/private/SettingsAppearance.vue'),
+          list: () => import('@/components/SettingsPanel.vue'),
+        },
+        meta: { title: '外观', section: 'settings' },
+      },
+      {
         path: 'settings/security',
         name: 'settings-security',
         components: {

@@ -91,8 +91,242 @@
   --shadow-1: none;
   --shadow-2: 0 12px 40px rgba(0, 0, 0, 0.14);
   --focus-ring: 0 0 0 3px rgba(0, 122, 255, 0.18);
+  /* 代码块底色：浅色下比正文背景略深一点 */
+  /* 半透明遮罩与浮层阴影（深色主题下需要更重） */
+  --overlay: rgba(0, 0, 0, 0.32);
+  --shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.14);
+  --shadow-modal: 0 24px 60px rgba(0, 0, 0, 0.24);
+  /* 轻微交互底：悬停、标签底色 */
+  --hover-tint: rgba(0, 0, 0, 0.04);
+  --tag-hover: #e8e8ed;
+  --input-hover: #ececf1;
+  /* 反色提示气泡（tooltip） */
+  --tooltip-bg: #1a1a1a;
+  --tooltip-fg: #ffffff;
+  /* 代码高亮 token 色 */
+  --code-comment: #6b7280;
+  --code-keyword: #b3268f;
+  --code-string: #0a7a3a;
+  --code-number: #b45309;
+  --code-function: #0550ae;
+  --code-type: #7c3aed;
+  --code-attr: #8a5a00;
+  --code-tag: #0550ae;
 
   color-scheme: light;
+}
+
+/* ============ 主题 ============
+ *
+ * 切换主题只改 <html data-theme="...">，这里覆盖同名 CSS 变量。
+ * 变量清单见上方 :root；没在这里列出的沿用默认浅色值。
+ * 主题列表在 src/utils/theme.ts，两边的 id 必须一致。
+ *
+ * 深色主题的共同约定：
+ * - --bg / --bg-elevated 是正文区背景，--bg-grouped 是侧栏等分组区；
+ * - --fill / --fill-2 用于悬停与选中，必须比 --bg 略亮；
+ * - --accent-soft 是强调色的低饱和底，要压得住 --accent 文字；
+ * - --on-accent 是强调色上的文字色，深色主题里通常仍是深色而非白色。
+ */
+
+/* Tokyo Night：冷调深蓝紫，长时间写作最舒服的一款 */
+[data-theme='tokyo-night'] {
+  --label: #c0caf5;
+  --label-2: #9aa5ce;
+  --label-3: #565f89;
+  --label-4: #3b4261;
+  --sep: #2a2e42;
+  --sep-strong: #3b4261;
+  --bg: #1a1b26;
+  --bg-grouped: #16161e;
+  --bg-elevated: #1f2335;
+  --fill: #24283b;
+  --fill-2: #292e42;
+  --fill-3: #1e2030;
+  --cell-hover: #24283b;
+  --brand: #7aa2f7;
+  --accent: #7aa2f7;
+  --accent-hover: #8fb4fa;
+  --accent-soft: #273451;
+  --on-accent: #16161e;
+  --danger: #f7768e;
+  --danger-soft: #3a2430;
+  --success: #9ece6a;
+  --success-soft: #24321f;
+  --warning: #e0af68;
+  --glass: #1f2335;
+  --glass-border: #2a2e42;
+  --shadow-1: none;
+  --shadow-2: 0 12px 40px rgba(0, 0, 0, 0.55);
+  --focus-ring: 0 0 0 3px rgba(122, 162, 247, 0.28);
+  --overlay: rgba(0, 0, 0, 0.6);
+  --shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.55);
+  --shadow-modal: 0 24px 60px rgba(0, 0, 0, 0.7);
+  --hover-tint: rgba(255, 255, 255, 0.06);
+  --tag-hover: #2f3448;
+  --input-hover: #292e42;
+  --tooltip-bg: #c0caf5;
+  --tooltip-fg: #1a1b26;
+  --code-comment: #565f89;
+  --code-keyword: #bb9af7;
+  --code-string: #9ece6a;
+  --code-number: #ff9e64;
+  --code-function: #7aa2f7;
+  --code-type: #2ac3de;
+  --code-attr: #e0af68;
+  --code-tag: #f7768e;
+
+  color-scheme: dark;
+}
+
+/* Gruvbox：复古暖棕，米黄文字，适合白天也想用深色时 */
+[data-theme='gruvbox'] {
+  --label: #ebdbb2;
+  --label-2: #bdae93;
+  --label-3: #928374;
+  --label-4: #665c54;
+  --sep: #3c3836;
+  --sep-strong: #504945;
+  --bg: #282828;
+  --bg-grouped: #1d2021;
+  --bg-elevated: #32302f;
+  --fill: #3c3836;
+  --fill-2: #45403d;
+  --fill-3: #32302f;
+  --cell-hover: #3c3836;
+  --brand: #fabd2f;
+  --accent: #fabd2f;
+  --accent-hover: #ffd166;
+  --accent-soft: #4a3d22;
+  --on-accent: #1d2021;
+  --danger: #fb4934;
+  --danger-soft: #46261f;
+  --success: #b8bb26;
+  --success-soft: #2f3a1e;
+  --warning: #fe8019;
+  --glass: #32302f;
+  --glass-border: #3c3836;
+  --shadow-1: none;
+  --shadow-2: 0 12px 40px rgba(0, 0, 0, 0.55);
+  --focus-ring: 0 0 0 3px rgba(250, 189, 47, 0.25);
+  --overlay: rgba(0, 0, 0, 0.6);
+  --shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.55);
+  --shadow-modal: 0 24px 60px rgba(0, 0, 0, 0.7);
+  --hover-tint: rgba(255, 255, 255, 0.06);
+  --tag-hover: #45403d;
+  --input-hover: #45403d;
+  --tooltip-bg: #ebdbb2;
+  --tooltip-fg: #282828;
+  --code-comment: #928374;
+  --code-keyword: #fb4934;
+  --code-string: #b8bb26;
+  --code-number: #d3869b;
+  --code-function: #83a598;
+  --code-type: #fabd2f;
+  --code-attr: #fe8019;
+  --code-tag: #8ec07c;
+
+  color-scheme: dark;
+}
+
+/* Catppuccin Mocha：低饱和粉彩，柔和圆润 */
+[data-theme='catppuccin'] {
+  --label: #cdd6f4;
+  --label-2: #a6adc8;
+  --label-3: #6c7086;
+  --label-4: #45475a;
+  --sep: #313244;
+  --sep-strong: #45475a;
+  --bg: #1e1e2e;
+  --bg-grouped: #181825;
+  --bg-elevated: #313244;
+  --fill: #313244;
+  --fill-2: #45475a;
+  --fill-3: #181825;
+  --cell-hover: #313244;
+  --brand: #cba6f7;
+  --accent: #cba6f7;
+  --accent-hover: #d8b4ff;
+  --accent-soft: #3d2f52;
+  --on-accent: #181825;
+  --danger: #f38ba8;
+  --danger-soft: #3e2430;
+  --success: #a6e3a1;
+  --success-soft: #243a2b;
+  --warning: #fab387;
+  --glass: #313244;
+  --glass-border: #313244;
+  --shadow-1: none;
+  --shadow-2: 0 12px 40px rgba(0, 0, 0, 0.55);
+  --focus-ring: 0 0 0 3px rgba(203, 166, 247, 0.28);
+  --overlay: rgba(0, 0, 0, 0.6);
+  --shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.55);
+  --shadow-modal: 0 24px 60px rgba(0, 0, 0, 0.7);
+  --hover-tint: rgba(255, 255, 255, 0.06);
+  --tag-hover: #45475a;
+  --input-hover: #45475a;
+  --tooltip-bg: #cdd6f4;
+  --tooltip-fg: #1e1e2e;
+  --code-comment: #6c7086;
+  --code-keyword: #cba6f7;
+  --code-string: #a6e3a1;
+  --code-number: #fab387;
+  --code-function: #89b4fa;
+  --code-type: #94e2d5;
+  --code-attr: #f9e2af;
+  --code-tag: #f38ba8;
+
+  color-scheme: dark;
+}
+
+/* Nord：冷灰蓝，极简克制，和 Haven 本身的设计语言最接近 */
+[data-theme='nord'] {
+  --label: #eceff4;
+  --label-2: #b8c0cc;
+  --label-3: #7b8698;
+  --label-4: #4c566a;
+  --sep: #3b4252;
+  --sep-strong: #434c5e;
+  --bg: #2e3440;
+  --bg-grouped: #292e39;
+  --bg-elevated: #3b4252;
+  --fill: #3b4252;
+  --fill-2: #434c5e;
+  --fill-3: #353b48;
+  --cell-hover: #3b4252;
+  --brand: #88c0d0;
+  --accent: #88c0d0;
+  --accent-hover: #9dd0de;
+  --accent-soft: #35485a;
+  --on-accent: #2e3440;
+  --danger: #bf616a;
+  --danger-soft: #443036;
+  --success: #a3be8c;
+  --success-soft: #34402f;
+  --warning: #ebcb8b;
+  --glass: #3b4252;
+  --glass-border: #3b4252;
+  --shadow-1: none;
+  --shadow-2: 0 12px 40px rgba(0, 0, 0, 0.5);
+  --focus-ring: 0 0 0 3px rgba(136, 192, 208, 0.28);
+  --overlay: rgba(0, 0, 0, 0.6);
+  --shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.55);
+  --shadow-modal: 0 24px 60px rgba(0, 0, 0, 0.7);
+  --hover-tint: rgba(255, 255, 255, 0.06);
+  --tag-hover: #434c5e;
+  --input-hover: #434c5e;
+  --tooltip-bg: #eceff4;
+  --tooltip-fg: #2e3440;
+  --code-comment: #7b8698;
+  --code-keyword: #81a1c1;
+  --code-string: #a3be8c;
+  --code-number: #b48ead;
+  --code-function: #88c0d0;
+  --code-type: #8fbcbb;
+  --code-attr: #ebcb8b;
+  --code-tag: #bf616a;
+
+  color-scheme: dark;
 }
 
 /* ============ Reset ============ */
@@ -418,7 +652,7 @@ a:hover {
 }
 
 .side-link:hover {
-  background: rgba(0, 0, 0, 0.04);
+  background: var(--hover-tint);
   text-decoration: none;
 }
 
@@ -463,7 +697,7 @@ a:hover {
 }
 
 .user-trigger:hover {
-  background: rgba(0, 0, 0, 0.04);
+  background: var(--hover-tint);
 }
 
 .user-trigger__chevron {
@@ -490,7 +724,7 @@ a:hover {
   background: var(--bg);
   border: 1px solid var(--sep);
   border-radius: var(--r-lg);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.14);
+  box-shadow: var(--shadow-pop);
 }
 
 .user-menu__item {
@@ -779,9 +1013,16 @@ a:hover {
   margin-top: var(--sp-2);
 }
 
+/*
+ * 空状态在右侧面板内水平、垂直都居中。
+ * .detail-pane 是 flex-start 容器，子项不会自动撑满高度，
+ * 所以高度必须由父级给：detail-pane > * 只限宽 800px，
+ * 这里用 height: 100% 依赖父级高度，不能只靠 min-height 猜。
+ */
 .detail-empty {
+  flex: 1 1 auto;
   height: 100%;
-  min-height: 60svh;
+  align-self: stretch;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -968,7 +1209,7 @@ a:hover {
 
 a.tag:hover,
 button.tag:hover {
-  background: #e8e8ed;
+  background: var(--tag-hover);
   color: var(--label);
   text-decoration: none;
 }
@@ -1208,7 +1449,7 @@ button.tag[aria-pressed='true'] {
 .input:hover,
 .textarea:hover,
 .select:hover {
-  background: #ececf1;
+  background: var(--input-hover);
 }
 
 .input:focus,
@@ -1286,7 +1527,7 @@ button.tag[aria-pressed='true'] {
 
 .notice--success {
   background: var(--success-soft);
-  color: #1d8a43;
+  color: var(--success);
 }
 
 .notice--warning {
@@ -2049,7 +2290,7 @@ button.tag[aria-pressed='true'] {
   position: fixed;
   inset: 0;
   z-index: 100;
-  background: rgba(0, 0, 0, 0.32);
+  background: var(--overlay);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
   display: grid;
@@ -2071,7 +2312,7 @@ button.tag[aria-pressed='true'] {
   overflow-y: auto;
   background: var(--bg-elevated);
   border-radius: var(--r-2xl);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--shadow-modal);
   padding: var(--sp-6);
   animation: modal-in var(--dur-base) var(--ease-snappy);
 }
@@ -2122,19 +2363,8 @@ button.tag[aria-pressed='true'] {
 
 /*
  * 不引入 highlight.js 自带主题，按站点配色自定义。
+ * 每套主题各自定义一组，见各 [data-theme] 块里的 --code-* 变量。
  */
-:root {
-  --code-comment: #6b7280;
-  --code-keyword: #b3268f;
-  --code-string: #0a7a3a;
-  --code-number: #b45309;
-  --code-function: #0550ae;
-  --code-type: #7c3aed;
-  --code-attr: #8a5a00;
-  --code-tag: #0550ae;
-}
-
-/* 编辑态与阅读态共用 */
 .milkdown .ProseMirror .hljs,
 .md-body .hljs,
 .milkdown .ProseMirror code,
@@ -2330,22 +2560,6 @@ button.tag[aria-pressed='true'] {
   gap: var(--sp-2);
 }
 
-/* 编辑器占位提示：文档为空时在左上角显示 */
-.milkdown[data-empty='true'] {
-  position: relative;
-}
-
-.milkdown[data-empty='true']::before {
-  content: '开始写点什么…支持 Markdown：**粗体**、`代码`、- 列表、> 引用';
-  position: absolute;
-  top: var(--sp-5);
-  left: var(--sp-6);
-  color: var(--label-3);
-  font: var(--text-body);
-  pointer-events: none;
-  user-select: none;
-}
-
 /* 编辑页顶部标签行：更紧凑，不抢正文空间 */
 .tag-field .tag-picker {
   gap: 6px;
@@ -2489,7 +2703,7 @@ button.tag[aria-pressed='true'] {
 
 .tag__remove:hover {
   opacity: 1;
-  background: rgba(255, 255, 255, 0.18);
+  background: var(--hover-tint);
 }
 
 /* 唯一的入口按钮 */
@@ -2799,6 +3013,15 @@ button.tag[aria-pressed='true'] {
   white-space: nowrap;
 }
 
+/* 正文字数：与保存状态同级，更轻一档 */
+.word-count {
+  font: var(--text-caption);
+  color: var(--label-3);
+  padding: 0 var(--sp-2);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 .save-state--saving {
   color: var(--accent);
 }
@@ -2893,6 +3116,15 @@ button.tag[aria-pressed='true'] {
   line-height: 1.4;
 }
 
+/*
+ * 光标所在块的高亮（MarkdownEditor 的 active-block 插件套上这个 class）。
+ * 用最淡的填充色 + 圆角，不改变任何尺寸，避免影响排版与光标位置。
+ */
+.editor-page .milkdown .ProseMirror .is-active-block {
+  background: var(--fill-3);
+  border-radius: var(--r-sm);
+}
+
 @media (max-width: 900px) {
   .editor-page {
     padding: var(--sp-6) var(--sp-5) var(--sp-12);
@@ -2975,8 +3207,8 @@ button.tag[aria-pressed='true'] {
   transform: translateY(-50%) translateX(-2px);
   padding: 5px 8px;
   border-radius: var(--r-sm);
-  background: #1a1a1a;
-  color: #ffffff;
+  background: var(--tooltip-bg);
+  color: var(--tooltip-fg);
   font: 400 12px/1.4 var(--font-ui);
   white-space: nowrap;
   opacity: 0;
@@ -3001,6 +3233,13 @@ button.tag[aria-pressed='true'] {
   flex-shrink: 0;
 }
 
+/* 空状态是例外：它要占满整个面板（宽度与高度）才能真居中 */
+.detail-pane > .detail-empty {
+  flex: 1 1 auto;
+  max-width: none;
+  height: 100%;
+}
+
 /* ============ 右侧大纲（ui-design.md 7.6） ============ */
 
 /* 让大纲能根据右侧实际可用宽度决定是否显示 */
@@ -3013,12 +3252,22 @@ button.tag[aria-pressed='true'] {
   max-width: none;
 }
 
+/*
+ * ui-design.md 第二节：正文列不写死像素，按详情区宽度的比例伸缩，
+ * 同时保留上限，避免超宽屏上单行过长。
+ *
+ *   默认（大纲关闭）：正文占 92%，左右各留 4% 作为呼吸空间。
+ *   大纲展开：整块「正文 + 间距 + 大纲」居中（见 .note-shell--outline）。
+ *
+ * 比例相对 .app__detail（详情区）宽度，不含左、中两栏。
+ * 用 min() 而不是单纯 max-width，窄屏时仍按比例给宽，
+ * 不会被上限反向限制。
+ */
 .note-shell {
   width: 100%;
   min-height: 100%;
   display: flex;
   align-items: flex-start;
-  gap: var(--sp-12);
 }
 
 /* 编辑态固定高度，正文在编辑区内部滚动 */
@@ -3030,18 +3279,25 @@ button.tag[aria-pressed='true'] {
 .note-shell > .note-view {
   flex: 1 1 auto;
   min-width: 0;
-  max-width: 800px;
+  max-width: min(92%, 1200px);
+  margin-inline: auto;
   min-height: 100%;
 }
 
+/*
+ * 编辑页已移除大纲，正文独占详情区宽度。
+ * 大纲相关的基础样式（.note-outline）仍保留，公开笔记详情页在用。
+ */
 .note-shell--editing > .note-view {
   height: 100%;
   min-height: 0;
 }
 
+/* 大纲容器基础样式：公开笔记详情页使用，随父级 flex 布局分配宽度 */
 .note-outline {
-  flex: 0 0 200px;
-  width: 200px;
+  flex: 0 0 auto;
+  width: 100%;
+  max-width: 320px;
   align-self: flex-start;
   position: sticky;
   top: 0;
@@ -3103,8 +3359,11 @@ button.tag[aria-pressed='true'] {
   padding-left: calc(var(--sp-2) + 24px);
 }
 
-/* 800 正文 + 48 间距 + 200 大纲；不够宽时直接隐藏，不挤压正文 */
-@container (max-width: 1080px) {
+/*
+ * 正文与大纲按 70/30 分详情区宽度，本身能自适应，不再用固定阈值。
+ * 只有详情区窄到 640px 以下时，30% 放大纲太挤，才强制隐藏。
+ */
+@container (max-width: 640px) {
   .note-outline {
     display: none;
   }
@@ -3343,7 +3602,7 @@ button.tag[aria-pressed='true'] {
   background: var(--bg);
   border: 1px solid var(--sep);
   border-radius: var(--r-lg);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.14);
+  box-shadow: var(--shadow-pop);
 }
 
 .tree-menu__item {
@@ -3382,7 +3641,7 @@ button.tag[aria-pressed='true'] {
   background: var(--bg);
   border: 1px solid var(--sep);
   border-radius: var(--r-lg);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.14);
+  box-shadow: var(--shadow-pop);
 }
 
 .icon-picker__grid {
@@ -3508,12 +3767,12 @@ select:focus-visible {
 
 .btn--danger-solid {
   background: var(--danger);
-  color: #ffffff;
+  color: var(--on-accent);
 }
 
 .btn--danger-solid:hover:not(:disabled) {
-  background: #e02f25;
-  color: #ffffff;
+  background: var(--danger);
+  color: var(--on-accent);
 }
 
 /* 笔记行右侧快捷操作：当前打开/选中的行始终显示 */
@@ -3539,7 +3798,7 @@ select:focus-visible {
   gap: 1px;
   padding: 3px 8px;
   border-radius: var(--r-sm);
-  background: rgba(255, 255, 255, 0.88);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
   font: var(--text-caption);
   color: var(--label-2);
   line-height: 1.5;
@@ -3830,4 +4089,102 @@ select:focus-visible {
   margin: 0 auto var(--sp-4);
   color: var(--label-4);
   opacity: 0.85;
+}
+
+/* ============ 设置 · 外观主题选择 ============ */
+
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--sp-3);
+}
+
+/*
+ * 每张卡用行内 --swatch-* 变量画出该主题的缩略图，
+ * 所以卡片本身不随当前主题变色，一眼能横向比较。
+ */
+.theme-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-2);
+  border: 1px solid var(--sep);
+  border-radius: var(--r-lg);
+  background: var(--bg-elevated);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color var(--dur-fast) var(--ease-smooth),
+    background-color var(--dur-fast) var(--ease-smooth);
+}
+
+.theme-card:hover {
+  border-color: var(--sep-strong);
+  background: var(--cell-hover);
+}
+
+.theme-card--active {
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+/* 缩略图：背景 + 三条模拟文本行 + 一条强调色 */
+.theme-card__preview {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  height: 76px;
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--swatch-bg);
+}
+
+.theme-card__bar {
+  height: 4px;
+  width: 34%;
+  border-radius: var(--r-capsule);
+  background: var(--swatch-accent);
+  margin-bottom: 2px;
+}
+
+.theme-card__line {
+  height: 4px;
+  width: 62%;
+  border-radius: var(--r-capsule);
+  background: var(--swatch-fg);
+  opacity: 0.45;
+}
+
+.theme-card__line--long {
+  width: 88%;
+}
+
+.theme-card__line--short {
+  width: 44%;
+}
+
+.theme-card__name {
+  font: var(--text-footnote-med);
+  color: var(--label);
+  padding: 0 var(--sp-1) var(--sp-1);
+}
+
+.theme-card__check {
+  position: absolute;
+  top: var(--sp-3);
+  right: var(--sp-3);
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--r-capsule);
+  background: var(--accent);
+  color: var(--on-accent);
+  font: 700 11px/1 var(--font-ui);
+}
+
+.theme-card__check:empty {
+  display: none;
 }
