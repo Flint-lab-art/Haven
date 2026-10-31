@@ -64,6 +64,7 @@ async function build(): Promise<void> {
     .use(trailing)
     .use(listener)
     .use(highlightPlugin())
+    .use(activeBlockPlugin())
     .create()
 
   if (props.autofocus) {
@@ -156,6 +157,64 @@ function highlightPlugin() {
     state: {
       init: (_config, state: EditorState) => build(state.doc),
       apply: (tr: Transaction, old: DecorationSet) => (tr.docChanged ? build(tr.doc) : old),
+    },
+    props: {
+      decorations(state: EditorState) {
+        return key.getState(state)
+      },
+    },
+  })
+
+  return $prose(() => plugin)
+}
+
+/**
+ * 当前段落高亮。
+ *
+ * 光标所在的那一个顶层块（段落、标题、列表项等）加一层极淡的背景，
+ * 帮助在长文里定位。用 node decoration 而不是改 DOM，文档内容不受影响。
+ *
+ * 选区跨多个块时不加高亮——那时「当前段落」没有意义。
+ */
+function activeBlockPlugin() {
+  const key = new PluginKey('active-block')
+
+  /** 光标所在块的起始位置；选区跨越多个块时返回 null。 */
+  const resolveBlockPos = (state: EditorState): number | null => {
+    const { selection } = state
+    const { $from, $to } = selection
+    // 顶层块的直接子节点；$from.depth > 0 表示在某个块内部
+    if ($from.depth === 0) return null
+    const fromBlock = $from.before(1)
+    const toBlock = $to.before(1)
+    if (fromBlock !== toBlock) return null
+    return fromBlock
+  }
+
+  const build = (state: EditorState): DecorationSet => {
+    const pos = resolveBlockPos(state)
+    if (pos === null) return DecorationSet.empty
+    const node = state.doc.nodeAt(pos)
+    if (!node) return DecorationSet.empty
+
+    // 代码块自带底色，再叠一层会脏，跳过
+    if (node.type.name === 'code_block' || node.type.name === 'fence') {
+      return DecorationSet.empty
+    }
+
+    const decoration = Decoration.node(pos, pos + node.nodeSize, {
+      class: 'is-active-block',
+    })
+    return DecorationSet.create(state.doc, [decoration])
+  }
+
+  const plugin = new Plugin<DecorationSet>({
+    key,
+    state: {
+      init: (_config, state: EditorState) => build(state),
+      // 只在选区或文档变化时重建，避免每次按键都全量扫描
+      apply: (tr: Transaction, old: DecorationSet, _oldState: EditorState, newState: EditorState) =>
+        tr.selectionSet || tr.docChanged ? build(newState) : old,
     },
     props: {
       decorations(state: EditorState) {

@@ -8,14 +8,15 @@
  * - 保存状态以轻量文字显示在标题栏右侧；
  * - 添加标签、公开 / 私有、删除放在标题栏最右侧。
  *
- * 新建笔记（/notes/new）首次自动保存时才真正 POST /api/notes，
+ * 新建笔记（/notes/new）是空白编辑页：标题与正文都为空，直接开写。
+ * 首次自动保存时才真正 POST /api/notes，
  * 随后换成 /notes/:id，刷新不会重复创建。
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import MarkdownEditor from '@/components/MarkdownEditor.vue'
-import NoteOutline from '@/components/NoteOutline.vue'
 import TagDropdown from '@/components/TagDropdown.vue'
+import VersionHistoryDialog from '@/components/VersionHistoryDialog.vue'
 import { ApiError } from '@/api/client'
 import {
   createNote,
@@ -26,7 +27,7 @@ import {
 import { listTags, type Tag } from '@/api/tags'
 import { listFolders, type Folder } from '@/api/folders'
 import { useUiStore } from '@/stores/ui'
-import { extractHeadings } from '@/utils/markdown-headings'
+import { countWords, formatReadingTime } from '@/utils/text-stats'
 
 /** 自动保存防抖时间（ui-design.md 7.5.4）。 */
 const AUTOSAVE_DELAY = 1000
@@ -55,9 +56,26 @@ const saveState = ref<'idle' | 'dirty' | 'saving' | 'saved' | 'error'>('idle')
 
 const editorRef = ref<InstanceType<typeof MarkdownEditor> | null>(null)
 
-const outlineItems = computed(() => extractHeadings(content.value))
-const activeHeading = ref(-1)
+/** 历史版本浮层（docs/v2/frontend/frontend.md 第五节）。 */
+const historyOpen = ref(false)
+
+function openHistory(): void {
+  // 先把编辑器当前内容交回来，DIFF 的新侧才是用户眼前的正文
+  editorRef.value?.sync()
+  historyOpen.value = true
+}
+
+/** 还原成功后重新拉取笔记内容并重置保存基线。 */
+async function onVersionRestored(): Promise<void> {
+  if (!noteId.value) return
+  await load()
+  ui.notesChanged()
+}
+
 const editingMode = computed(() => Boolean(note.value || isNew.value))
+
+/** 正文字数与阅读时长，显示在保存状态旁边。 */
+const wordCount = computed(() => countWords(content.value))
 
 /** 最近一次成功保存时的内容快照，用来判断是否真的需要再存一次。 */
 const lastSaved = ref('')
@@ -208,8 +226,7 @@ async function load(): Promise<void> {
   hydrating.value = true
   loading.value = true
   error.value = ''
-  activeHeading.value = -1
-  // 切换笔记时先清空，避免 404 或加载失败时还显示上一篇的正文 / 大纲
+  // 切换笔记时先清空，避免 404 或加载失败时还显示上一篇的正文
   note.value = null
   content.value = ''
   try {
@@ -218,10 +235,9 @@ async function load(): Promise<void> {
     if (folderResult.status === 'fulfilled') folders.value = folderResult.value.items
 
     if (isNew.value) {
-      // 标题与标签来自新建弹窗（路由 query），正文留空
-      title.value = String(route.query.title ?? '')
-      const rawTagIds = route.query.tag_ids
-      selectedTagIds.value = typeof rawTagIds === 'string' && rawTagIds ? rawTagIds.split(',') : []
+      // 空白编辑页：标题、正文、标签都从空开始，只沿用目录树传来的 folder_id
+      title.value = ''
+      selectedTagIds.value = []
       const rawFolderId = route.query.folder_id
       folderId.value =
         typeof rawFolderId === 'string' && rawFolderId ? rawFolderId : defaultInboxId()
@@ -329,48 +345,10 @@ watch(
   },
 )
 
-/** 当前正在渲染的标题元素（ProseMirror 里的 H1–H3）。 */
-function headingElements(): HTMLElement[] {
-  return editorRef.value?.headingElements() ?? []
-}
-
-let activeFrame = 0
-
-/** 滚动时找出当前章节；用 rAF 合并高频滚动事件。 */
-function scheduleActiveUpdate(): void {
-  if (activeFrame) return
-  activeFrame = requestAnimationFrame(() => {
-    activeFrame = 0
-    const elements = headingElements()
-    if (elements.length === 0) {
-      activeHeading.value = -1
-      return
-    }
-
-    // 标题滚到视口顶部附近时算作当前章节；还没滚到第一个标题时高亮第一个
-    const threshold = 140
-    let current = 0
-    elements.forEach((element, index) => {
-      if (element.getBoundingClientRect().top <= threshold) current = index
-    })
-    activeHeading.value = Math.min(current, outlineItems.value.length - 1)
-  })
-}
-
-function goToHeading(index: number): void {
-  const element = headingElements()[index]
-  element?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  activeHeading.value = index
-}
-
-watch([outlineItems, loading], () => {
-  requestAnimationFrame(scheduleActiveUpdate)
-})
-
 // 三栏布局里本组件不会随笔记切换重建；新建页再次从树里点「新建」时
 // 参数也是 query 变化而不是 id 变化，所以这些来源都要监听
 watch(
-  () => [route.params.id, route.query.title, route.query.folder_id, route.query.tag_ids],
+  () => [route.params.id, route.query.folder_id],
   () => void load(),
   { immediate: true },
 )
@@ -388,15 +366,11 @@ onBeforeRouteLeave(async () => {
 })
 
 onMounted(() => {
-  // scroll 不冒泡，但捕获阶段能收到编辑器内部和右侧容器的滚动
-  document.addEventListener('scroll', scheduleActiveUpdate, true)
   ui.registerNoteFlush(() => save(true))
 })
 
 onBeforeUnmount(() => {
   if (saveTimer) clearTimeout(saveTimer)
-  if (activeFrame) cancelAnimationFrame(activeFrame)
-  document.removeEventListener('scroll', scheduleActiveUpdate, true)
   ui.registerNoteFlush(null)
 })
 </script>
@@ -430,6 +404,25 @@ onBeforeUnmount(() => {
             <div class="editor-actions">
               <span v-if="statusText" class="save-state" :class="`save-state--${saveState}`">{{ statusText }}</span>
 
+              <span class="word-count" :title="`约 ${formatReadingTime(wordCount)}`">
+                {{ wordCount }} 字
+              </span>
+
+              <button
+                v-if="!isNew"
+                class="icon-btn"
+                type="button"
+                title="历史版本"
+                aria-label="历史版本"
+                @click="openHistory"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M3 12a9 9 0 1 0 3-6.7" />
+                  <path d="M3 4v5h5" />
+                  <path d="M12 8v4l3 2" />
+                </svg>
+              </button>
+
               <select class="select folder-select" :value="folderId ?? ''" aria-label="所属文件夹" @change="onFolderChange">
                 <option v-if="!folders.some((folder) => folder.is_inbox)" value="">收件箱</option>
                 <option v-for="option in folderOptions" :key="option.id" :value="option.id">{{ option.label }}</option>
@@ -440,8 +433,17 @@ onBeforeUnmount(() => {
           </header>
 
           <div class="editor-body">
-            <MarkdownEditor ref="editorRef" v-model="content" :autofocus="isNew" @ready="scheduleActiveUpdate" />
+            <MarkdownEditor ref="editorRef" v-model="content" :autofocus="isNew" />
           </div>
+
+          <VersionHistoryDialog
+            :open="historyOpen"
+            :note-id="noteId"
+            :current-content="content"
+            :current-title="title"
+            @close="historyOpen = false"
+            @restored="onVersionRestored"
+          />
         </section>
 
         <div v-else class="detail-inner">
@@ -455,12 +457,5 @@ onBeforeUnmount(() => {
         </div>
       </template>
     </div>
-
-    <NoteOutline
-      v-if="!loading && outlineItems.length"
-      :items="outlineItems"
-      :active-index="activeHeading"
-      @select="goToHeading"
-    />
   </div>
 </template>

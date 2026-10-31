@@ -2,28 +2,29 @@
 
 ## 最重要的三条
 
-1. **`docs/` 是唯一事实来源。** 所有代码按 `docs/` 生成，不做反向推导。
+1. **`docs/` 是唯一事实来源。** 所有代码按 `docs/` 生成，不做反向推导。文档按版本分 `docs/v1/`（一期，已落地）、`docs/v2/`（二期，进行中），覆盖规则见 `docs/README.md`。
 2. **代码与文档冲突时，以文档为准。** 冲突的判定是"代码错了"，修代码或重新生成；不得改文档去迁就代码。
-3. **`docs/` 下任何文件只读。** 不得创建、修改、删除、格式化 `docs/`；需求变更由人类先改文档。见 `docs/conventions.md` 第二、五节。
+3. **`docs/` 下任何文件只读。** 不得创建、修改、删除、格式化 `docs/`；需求变更由人类先改文档。见 `docs/v1/conventions.md` 第二、五节。
 
 遇到题面没覆盖的行为：不自己发明，写进回复里让人类决定补文档还是补禁令。
 
 ## 严格按 `TODO.md` 执行
 
-- 根目录 `TODO.md` 是唯一的任务清单。**按章节顺序（0 → 8）从上往下做**，不要跳章节挑"有意思的"先做。
+- 根目录 `TODO.md` 是唯一的任务清单，分「二期（v2）」与「一期（v1，已归档）」两段。**只做当前版本段（`# 二期（v2）`）里的条目，按章节顺序（二期.0 → F3 → F1 → F2）从上往下做**，不要跳章节挑"有意思的"先做；**已归档的一期段不再执行、不再修改**。
 - **一次只做一个条目**：改完、验证通过、把该条勾成 `[x]`（部分完成用 `[~]` 并在后面注明缺什么），再开始下一条。不要把多个章节的改动混在一次提交里。
 - 不擅自扩充范围：TODO 没列的功能不做；确实需要的先提出来让人类加条目。
-- 第 8 章「明确不做」永远不勾选，也不实现。
-- `TODO.md` 可以用 `[x]`/`[~]` 反映进度，但**不得删除条目或改动其含义**——需求变更走文档流程，由人类改。
+- 「明确不做」清单（一期第 8 章、二期 `docs/v2/conventions.md` 第二节）永远不勾选，也不实现。
+- `TODO.md` 可以用 `[x]`/`[~]` 反映进度，但**不得删除条目或改动其含义**——需求变更走文档流程，由人类改。文末「待确认」表里的勾选状态只能由人类确认后改。
 
 ## 开工前按任务读文档
 
-- 永远：`docs/overview.md`、`docs/architecture.md`、`docs/conventions.md`（第四节是硬性禁令清单）
-- 后端：再加 `docs/api.md`、`docs/backend/{data-model,auth,audit}.md`
-- 前端：再加 `docs/api.md`、`docs/frontend/frontend.md`
-- `AGENTS.md` 已落初版，措辞可复核；根 `opencode.json` 只把 `docs/conventions.md` 与 `docs/overview.md` 作为常驻 instructions，其余文档按任务读。
+- 永远：`docs/README.md`（v1/v2 覆盖规则）、`docs/v1/overview.md`、`docs/v1/architecture.md`、`docs/v1/conventions.md`（第四节是硬性禁令清单）、`docs/v2/changes.md`（二期做了什么、v1 哪些节被替换）
+- 后端：再加 `docs/v1/api.md`、`docs/v1/backend/{data-model,auth,audit}.md`，叠加 `docs/v2/api.md`、`docs/v2/conventions.md`、`docs/v2/backend/`
+- 前端：再加 `docs/v1/api.md`、`docs/v1/frontend/frontend.md`，叠加 `docs/v2/api.md`、`docs/v2/conventions.md`、`docs/v2/frontend/`
+- **v2 中出现的节替换 v1 同名节；v2 未提及的内容按 v1 执行。**
+- 根 `opencode.json` 把 `docs/v1/conventions.md`、`docs/v1/overview.md`、`docs/README.md`、`docs/v2/changes.md` 作为常驻 instructions，其余文档按任务读。
 
-## 硬性禁令（全部来自 `docs/conventions.md` 第四节，只摘最容易违反的）
+## 硬性禁令（全部来自 `docs/v1/conventions.md` 第四节，只摘最容易违反的）
 
 - 不用 Docker / K8s；不引入 PG 之外的存储作为真值源。
 - 不做 SSR / 预渲染；不做多用户（`user_id` 字段是预留，不实现注册）。
@@ -42,19 +43,16 @@
 - `backend/internal/audit`：只追加的审计写入器 + 事件形状表（`events.go` 的 `specs`）。`Record` 先过 `Validate`（键名/ target_type / 必填 target_id / 敏感键），失败只打日志。`audit.UseAuthHooks` 由 `main` 接线到 `auth.Handler` 的钩子。
 - `backend/cmd/haven`：入口 + `router.go` 路由装配；`cmd/haven-init-user` 建唯一账号。
 - `backend/internal/notes`：私有 CRUD + publish/unpublish + 公开只读；`internal/tags`、`internal/search`、`internal/portfolio` 各有 Service + Handler + `RegisterRoutes`。
-- `backend/internal/llm` 仍是空目录（本期只定义接口，见 `docs/backend/llm-extension.md`）；`migrations/` 已有 `0001_init`；`deploy/` 尚不存在。
+- `backend/internal/llm`：**只有接口**（`Provider` / `TranslateRequest` / `TranslateResponse`），本期不实现任何 provider、不引 SDK（见 `docs/v1/backend/llm-extension.md`）；`migrations/` 已有 `0001_init` 到 `0005_inbox_folder`；`deploy/` 已有 `build.sh` / `migrate.sh` / `deploy.sh` / `haven.service` / `haven.env.example`。
 - 全部业务路由已挂在 `cmd/haven/router.go`，前端静态托管在同一处 `mountStatic`。
 - `frontend/`：完整 Vue 3 应用。`src/api/` 按领域拆文件（含 `ApiError`）；`src/stores/auth.ts` 管登录态；`src/router/` 按 `window.location.hostname` 选公开域/私有域路由表；`src/views/{public,private}/` 是页面；`src/components/` 是公共组件。
-- 前端样式写在 `src/style.css`（HIG 语义色 + 字号阶梯 + 8pt 节奏），**不引入组件库**（`docs/frontend/frontend.md` 第八节）。
+- 前端样式写在 `src/style.css`（HIG 语义色 + 字号阶梯 + 8pt 节奏），**不引入组件库**（`docs/v1/frontend/frontend.md` 第八节）。
 - **正文是 Markdown 原文**：`notes.content` 存 Markdown 文本，阅读态用 `utils/markdown.ts`（marked + DOMPurify）渲染，编辑态用 `components/MarkdownEditor.vue`（Milkdown，路由懒加载）。
-- **新建笔记流程**：工作台点「新建笔记」→ `NewNoteModal` 收标题与标签 → 带 query 跳 `/notes/new` → 首次保存才 `POST /api/notes`。
-- **标签语义跟随笔记生命周期（类思源）**：统一用 `components/TagPicker.vue`。弹窗与编辑页**不提供物理删除**；编辑页点标签上的 × 只是解除本篇关联。选择器只列出 `note_count > 0` 的标签，计数归零自动隐藏（数据仍留在库里，下次被使用会重新出现）。新建遇到 409 时自动选中同名已有标签。
+- **新建笔记流程**：工作台点「新建笔记」→ 直接跳 `/notes/new` 空白编辑页（标题、正文、标签都空，**没有弹窗**）→ 首次自动保存才 `POST /api/notes`，成功后地址换成 `/notes/:id`。顶部按钮把当前选中目录作为 `folder_id` 带过去，未选中时归收件箱。
+- **新建文件夹**：中间栏顶部按钮固定建在**根目录**，不跟随当前选中目录；「新建子文件夹」菜单建在该文件夹下。
+- **标签只用 `components/TagDropdown.vue`**：已选标签以胶囊显示在「添加标签」按钮左侧，点 × 解除本篇关联（**不提供物理删除**）；点按钮向下展开面板（含搜索框 + 候选列表），输入实时匹配全部标签（含 `note_count = 0` 的，标「未使用」），回车新建或选中首项；点外部 / Esc 关闭。`TagPicker.vue`（旧的平铺式选择器）与 `NewNoteModal.vue` 已删除，不要再加回来。
 - 物理删除标签只在 `/tags` 页（`DELETE /api/tags/:id`）。
-- **两个页面的标签交互不同，不要合并**：
-  - 新建弹窗用 `components/TagPicker.vue`：已选标签 + **平铺展示 `note_count > 0` 的未选标签** + 末尾圆形 `+`。点 `+` 在行内展开输入框（与胶囊同高 22px/12px），回车确认、空值退格关闭、点组件外部收起；输入时匹配全部标签（含 0 计数的）。
-  - 编辑页用 `components/TagDropdown.vue`：**不并排展示标签**，只有一个「添加标签」按钮。点击向下展开面板（含搜索框 + 候选列表），输入实时匹配全部标签（含 0 计数的，标「未使用」），回车新建或选中首项；点外部 / Esc 关闭。
-- 标签语义跟随笔记生命周期（类思源）：两处都**不做物理删除**，编辑页点 × 只解除本篇关联；选择范围默认只列 `note_count > 0`。
-- **收起用 `pointerdown` 判断是否点在组件外，不要用 `focusout`/`blur`**：点「+」时焦点从按钮转到刚渲染的输入框，focusout 会在重渲染期间判定为移出组件，把输入框瞬间关掉。
+- **收起浮层用 `pointerdown` 判断是否点在组件外，不要用 `focusout`/`blur`**：下拉面板展开时焦点会在按钮与面板之间转移，focusout 会在这次转移期间就判定为移出组件，把面板瞬间关掉。
 - `frontend/dist/` 是构建产物，已被 gitignore，不要手改、不要提交。
 
 ## 常用命令
@@ -93,12 +91,12 @@ pnpm test                       # vitest，纯逻辑单测（路由域判定、A
 
 没有 lint / format / CI 配置，不要自造工具链。
 
-认证相关的本地运行需要 PostgreSQL 并 `CREATE EXTENSION IF NOT EXISTS pg_trgm;`；其它 `HAVEN_*` 环境变量见 `docs/architecture.md` 第四节（缺必填项应拒绝启动）。
+认证相关的本地运行需要 PostgreSQL 并 `CREATE EXTENSION IF NOT EXISTS pg_trgm;`；其它 `HAVEN_*` 环境变量见 `docs/v1/architecture.md` 第四节（缺必填项应拒绝启动）。
 
 ## 容易踩的约定
 
 - **module 路径**是 `github.com/kairo/haven`；`go.mod` 用 `go 1.27.3`，`pgx` 是 v5。
-- **migration** 用 `golang-migrate` 命名 `0001_init.up.sql` / `.down.sql`，放 `backend/migrations/`；顺序为 `users` → `sessions`/`pending_logins`/`trusted_devices`/`tokens`/`audit_events` → `notes`/`tags`/`portfolio_items` → `note_tags`/`portfolio_repos`。**后端启动时不跑 migration**。表结构以 `docs/backend/data-model.md` + `auth.md` 第九节 + `audit.md` 为准；`users` 表只在 `auth.md` 里定义。
+- **migration** 用 `golang-migrate` 命名 `0001_init.up.sql` / `.down.sql`，放 `backend/migrations/`；顺序为 `users` → `sessions`/`pending_logins`/`trusted_devices`/`tokens`/`audit_events` → `notes`/`tags`/`portfolio_items` → `note_tags`/`portfolio_repos`。**后端启动时不跑 migration**。表结构以 `docs/v1/backend/data-model.md` + `auth.md` 第九节 + `audit.md` 为准，二期变更见 `docs/v2/backend/data-model.md`；`users` 表只在 `auth.md` 里定义。
 - **加 PostgreSQL 权限**：若用 `postgres` 超级用户跑 migration，之后必须 `GRANT ALL ON ALL TABLES IN SCHEMA public TO haven;`，否则应用连接会报 `permission denied for table users`。
 - **后端分包按领域**（`notes`、`tags`、`search`、`portfolio`、`audit`），禁止建 `handlers/`、`services/`、`repositories/`；跨领域公共代码只放 `httpx` / `auth` / `config`。
 - **搜索**只查生成列 `notes.search_text`，应用层不写该字段；`ILIKE '%q%'`，无中文分词。
@@ -106,10 +104,10 @@ pnpm test                       # vitest，纯逻辑单测（路由域判定、A
 - **跨用户访问返回 404 而非 403**；403 只留给"已登录但权限不足"（如 read Token 做写操作）。
 - **JSON 一律 `snake_case`**，不转 camelCase；列表响应固定 `{items, total}`（空列表不能是 null）；笔记列表 item 必须带后端截断好的 `content_preview`（按 rune 截 200）。
 - **凭证类操作**（Token / 授信设备 / 会话 / TOTP / 密码）Token 一律 403，只允许 Web 会话；其中 TOTP 关闭、改密码、增删改查 Token 需要会话已通过 TOTP。
-- cookie 名、有效期、bcrypt cost 等是代码常量，**不从环境变量读取**（清单在 `docs/architecture.md` 第四节）。
+- cookie 名、有效期、bcrypt cost 等是代码常量，**不从环境变量读取**（清单在 `docs/v1/architecture.md` 第四节）。
 - 审计只在业务成功后写、失败只打日志不影响响应；笔记 CRUD 不写审计，只有 publish/unpublish 写。
 - **auth 与 audit 不能互相 import**：`audit` 依赖 `auth`（读 `auth.AuditContext`），所以 `auth` 里**不能**出现 `audit.Event`；审计接线只能放在 `internal/audit/hooks.go`，通过 `auth.Handler` 上的 `On*` 钩子函数挂载。
-- 新增审计事件：先改 `docs/backend/audit.md` 第三节，再同步 `migrations` 的 CHECK 与 `internal/audit/events.go` 的 `specs`，否则 `Validate` 会拒写。
+- 新增审计事件：先改 `docs/v1/backend/audit.md` 第三节，再同步 `migrations` 的 CHECK 与 `internal/audit/events.go` 的 `specs`，否则 `Validate` 会拒写。
 - **搜索的 `ILIKE` 参数必须先转义 `%` `_` `\`**（`search.escapeLike`），否则用户输入 `%` 会匹配全部笔记。
 - `/api/*` 未命中时由 `mountStatic` 的 `NoRoute` 返回 JSON 404；**不要**让 SPA 兜底接住 API 路径（会把 404 变成 200 HTML）。
 - 标签名长度上限 `tags.MaxNameRunes = 64` 是**实现决策**：`api.md` 8.2 只说"过长"未给数值，改需求先改文档。

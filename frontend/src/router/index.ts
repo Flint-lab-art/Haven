@@ -133,6 +133,21 @@ const privateRoutes: RouteRecordRaw[] = [
         meta: { title: '作品集', section: 'portfolio' },
       },
       {
+        // 回收站（docs/v2/frontend/frontend.md 第一节）
+        path: 'trash',
+        name: 'trash',
+        components: {
+          default: () => import('@/views/private/TrashView.vue'),
+          list: () => import('@/components/TrashPanel.vue'),
+        },
+        meta: {
+          title: '回收站',
+          section: 'trash',
+          emptyTitle: '回收站是空的',
+          emptyText: '从左侧选一篇被删除的笔记，还原或永久删除。',
+        },
+      },
+      {
         path: 'settings',
         name: 'settings',
         components: {
@@ -140,6 +155,15 @@ const privateRoutes: RouteRecordRaw[] = [
           list: () => import('@/components/SettingsPanel.vue'),
         },
         meta: { title: '设置', section: 'settings' },
+      },
+      {
+        path: 'settings/appearance',
+        name: 'settings-appearance',
+        components: {
+          default: () => import('@/views/private/SettingsAppearance.vue'),
+          list: () => import('@/components/SettingsPanel.vue'),
+        },
+        meta: { title: '外观', section: 'settings' },
       },
       {
         path: 'settings/security',
@@ -193,7 +217,8 @@ const privateRoutes: RouteRecordRaw[] = [
     path: '/:pathMatch(.*)*',
     name: 'not-found',
     component: () => import('@/views/private/NotFoundView.vue'),
-    meta: { title: '页面不存在', public: true },
+    // 不标 public：私有域下未登录访问未知路径也应先去登录（frontend.md 第四节）
+    meta: { title: '页面不存在' },
   },
 ]
 

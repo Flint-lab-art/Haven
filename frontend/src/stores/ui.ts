@@ -38,12 +38,16 @@ export const useUiStore = defineStore('ui', () => {
   const foldersVersion = ref(0)
   /** 作品集增删改后 +1。 */
   const portfolioVersion = ref(0)
+  /** 回收站增删改后 +1（docs/v2/frontend/frontend.md 第三节）。 */
+  const trashVersion = ref(0)
   /** 最近一次在目录树里移动的笔记；编辑器据此同步 folder_id。 */
   const lastNoteMove = ref<{ id: string; folderId: string | null; seq: number } | null>(null)
 
   const selectedTagId = ref<string | null>(null)
   const selectedPortfolioId = ref<string | null>(null)
   const portfolioCreating = ref(false)
+  /** 回收站里选中的笔记。 */
+  const selectedTrashId = ref<string | null>(null)
 
   function notesChanged(): void {
     notesVersion.value += 1
@@ -68,6 +72,14 @@ export const useUiStore = defineStore('ui', () => {
 
   function portfolioChanged(): void {
     portfolioVersion.value += 1
+  }
+
+  function trashChanged(): void {
+    trashVersion.value += 1
+  }
+
+  function selectTrash(id: string | null): void {
+    selectedTrashId.value = id
   }
 
   function selectTag(id: string | null): void {
@@ -118,6 +130,10 @@ export const useUiStore = defineStore('ui', () => {
     foldersChanged,
     noteMoved,
     portfolioChanged,
+    trashVersion,
+    selectedTrashId,
+    trashChanged,
+    selectTrash,
     selectTag,
     selectPortfolio,
     startPortfolioCreate,

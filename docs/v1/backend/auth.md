@@ -46,17 +46,7 @@ Haven 的鉴权分三个独立维度，共同决定一次请求能否通过：
 
 ## 三、会话（sessions）
 
-**用途**：维护“已登录”状态，是最短命的凭证。
-
-| 字段 | 类型 | 约束 | 说明 |
-|---|---|---|---|
-| `id` | uuid | PK | |
-| `user_id` | uuid | NOT NULL, FK → users(id) ON DELETE CASCADE | |
-| `token_hash` | text | NOT NULL, UNIQUE | 会话 token 的 SHA-256 哈希，明文只存在于 cookie |
-| `expires_at` | timestamptz | NOT NULL | 过期时间，默认创建后 7 天 |
-| `last_used_at` | timestamptz | NOT NULL | 最后使用时间，每次请求更新 |
-| `user_agent` | text | NOT NULL DEFAULT '' | 创建会话时的 UA，仅用于设置页展示 |
-| `created_at` | timestamptz | NOT NULL | |
+**用途**：维护“已登录”状态，是最短命的凭证。表结构见 `data-model.md` 第四节，本节只讲规则。
 
 **规则**：
 
@@ -71,15 +61,7 @@ Haven 的鉴权分三个独立维度，共同决定一次请求能否通过：
 
 ### 3.1 pending_logins — 待验证登录
 
-**用途**：暂存“账密已通过、TOTP 待验证”的登录请求。生命周期极短，验证完成或过期即删除。
-
-| 字段 | 类型 | 约束 | 说明 |
-|---|---|---|---|
-| `id` | uuid | PK | |
-| `user_id` | uuid | NOT NULL, FK → users(id) ON DELETE CASCADE | |
-| `token_hash` | text | NOT NULL, UNIQUE | 临时 token 的 SHA-256 哈希 |
-| `expires_at` | timestamptz | NOT NULL | 创建后 5 分钟 |
-| `created_at` | timestamptz | NOT NULL | |
+**用途**：暂存“账密已通过、TOTP 待验证”的登录请求。生命周期极短，验证完成或过期即删除。表结构见 `data-model.md` 第五节。
 
 **规则**：
 
@@ -91,17 +73,7 @@ Haven 的鉴权分三个独立维度，共同决定一次请求能否通过：
 
 ## 四、授信设备（trusted_devices）
 
-**用途**：标记“这台浏览器可信”，用于跳过 TOTP。不代表登录态，不代表免密。
-
-| 字段 | 类型 | 约束 | 说明 |
-|---|---|---|---|
-| `id` | uuid | PK | |
-| `user_id` | uuid | NOT NULL, FK → users(id) ON DELETE CASCADE | |
-| `token_hash` | text | NOT NULL, UNIQUE | 设备 token 的 SHA-256 哈希 |
-| `device_name` | text | NOT NULL DEFAULT '' | 用户可命名，如“家里台式机” |
-| `expires_at` | timestamptz | NOT NULL | 默认 30 天 |
-| `last_used_at` | timestamptz | NOT NULL | |
-| `created_at` | timestamptz | NOT NULL | |
+**用途**：标记“这台浏览器可信”，用于跳过 TOTP。不代表登录态，不代表免密。表结构见 `data-model.md` 第六节。
 
 **规则**：
 
@@ -115,20 +87,7 @@ Haven 的鉴权分三个独立维度，共同决定一次请求能否通过：
 
 ## 五、API Token（tokens）
 
-**用途**：供 TUI / Neovim / 脚本长期使用的凭证，与登录会话完全解耦。
-
-| 字段 | 类型 | 约束 | 说明 |
-|---|---|---|---|
-| `id` | uuid | PK | |
-| `user_id` | uuid | NOT NULL, FK → users(id) ON DELETE CASCADE | |
-| `name` | text | NOT NULL | 用户命名，如“TUI @ 家里”“Neovim @ 公司” |
-| `token_hash` | text | NOT NULL, UNIQUE | Token 的 SHA-256 哈希 |
-| `token_prefix` | text | NOT NULL | 明文前 8 位，用于设置页展示与识别，不用于鉴权 |
-| `scope` | text | NOT NULL, CHECK IN ('read','read_write') | 权限档位 |
-| `expires_at` | timestamptz | NULL | NULL 表示永不过期 |
-| `last_used_at` | timestamptz | NULL | 从未使用时为 NULL |
-| `revoked_at` | timestamptz | NULL | 非 NULL 表示已撤销 |
-| `created_at` | timestamptz | NOT NULL | |
+**用途**：供 TUI / Neovim / 脚本长期使用的凭证，与登录会话完全解耦。表结构见 `data-model.md` 第七节。
 
 **规则**：
 
@@ -233,22 +192,12 @@ Haven 的鉴权分三个独立维度，共同决定一次请求能否通过：
 3. **不删除** `tokens` 记录（见第五节规则 8）；
 4. 写一条审计事件（见 `audit.md`）。
 
-## 九、users 表字段（补充 data-model.md）
+## 九、users 表
 
-`users` 表的完整字段如下，`data-model.md` 第九节待补部分以此为准：
+表结构（字段、索引、账号创建规则）见 `data-model.md` 第三节，本节不重复定义。
 
-| 字段 | 类型 | 约束 | 默认值 | 说明 |
-|---|---|---|---|---|
-| `id` | uuid | PRIMARY KEY | `gen_random_uuid()` | |
-| `username` | text | NOT NULL（唯一性见规则 3） | — | 登录名，本期只有一条记录 |
-| `password_hash` | text | NOT NULL | — | bcrypt 哈希 |
-| `totp_secret` | text | NULL | NULL | TOTP 密钥，未绑定为 NULL |
-| `totp_enabled` | boolean | NOT NULL | `false` | 是否已启用 TOTP |
-| `created_at` | timestamptz | NOT NULL | `now()` | |
-| `updated_at` | timestamptz | NOT NULL | `now()` | |
+## 十、实现说明：会话的 TOTP 状态用 token 后缀承载
 
-**规则**：
+`data-model.md` 第四节的 `sessions` 表没有“是否通过过 TOTP”列，而 6.2 要求区分 `totp_verified`。实现上以 token 后缀承载：会话明文形如 `<随机串>:totp`，查库前先剥离后缀再哈希。`pending_logins` 的 `trust_device` 同一手法（`:1`）。
 
-1. 本期只有一条 `users` 记录，由部署时的初始化脚本创建（见 `architecture.md`）。
-2. **不提供注册接口**。第二个账号如需创建，只能通过命令行脚本或直接操作数据库，不在 API 层暴露。
-3. username 不区分大小写唯一（用 lower(username) 唯一索引），避免 Admin / admin 混淆。
+改动这一处理方式前，先改本节与 `data-model.md`。

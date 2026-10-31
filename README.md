@@ -1,10 +1,17 @@
-下面是 `README.md` 初稿。根目录文件，定位是**索引 + 工作流入口**，不重复任何文档的内容。
-
----
-
 # Haven
 
-自托管的个人综合知识中台。PostgreSQL 为唯一真值源，Go + Gin 后端，Vue 3 前端，公开域与私有域分离部署。本期只做 Web 端，TUI 与 Neovim 插件在第二版。
+自托管的个人综合知识中台。PostgreSQL 为唯一真值源，Go + Gin 后端，Vue 3 前端，公开域与私有域分离部署。Web 浏览器为一等主入口。
+
+## 当前版本
+
+**二期（v2）开发中。**
+
+- **已落地**：一期（v1），文档见 `docs/v1/`，与当前 `backend/`、`frontend/` 代码一一对应；
+- **进行中**：二期（v2），文档见 `docs/v2/`，v1 → v2 的差异登记在 `docs/v2/changes.md`；
+- **二期范围与顺序**：F3 测试补齐 → F1 回收站 → F2 历史版本；
+- **二期明确不做**：LLM（翻译 / 润色 / 对话）、公开站增强、TUI 与 Neovim。
+
+v1 与 v2 的关系、覆盖规则、生成代码时该读哪些文件，见 `docs/README.md`。
 
 ## 文档即事实来源
 
@@ -14,44 +21,24 @@
 - 改需求先改文档，再重新生成代码；
 - `docs/` 只能由人类修改，AI 只读不写。
 
-完整规则见 `docs/conventions.md`。
+完整规则见 `docs/v1/conventions.md`，二期补充见 `docs/v2/conventions.md`。
 
 ## 文档索引
 
-### 项目级（`docs/`）
+文档按版本分目录（`docs/v1/`、`docs/v2/` …），完整导航表见 **`docs/README.md`**，本文件不重复维护。
 
-| 文件 | 回答什么问题 |
-|---|---|
-| `overview.md` | Haven 是什么、面向什么场景、由哪几部分组成 |
-| `architecture.md` | 技术栈、目录结构、组件关系、配置项、部署形态 |
-| `conventions.md` | 文档与代码的组织规则、主从关系、硬性禁令清单 |
-| `api.md` | 每个 HTTP 接口的路径、请求、响应、鉴权、错误码 |
-
-### 后端（`docs/backend/`）
-
-| 文件 | 回答什么问题 |
-|---|---|
-| `data-model.md` | 数据库有哪些表、字段、约束、索引、业务规则 |
-| `auth.md` | 鉴权分层、会话、授信设备、API Token、授权中间件 |
-| `audit.md` | 审计记录哪些事件、表结构、写入时机 |
-| `llm-extension.md` | LLM 抽象层接口定义（本期只定义不实现） |
-
-### 前端（`docs/frontend/`）
-
-| 文件 | 回答什么问题 |
-|---|---|
-| `ui-design.md` | 界面布局、色彩排版与组件规范 |
-| `frontend.md` | 公开域与私有域的页面清单、路由、登录流程 |
-| `clients.md` | TUI 与 Neovim 插件（第二版，本期占位） |
+- **一期（已落地）**：`docs/v1/` — 项目级 4 篇、后端 5 篇、前端 3 篇；
+- **二期（进行中）**：`docs/v2/` — 只写新增与变更，含 `changes.md`（变更清单）、`api.md`、`backend/`、`frontend/`。
 
 ## 仓库结构
 
 ```
 Haven/
-├── docs/           # 唯一事实来源
+├── docs/           # 唯一事实来源（v1/、v2/ 分版本）
 ├── backend/        # Go 后端（Gin + database/sql + pgx）
 ├── frontend/       # Vue 3 + Vite 前端
-├── deploy/         # 部署脚本（如需要）
+├── deploy/         # 部署脚本与 systemd unit
+├── AGENTS.md       # 给 AI 的工作约定
 └── README.md
 ```
 
@@ -59,16 +46,18 @@ Haven/
 
 ## 工作流
 
-生成代码时，按任务类型喂上下文：
+生成代码时，按任务类型喂上下文，**始终是「当前版本全文 + 之前各版本」叠加**：
 
-- **生成后端代码**：`docs/` 根下项目级文件 + `docs/backend/` + `docs/api.md`；
-- **生成前端代码**：`docs/` 根下项目级文件 + `docs/frontend/` + `docs/api.md`。
+- **生成后端代码**：`docs/` 根下项目级文件 + `docs/v1/backend/` + `docs/v1/api.md`，叠加 `docs/v2/api.md`、`docs/v2/conventions.md`、`docs/v2/backend/`；
+- **生成前端代码**：`docs/` 根下项目级文件 + `docs/v1/frontend/` + `docs/v1/api.md`，叠加 `docs/v2/api.md`、`docs/v2/conventions.md`、`docs/v2/frontend/`。
+
+覆盖规则：v2 中出现的节替换 v1 同名节；v2 未提及的内容按 v1 执行。详见 `docs/README.md` 第二节。
 
 生成结果与文档不符时，是代码错，修代码或重新生成，不改文档去迁就代码。
 
 ## 快速开始（本地开发）
 
-前置：PostgreSQL ≥ 15、Go ≥ 1.22、Node ≥ 20 + pnpm。
+前置：PostgreSQL ≥ 15（需 `pg_trgm` 扩展）、Go ≥ 1.22、Node ≥ 20 + pnpm。
 
 ```bash
 # 1. 建库并建表（migration 不会随服务启动自动执行）
@@ -89,8 +78,8 @@ cd frontend && pnpm install && pnpm build && cd ..
 
 打开 <http://localhost:8080/>。本地开发时 `localhost` 按私有域渲染（见 `frontend/src/router/domain.ts`）。
 
-生产部署（systemd、反向代理、备份）待定，见 `docs/architecture.md` 第八节。
+生产部署（systemd、反向代理、备份）见 `docs/v1/architecture.md` 第八节与 `deploy/` 目录。
 
 ## 技术栈
 
-Go ≥ 1.22 / Gin / PostgreSQL ≥ 15（`pg_trgm`）/ Vue 3 / Vite / TypeScript。详见 `docs/architecture.md`。
+Go ≥ 1.22 / Gin / PostgreSQL ≥ 15（`pg_trgm`）/ Vue 3 / Vite / TypeScript。详见 `docs/v1/architecture.md`。

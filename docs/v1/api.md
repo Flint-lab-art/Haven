@@ -1,7 +1,7 @@
 # api — HTTP 接口契约
 
 > 本文件回答：每个 HTTP 接口的路径、方法、请求、响应、鉴权要求、错误码。
-> 依赖：data-model.md、auth.md
+> 依赖：data-model.md、auth.md、search.md
 
 ## 一、通用约定
 
@@ -551,12 +551,14 @@
 
 **备注**：写 `note_unpublished` 审计事件。
 
-## 六点五、文件夹管理 `/api/folders`
+## 七、文件夹 `/api/folders`
 
-### 6.5.1 GET `/api/folders`
+### 7.1 GET `/api/folders`
 **鉴权**：登录
 **说明**：获取当前用户的**所有**文件夹（平铺数组，由前端组合成树），包含收件箱。
 **响应** `200`：
+
+```json
 {
   "items": [
     { "id": "uuid", "parent_id": null, "name": "收件箱", "icon": null, "is_inbox": true, "sort_order": 0 },
@@ -564,33 +566,66 @@
   ],
   "total": 2
 }
+```
 
-### 6.5.2 POST `/api/folders`
+**备注**：不分页，一次返回全部。字段定义见 `data-model.md` 第九节。
+
+### 7.2 POST `/api/folders`
 **鉴权**：登录 + write
 **请求**：
+
+```json
 { "name": "新文件夹", "parent_id": "父uuid或null", "icon": "📚" }
-**响应** `201`：返回创建的文件夹对象，`is_inbox` 固定为 `false`。
-**备注**：`is_inbox` 由服务端维护，不接受传入。
+```
 
-### 6.5.3 PATCH `/api/folders/:id`
+- `name`：必填；
+- `parent_id`：可选，`null` 表示建在根目录；
+- `icon`：可选，Emoji 或图标名。
+
+**响应** `201`：返回创建的文件夹对象，`is_inbox` 固定为 `false`。
+**错误**：
+
+- `409 conflict` — 同一父目录下已有同名文件夹；
+- `422 validation_failed` — name 为空或超过 32 个 rune、parent_id 不是合法 uuid、icon 过长或格式非法。
+
+**备注**：`is_inbox` 由服务端维护，不接受传入。`name` 长度上限 32 个 rune；`icon` 为单行文本，最多 16 个 rune（Emoji 或图标名），不含换行。
+
+### 7.3 PATCH `/api/folders/:id`
 **鉴权**：登录 + write
-**请求**：
+**请求**（部分更新）：
+
+```json
 { "name": "新名字", "parent_id": "新父uuid", "icon": "📚", "sort_order": 1 }
+```
+
+- `parent_id` 传 `null` 表示移到根目录；
+- `icon` 传 `null` 表示恢复默认图标。
+
+**响应** `200`：更新后的文件夹对象。
+
+**错误**：
+
+- `404 not_found` — 文件夹不存在或不属于当前用户；
+- `409 conflict` — 同一父目录下已有同名文件夹；
+- `422 validation_failed` — 试图把文件夹移到自己或自己的子文件夹下、试图移动收件箱、name 超过 32 个 rune、icon 非法。
+
 **备注**：支持改名、移动目录、调整排序和更改图标；`is_inbox` 不接受修改。收件箱不允许移动，`parent_id` 必须保持 `null`。
 
-### 6.5.4 DELETE `/api/folders/:id`
+### 7.4 DELETE `/api/folders/:id`
 **鉴权**：登录 + write
 **响应** `204`
 **错误**：
-- `409 conflict` — 收件箱不能删除。
-**备注**：删除普通文件夹及其所有子文件夹；删除前先把子树内所有笔记移到收件箱，再删除文件夹，绝不删除笔记。
 
+- `404 not_found` — 文件夹不存在或不属于当前用户；
+- `409 conflict` — 收件箱不能删除。
+
+**备注**：删除普通文件夹及其所有子文件夹；删除前先把子树内所有笔记移到收件箱，再删除文件夹，**绝不删除笔记**。
 
 ---
 
-## 七、笔记（公开侧）`/api/public/notes`
+## 八、笔记（公开侧）`/api/public/notes`
 
-### 7.1 GET `/api/public/notes`
+### 8.1 GET `/api/public/notes`
 
 **鉴权**：匿名
 
@@ -616,7 +651,7 @@
 
 **备注**：只返回 `visibility = public AND published_at IS NOT NULL` 的笔记，跨用户。按 `published_at DESC` 排序。列表不返回正文。
 
-### 7.2 GET `/api/public/notes/:id`
+### 8.2 GET `/api/public/notes/:id`
 
 **鉴权**：匿名
 
@@ -639,9 +674,9 @@
 
 ---
 
-## 八、标签 `/api/tags`
+## 九、标签 `/api/tags`
 
-### 8.1 GET `/api/tags`
+### 9.1 GET `/api/tags`
 
 **鉴权**：登录
 
@@ -658,7 +693,7 @@
 
 - `note_count`：该标签关联的笔记数（含私有）。
 
-### 8.2 POST `/api/tags`
+### 9.2 POST `/api/tags`
 
 **鉴权**：登录 + write
 
@@ -679,7 +714,7 @@
 - `409 conflict` — 当前用户下已有同名标签（`lower(name)` 相同）；
 - `422 validation_failed` — name 为空或过长。
 
-### 8.3 DELETE `/api/tags/:id`
+### 9.3 DELETE `/api/tags/:id`
 
 **鉴权**：登录 + write
 
@@ -691,7 +726,7 @@
 
 **备注**：关联由外键 `ON DELETE CASCADE` 自动清理。
 
-### 8.4 GET `/api/tags/:id/notes`
+### 9.4 GET `/api/tags/:id/notes`
 
 **鉴权**：登录
 
@@ -706,9 +741,9 @@
 
 ---
 
-## 九、搜索 `/api/search`
+## 十、搜索 `/api/search`
 
-### 9.1 GET `/api/search`
+### 10.1 GET `/api/search`
 
 **鉴权**：登录
 
@@ -746,9 +781,10 @@
 
 - 笔记按 `search_text ILIKE '%q%'` 匹配，范围限当前用户；
 - 标签按 `name ILIKE '%q%'` 匹配，范围限当前用户；
-- 不返回正文，只返回标题与元信息。
+- 不返回正文，只返回标题与元信息；
+- 匹配规则与索引见 `search.md`。
 
-### 9.2 GET `/api/public/search`
+### 10.2 GET `/api/public/search`
 
 **鉴权**：匿名
 
@@ -776,9 +812,9 @@
 
 ---
 
-## 十、作品集 `/api/portfolio`
+## 十一、作品集 `/api/portfolio`
 
-### 10.1 GET `/api/public/portfolio`
+### 11.1 GET `/api/public/portfolio`
 
 **鉴权**：匿名
 
@@ -817,7 +853,7 @@
 - `url` 由后端按 `platform` + 配置的 base URL 拼接，前端直接用；
 - 按 `sort_order` 升序排序。
 
-### 10.2 POST `/api/portfolio`
+### 11.2 POST `/api/portfolio`
 
 **鉴权**：登录 + write
 
@@ -837,7 +873,7 @@
 
 - `422 validation_failed` — title 为空。
 
-### 10.3 PATCH `/api/portfolio/:id`
+### 11.3 PATCH `/api/portfolio/:id`
 
 **鉴权**：登录 + write
 
@@ -847,13 +883,13 @@
 { "title": "...", "description": "...", "sort_order": 1 }
 ```
 
-**响应** `200`：同 10.2，含当前 `repos`。
+**响应** `200`：同 11.2，含当前 `repos`。
 
 **错误**：
 
 - `404 not_found` — 作品不存在或不属于当前用户。
 
-### 10.4 DELETE `/api/portfolio/:id`
+### 11.4 DELETE `/api/portfolio/:id`
 
 **鉴权**：登录 + write
 
@@ -865,7 +901,7 @@
 
 **备注**：关联仓库由外键 `ON DELETE CASCADE` 自动清理。
 
-### 10.5 POST `/api/portfolio/:id/repos`
+### 11.5 POST `/api/portfolio/:id/repos`
 
 **鉴权**：登录 + write
 
@@ -888,7 +924,7 @@
 - `409 conflict` — 该作品已有主链接且本次 `is_primary=true`；
 - `422 validation_failed` — platform 非法、repo_path 为空。
 
-### 10.6 PATCH `/api/portfolio/:id/repos/:repoId`
+### 11.6 PATCH `/api/portfolio/:id/repos/:repoId`
 
 **鉴权**：登录 + write
 
@@ -898,14 +934,14 @@
 { "repo_path": "...", "is_primary": true }
 ```
 
-**响应** `200`：同 10.5 的仓库对象。
+**响应** `200`：同 11.5 的仓库对象。
 
 **错误**：
 
 - `404 not_found` — 作品或仓库不存在、不属于当前用户；
 - `409 conflict` — 唯一性或主链接冲突。
 
-### 10.7 DELETE `/api/portfolio/:id/repos/:repoId`
+### 11.7 DELETE `/api/portfolio/:id/repos/:repoId`
 
 **鉴权**：登录 + write
 
@@ -917,9 +953,21 @@
 
 ---
 
-## 十一、其他 `/api/me`
+## 十二、其他 `/api/me`
 
-### 11.1 GET `/api/me`
+### 12.0 GET `/api/health`
+
+**鉴权**：匿名
+
+**响应** `200`：
+
+```json
+{ "status": "ok" }
+```
+
+**备注**：供部署脚本与反向代理做存活检查，不查数据库、不需要任何凭证。
+
+### 12.1 GET `/api/me`
 
 **鉴权**：匿名
 

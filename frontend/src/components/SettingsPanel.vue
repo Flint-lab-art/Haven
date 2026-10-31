@@ -6,6 +6,7 @@ const route = useRoute()
 
 const items = [
   { name: 'settings', label: '概览' },
+  { name: 'settings-appearance', label: '外观' },
   { name: 'settings-security', label: '账号安全' },
   { name: 'settings-sessions', label: '会话' },
   { name: 'settings-devices', label: '授信设备' },

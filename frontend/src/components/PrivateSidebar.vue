@@ -168,6 +168,22 @@ onBeforeUnmount(() => {
 
     <div class="sidebar__spacer"></div>
 
+    <RouterLink
+      :to="{ name: 'trash' }"
+      class="side-link"
+      :class="{ 'side-link--active': section === 'trash' }"
+      data-tip="回收站"
+      aria-label="回收站"
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 7h16" />
+        <path d="M9 7V4h6v3" />
+        <path d="M6 7l1 13h10l1-13" />
+        <path d="M10 11v6M14 11v6" />
+      </svg>
+      <span>回收站</span>
+    </RouterLink>
+
     <div ref="userArea" class="sidebar__user">
       <button
         class="user-trigger"

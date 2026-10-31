@@ -19,9 +19,10 @@
 - `docs/architecture.md` — 整体架构、目录结构、部署形态（项目级）
 - `docs/conventions.md` — 本文件（项目级）
 - `docs/api.md` — HTTP 接口契约，前后端共享，固定放根目录
-- `docs/backend/data-model.md` — 数据库 schema
+- `docs/backend/data-model.md` — 数据库 schema（全部表结构的唯一出处，其他文档只引用不重复）
 - `docs/backend/auth.md` — 鉴权与权限模型
 - `docs/backend/audit.md` — 审计日志
+- `docs/backend/search.md` — 搜索设计与匹配规则
 - `docs/backend/llm-extension.md` — LLM 抽象层预留
 - `docs/frontend/frontend.md` — Web 前端页面与交互
 - `docs/frontend/clients.md` — TUI 与 Neovim 插件
@@ -34,7 +35,7 @@
 1. `docs/` 是唯一事实来源。所有代码由 opencode + DeepSeek 依据文档生成，不以代码反推文档。
 2. 代码与文档冲突时，以文档为准。生成结果不符合文档，是代码错，重新生成或修正代码，不修改文档去迁就代码。
 3. 改需求先改文档。任何功能变更、接口变更、数据模型变更，先落文档，再重新生成相关代码。
-4. 文档回答的问题必须唯一。同一个问题只在一个文件里回答；如果发现两处都在回答同一问题，合并到一处，另一处改为引用。
+4. 文档回答的问题必须唯一。同一个问题只在一个文件里回答；如果发现两处都在回答同一问题，合并到一处，另一处改为引用。数据库表结构统一由 `data-model.md` 回答，`auth.md` / `audit.md` / `search.md` 只写规则与索引用法，不重复字段表。
 5. 文档只能由人类修改。opencode / AI 只读取 `docs/` 生成代码，不得写入或修改 `docs/` 下任何文件。文档的增删改一律由项目维护者手动完成。
 
 每个文档文件开头固定两行：

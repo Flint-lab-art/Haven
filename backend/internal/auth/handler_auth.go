@@ -232,7 +232,7 @@ func (h *Handler) ChangePassword(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// Me 实现 GET /api/me（api.md 11.1）。
+// Me 实现 GET /api/me（api.md 12.1）。
 func (h *Handler) Me(c *gin.Context) {
 	id := CurrentIdentity(c)
 	if !id.IsLoggedIn() {
@@ -250,7 +250,11 @@ func (h *Handler) Me(c *gin.Context) {
 		Anonymous: false,
 		AuthType:  id.String(),
 		Scope:     id.Scope,
-		User:      &userBriefResponse{ID: user.ID, Username: user.Username},
+		User: &userBriefResponse{
+			ID:          user.ID,
+			Username:    user.Username,
+			TotpEnabled: &user.TotpEnabled,
+		},
 	})
 }
 

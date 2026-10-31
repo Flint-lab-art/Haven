@@ -95,6 +95,63 @@ export function deleteNote(id: string): Promise<void> {
   return request<void>(`/api/notes/${id}`, { method: 'DELETE' })
 }
 
+/** 回收站列表项（docs/v2/api.md 2.1）。 */
+export interface TrashItem {
+  id: string
+  title: string
+  content_preview: string
+  folder_id: string | null
+  folder_path: string
+  deleted_at: string
+}
+
+export function listTrash(limit = 20, offset = 0): Promise<ListResult<TrashItem>> {
+  return request('/api/notes/trash', { query: { limit, offset } })
+}
+
+export function restoreNote(id: string): Promise<Note> {
+  return request<Note>(`/api/notes/${id}/restore`, { method: 'POST' })
+}
+
+export function purgeNote(id: string): Promise<void> {
+  return request<void>(`/api/notes/${id}/purge`, { method: 'DELETE' })
+}
+
+export function emptyTrash(): Promise<void> {
+  return request<void>('/api/notes/trash', { method: 'DELETE' })
+}
+
+/** 历史版本列表项（docs/v2/api.md 3.1）。 */
+export interface VersionSummary {
+  id: string
+  title: string
+  created_at: string
+  content_size: number
+}
+
+/** 单个历史版本的完整快照（docs/v2/api.md 3.2）。 */
+export interface VersionDetail {
+  id: string
+  note_id: string
+  title: string
+  content: string
+  folder_id: string | null
+  tag_ids: string[]
+  created_at: string
+}
+
+export function listVersions(noteId: string, limit = 50, offset = 0): Promise<ListResult<VersionSummary>> {
+  return request(`/api/notes/${noteId}/versions`, { query: { limit, offset } })
+}
+
+export function getVersion(noteId: string, versionId: string): Promise<VersionDetail> {
+  return request<VersionDetail>(`/api/notes/${noteId}/versions/${versionId}`)
+}
+
+export function restoreVersion(noteId: string, versionId: string): Promise<Note> {
+  return request<Note>(`/api/notes/${noteId}/versions/${versionId}/restore`, { method: 'POST' })
+}
+
 export function publishNote(id: string): Promise<Note> {
   return request<Note>(`/api/notes/${id}/publish`, { method: 'POST' })
 }

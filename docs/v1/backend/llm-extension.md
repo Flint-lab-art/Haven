@@ -59,12 +59,7 @@ type TranslateResponse struct {
 
 ### 4.1 配置项
 
-未来接入 provider 时，`architecture.md` 的配置项一节需要新增：
-
-- `LLM_PROVIDER`：provider 名（如 `openai` / `deepseek` / `local`）；
-- `LLM_API_KEY`：API 密钥（如适用）；
-- `LLM_BASE_URL`：API 地址（如适用）；
-- `LLM_MODEL`：模型名。
+未来接入 provider 时需要新增的 `LLM_*` 配置项，清单见 `architecture.md` 第四节「未来可能新增」，本文件不重复定义。
 
 ### 4.2 触发方式
 

@@ -52,6 +52,7 @@
 | `/tags` | 标签管理 | `GET /api/tags`、`POST /api/tags`、`DELETE /api/tags/:id` |
 | `/portfolio` | 作品集管理 | `GET /api/public/portfolio`、`POST /api/portfolio`、`PATCH /api/portfolio/:id`、`DELETE /api/portfolio/:id`、仓库链接的增删改 |
 | `/settings` | 设置入口 | `GET /api/me` |
+| `/settings/appearance` | 外观（主题切换） | 无（只读写 `localStorage`） |
 | `/settings/security` | 密码、TOTP | `POST /api/auth/password`、`POST /api/auth/totp/*` |
 | `/settings/sessions` | 会话管理 | `GET /api/sessions`、`DELETE /api/sessions/:id` |
 | `/settings/devices` | 授信设备管理 | `GET /api/trusted-devices`、`DELETE /api/trusted-devices/:id` |
@@ -63,8 +64,9 @@
 - 除 `/login` 外，所有页面需要登录，router guard 统一处理；
 - 未登录访问任意受保护路径 → 重定向到 `/login`；
 - 登录成功后回到原本要访问的路径（`?redirect=` 参数）；
-- 私有域的工作台首页就是笔记列表，不再有“三合一主页”；
-- `/settings/tokens` 页面若收到 403（当前会话未通过 TOTP），页面内提示“管理 Token 需要完成 TOTP 验证”，并提供跳转到 `/settings/security` 完成验证的按钮，不强制登出。
+- 私有域的工作台首页就是笔记列表（文件夹树 + 右侧编辑区），不再有“三合一主页”；
+- `/settings/tokens` 页面若收到 403（当前会话未通过 TOTP），页面内提示“管理 Token 需要完成 TOTP 验证”，并提供跳转到 `/settings/security` 完成验证的按钮，不强制登出；
+- 文件夹树、标签选择等具体交互以 `ui-design.md` 为准。
 
 ## 五、登录流程（前端视角）
 

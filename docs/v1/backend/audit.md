@@ -11,29 +11,7 @@
 
 ## 二、audit_events 表
 
-**用途**：存储审计事件，只追加，不修改，不删除。
-
-| 字段 | 类型 | 约束 | 说明 |
-|---|---|---|---|
-| `id` | uuid | PRIMARY KEY, DEFAULT `gen_random_uuid()` | |
-| `actor_user_id` | uuid | NULL, FK → users(id) ON DELETE SET NULL | 事件发起者；未登录事件（如登录失败但用户名不存在）为 NULL |
-| `actor_username` | text | NOT NULL DEFAULT '' | 事件发起者用户名快照；用户被删除后仍保留 |
-| `event_type` | text | NOT NULL, CHECK (见第三节清单) | 事件类型 |
-| `target_type` | text | NULL, CHECK (见第三节清单) | 被操作对象类型，无对象时为 NULL |
-| `target_id` | uuid | NULL | 被操作对象 id，无对象时为 NULL |
-| `metadata` | jsonb | NOT NULL DEFAULT `'{}'` | 事件附加信息，结构由 event_type 决定 |
-| `ip` | text | NOT NULL DEFAULT '' | 请求来源 IP，未取到时为空串 |
-| `user_agent` | text | NOT NULL DEFAULT '' | 请求 UA |
-| `created_at` | timestamptz | NOT NULL DEFAULT `now()` | |
-
-**索引**：
-
-```sql
-CREATE INDEX idx_audit_events_created_at ON audit_events (created_at DESC);
-CREATE INDEX idx_audit_events_event_type ON audit_events (event_type, created_at DESC);
-CREATE INDEX idx_audit_events_actor ON audit_events (actor_user_id, created_at DESC)
-  WHERE actor_user_id IS NOT NULL;
-```
+**用途**：存储审计事件，只追加，不修改，不删除。表结构与索引见 `data-model.md` 第八节，本节只讲规则。
 
 **规则**：
 
@@ -45,7 +23,7 @@ CREATE INDEX idx_audit_events_actor ON audit_events (actor_user_id, created_at D
 
 ## 三、事件类型清单
 
-本期记录以下事件。**新增事件类型必须同步更新本节和 CHECK 约束**。
+本期记录以下事件。**新增事件类型必须同步更新本节、`data-model.md` 第二/八节的 CHECK 约束，以及 `migrations` 与 `internal/audit/events.go` 的 `specs`。**
 
 | event_type | target_type | 触发时机 | metadata 结构 |
 |---|---|---|---|

@@ -1,6 +1,7 @@
 package notes
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -18,6 +19,9 @@ import (
 // Handler 承载笔记接口。
 type Handler struct {
 	svc *Service
+	// usernameByID 用于审计的 actor_username 快照（audit.md 2 规则 3）。
+	// 由 router 注入；为 nil 时快照留空。
+	usernameByID func(ctx context.Context, id string) (string, error)
 	// OnNotePublished / OnNoteUnpublished 用于写审计事件（audit.md 第三节）。
 	// 钩子内部不返回错误：审计失败不影响业务。
 	OnNotePublished   func(c *gin.Context, ac AuditContext, noteID, title string)
@@ -27,6 +31,11 @@ type Handler struct {
 // NewHandler 构造 Handler。
 func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc}
+}
+
+// SetUsernameLookup 注入用户名查询函数，供审计快照使用。
+func (h *Handler) SetUsernameLookup(fn func(ctx context.Context, id string) (string, error)) {
+	h.usernameByID = fn
 }
 
 // AuditContext 是写笔记审计所需的信息。
@@ -40,11 +49,17 @@ type AuditContext struct {
 // auditContext 组装审计上下文；用户名只是快照，取不到时留空。
 func (h *Handler) auditContext(c *gin.Context) AuditContext {
 	id := auth.CurrentIdentity(c)
-	return AuditContext{
+	ac := AuditContext{
 		UserID: id.UserID,
 		IP:     c.ClientIP(),
 		UA:     c.Request.UserAgent(),
 	}
+	if ac.UserID != "" && h.usernameByID != nil {
+		if name, err := h.usernameByID(c.Request.Context(), ac.UserID); err == nil {
+			ac.Username = name
+		}
+	}
+	return ac
 }
 
 // 请求体。
@@ -121,7 +136,8 @@ func (h *Handler) List(c *gin.Context) {
 		}
 	}
 
-	items, total, err := h.svc.ListPrivate(c.Request.Context(), auth.UserID(c), filter, page.Limit, page.Offset)
+	items, total, err := h.svc.ListPrivate(c.Request.Context(), auth.UserID(c), auth.CurrentVisibility(c),
+		filter, page.Limit, page.Offset)
 	if err != nil {
 		fail(c, err)
 		return
@@ -203,9 +219,53 @@ func (h *Handler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, note)
 }
 
-// Delete 实现 DELETE /api/notes/:id（api.md 6.5）。
+// Delete 实现 DELETE /api/notes/:id（api.md 6.5，docs/v2/api.md 1.1）：移入回收站。
 func (h *Handler) Delete(c *gin.Context) {
 	if err := h.svc.Delete(c.Request.Context(), auth.UserID(c), c.Param("id")); err != nil {
+		fail(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+// ListTrash 实现 GET /api/notes/trash（docs/v2/api.md 2.1）。
+func (h *Handler) ListTrash(c *gin.Context) {
+	page, err := httpx.ParsePagination(c)
+	if err != nil {
+		httpx.FailValidation(c, map[string]string{"limit": err.Error()})
+		return
+	}
+
+	items, total, err := h.svc.ListTrash(c.Request.Context(), auth.UserID(c), page.Limit, page.Offset)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, httpx.NewList(items, total))
+}
+
+// Restore 实现 POST /api/notes/:id/restore（docs/v2/api.md 2.2）。
+func (h *Handler) Restore(c *gin.Context) {
+	note, err := h.svc.Restore(c.Request.Context(), auth.UserID(c), c.Param("id"))
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, note)
+}
+
+// Purge 实现 DELETE /api/notes/:id/purge（docs/v2/api.md 2.3）。
+func (h *Handler) Purge(c *gin.Context) {
+	if err := h.svc.Purge(c.Request.Context(), auth.UserID(c), c.Param("id")); err != nil {
+		fail(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+// EmptyTrash 实现 DELETE /api/notes/trash（docs/v2/api.md 2.4）。
+func (h *Handler) EmptyTrash(c *gin.Context) {
+	if err := h.svc.EmptyTrash(c.Request.Context(), auth.UserID(c)); err != nil {
 		fail(c, err)
 		return
 	}
@@ -234,6 +294,43 @@ func (h *Handler) Unpublish(c *gin.Context) {
 	}
 	if h.OnNoteUnpublished != nil {
 		h.OnNoteUnpublished(c, h.auditContext(c), note.ID, note.Title)
+	}
+	c.JSON(http.StatusOK, note)
+}
+
+// ListVersions 实现 GET /api/notes/:id/versions（docs/v2/api.md 3.1）。
+func (h *Handler) ListVersions(c *gin.Context) {
+	page, err := httpx.ParsePagination(c)
+	if err != nil {
+		httpx.FailValidation(c, map[string]string{"limit": err.Error()})
+		return
+	}
+
+	items, total, err := h.svc.ListVersions(c.Request.Context(), auth.UserID(c), c.Param("id"),
+		page.Limit, page.Offset)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, httpx.NewList(items, total))
+}
+
+// GetVersion 实现 GET /api/notes/:id/versions/:versionId（docs/v2/api.md 3.2）。
+func (h *Handler) GetVersion(c *gin.Context) {
+	v, err := h.svc.GetVersion(c.Request.Context(), auth.UserID(c), c.Param("id"), c.Param("versionId"))
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, v)
+}
+
+// RestoreVersion 实现 POST /api/notes/:id/versions/:versionId/restore（docs/v2/api.md 3.3）。
+func (h *Handler) RestoreVersion(c *gin.Context) {
+	note, err := h.svc.RestoreVersion(c.Request.Context(), auth.UserID(c), c.Param("id"), c.Param("versionId"))
+	if err != nil {
+		fail(c, err)
+		return
 	}
 	c.JSON(http.StatusOK, note)
 }
@@ -273,10 +370,18 @@ func (h *Handler) GetPublic(c *gin.Context) {
 func RegisterRoutes(r gin.IRouter, h *Handler) {
 	read := r.Group("/api/notes", auth.RequireLogin())
 	read.GET("", h.List)
+	// 静态段必须显式注册在 /:id 之前，否则会被参数路由吞掉。
+	read.GET("/trash", h.ListTrash)
 	read.GET("/:id", h.Get)
 
 	write := r.Group("/api/notes", auth.RequireWrite())
 	write.POST("", h.Create)
+	write.DELETE("/trash", h.EmptyTrash)
+	write.POST("/:id/restore", h.Restore)
+	write.DELETE("/:id/purge", h.Purge)
+	write.GET("/:id/versions", h.ListVersions)
+	write.GET("/:id/versions/:versionId", h.GetVersion)
+	write.POST("/:id/versions/:versionId/restore", h.RestoreVersion)
 	write.PATCH("/:id", h.Update)
 	write.DELETE("/:id", h.Delete)
 	write.POST("/:id/publish", h.Publish)

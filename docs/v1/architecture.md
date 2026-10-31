@@ -1,6 +1,6 @@
 # architecture — 技术架构与目录结构
 
-> 本文件回答：技术栈、目录结构、组件关系、配置项清单、部署形态（占位）。
+> 本文件回答：技术栈、目录结构、组件关系、配置项清单、部署形态。
 > 依赖：overview.md
 
 ## 一、技术栈（锁定）
@@ -15,7 +15,11 @@
 | 前端构建 | Vite | 不使用 Webpack / Nuxt |
 | 前端路由 | Vue Router | History 模式 |
 | 前端状态 | Pinia（仅需时用） | 简单状态优先用 composable |
-| 前端 UI | 待定 | 不做组件库锁定，用原生 CSS 或轻量库 |
+| 前端 UI | 手写 CSS | 不引入 UI 组件库，样式规范见 `frontend/ui-design.md` |
+| Markdown 渲染 | `marked` + `DOMPurify` | 阅读态；HTML 必须过 DOMPurify |
+| Markdown 编辑 | Milkdown 7 | 编辑态，路由懒加载 |
+| 代码高亮 | `highlight.js`（common 语言集） | 阅读态与编辑态共用 |
+| 包管理器 | pnpm | 前端锁定 `pnpm-lock.yaml` |
 
 **锁定含义**：opencode 生成代码时不得替换上述选型，需要新增依赖时先改本节。
 
@@ -28,44 +32,50 @@ Haven/
 ├── docs/                    # 唯一事实来源（文档）
 ├── backend/                 # Go 后端
 │   ├── cmd/
-│   │   └── haven/
-│   │       └── main.go      # 入口
+│   │   ├── haven/
+│   │   │   ├── main.go      # 入口
+│   │   │   └── router.go    # 路由装配 + 静态托管
+│   │   └── haven-init-user/ # 创建唯一账号的初始化脚本
 │   ├── internal/
 │   │   ├── config/          # 配置加载
 │   │   ├── db/              # 数据库连接
-│   │   ├── auth/            # 鉴权中间件、会话、Token
+│   │   ├── auth/            # 鉴权中间件、会话、Token、TOTP
 │   │   ├── notes/           # 笔记领域
+│   │   ├── folders/         # 文件夹目录树
 │   │   ├── tags/            # 标签领域
 │   │   ├── search/          # 搜索
 │   │   ├── portfolio/       # 作品集
 │   │   ├── audit/           # 审计
-│   │   ├── llm/             # LLM 抽象层（本期空接口）
-│   │   └── httpx/           # 通用 HTTP 辅助（错误响应、中间件注册）
+│   │   ├── llm/             # LLM 抽象层（本期只有接口）
+│   │   └── httpx/           # 通用 HTTP 辅助（错误响应、分页）
 │   ├── migrations/          # SQL migration 文件
 │   ├── go.mod
 │   └── go.sum
 ├── frontend/                # Vue 前端
 │   ├── src/
 │   │   ├── api/             # API 客户端封装
-│   │   ├── views/           # 页面
+│   │   ├── views/           # 页面（public/ 与 private/ 两个子目录）
 │   │   ├── components/      # 组件
-│   │   ├── router/          # 路由
-│   │   ├── stores/          # Pinia（仅需时）
+│   │   ├── router/          # 路由（domain.ts 做域判定）
+│   │   ├── stores/          # Pinia（auth store）
+│   │   ├── utils/           # markdown 渲染、主题、格式化
+│   │   ├── __tests__/       # vitest 纯逻辑单测
 │   │   └── main.ts
 │   ├── index.html
 │   ├── package.json
 │   ├── tsconfig.json
 │   └── vite.config.ts
-├── deploy/                  # 部署脚本（systemd unit、构建脚本），如需要
+├── deploy/                  # 部署脚本（systemd unit、构建、migration）
 └── README.md
 ```
 
 **约定**：
 
-- 后端按**领域**分包（`notes`、`tags`、`portfolio`…），不按技术层分包（不建 `handlers/`、`services/`、`repositories/` 这种横切目录）。
-- 每个领域包内部自包含：handler、业务逻辑、SQL 查询都在该包内。
+- 后端按**领域**分包（`notes`、`folders`、`tags`…），不按技术层分包（不建 `handlers/`、`services/`、`repositories/` 这种横切目录）。
+- 每个领域包内部自包含：handler、业务逻辑、SQL 查询都在该包内，并各自提供 `RegisterRoutes`。
 - 跨领域的通用代码放 `internal/httpx`、`internal/auth`、`internal/config`。
-- 前端按**页面**组织 `views`，公共组件放 `components`，API 调用统一封装在 `api/` 下。
+- 前端按**页面**组织 `views`（`public/` 公开域、`private/` 私有域），公共组件放 `components`，API 调用统一封装在 `api/` 下。
+- `frontend/dist/` 是构建产物，不提交。
 
 ## 三、组件关系与数据流
 
@@ -92,7 +102,7 @@ TUI / Neovim ──→ Go 后端（Authorization: Bearer <token>）
 
 ## 四、配置项清单
 
-所有配置通过**环境变量**提供（自用场景，不引入配置文件）。后端启动时读取并校验，缺失必填项则拒绝启动。
+所有**后端运行时**配置通过环境变量提供（自用场景，不引入配置文件）。后端启动时读取并校验，缺失必填项则拒绝启动。
 
 | 变量名 | 必填 | 说明 | 示例 |
 |---|---|---|---|
@@ -104,6 +114,16 @@ TUI / Neovim ──→ Go 后端（Authorization: Bearer <token>）
 | `HAVEN_TOTP_ISSUER` | 否 | TOTP 验证器里显示的发行者名，默认 `Haven` | `Haven` |
 | `HAVEN_LOG_LEVEL` | 否 | 日志级别，默认 `info` | `info` / `debug` |
 | `HAVEN_COOKIE_DOMAIN` | 是 | 会话与授信设备 cookie 的 Domain | `app.example.com` |
+
+**前端构建期变量**（编译进 JS，不是运行时配置）：
+
+| 变量名 | 必填 | 说明 | 示例 |
+|---|---|---|---|
+| `VITE_PRIVATE_HOST` | 生产必填 | 私有域的精确主机名，前端据此判定当前域；不匹配的一律按公开域渲染 | `app.example.com` |
+
+- 必须与 `HAVEN_COOKIE_DOMAIN` **完全一致**（不带协议、不带端口）；
+- 不得填父域（如 `.example.com`），否则公开域也会收到 cookie；
+- 本地开发时 `localhost` / IP 一律视为私有域，不需要设置。
 
 **常量（不进配置）**：
 
@@ -120,8 +140,13 @@ TUI / Neovim ──→ Go 后端（Authorization: Bearer <token>）
 
 **未来可能新增**（本期不实现）：
 
-- `LLM_PROVIDER` / `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL` — 见 `llm-extension.md` 4.1
+- `LLM_PROVIDER`：provider 名（如 `openai` / `deepseek` / `local`）
+- `LLM_API_KEY`：API 密钥（如适用）
+- `LLM_BASE_URL`：API 地址（如适用）
+- `LLM_MODEL`：模型名
 - `TOTP_SECRET_ENCRYPTION_KEY` — 见 `auth.md` 8.2 后期升级路径
+
+LLM 配置项的启用时机与触发方式见 `backend/llm-extension.md`。
 
 ## 五、后端项目结构约定
 
@@ -166,10 +191,10 @@ TUI / Neovim ──→ Go 后端（Authorization: Bearer <token>）
 
 ### 5.6 migration
 
-- 使用 **golang-migrate**（或等效工具），migration 文件放在 `backend/migrations/`；
-- 文件名格式：`0001_init.up.sql` / `0001_init.down.sql`；
-- 按 `data-model.md` 第九节的依赖顺序编写；
-- migration 由部署脚本执行，**后端启动时不自动跑 migration**（避免并发启动冲突，也避免误执行）。
+- migration 文件放在 `backend/migrations/`；
+- 文件名格式：`0001_init.up.sql` / `0001_init.down.sql`，按顺序编号；
+- 首个 migration 按 `data-model.md` 第一节的依赖顺序建表；后续结构变更各自新增一个编号（如 `0002_folders.up.sql`），**不回头改已执行的 migration**；
+- migration 由 `deploy/migrate.sh` 执行（见第八节），**后端启动时不自动跑**（避免并发启动冲突，也避免误执行）。
 
 ### 5.7 日志
 
@@ -195,8 +220,14 @@ TUI / Neovim ──→ Go 后端（Authorization: Bearer <token>）
 
 ### 6.3 构建产物
 
-- `npm run build` 输出到 `frontend/dist/`；
-- 该目录即 `HAVEN_FRONTEND_DIR` 指向的位置（部署时由运维决定是否拷贝）。
+- `pnpm build`（= `vue-tsc -b && vite build`）输出到 `frontend/dist/`；
+- 该目录即 `HAVEN_FRONTEND_DIR` 指向的位置（部署时由 `deploy/` 脚本拷贝）；
+- 构建时需带 `VITE_PRIVATE_HOST`（见第四节），否则生产环境整站按公开域渲染、看不到后台。
+
+### 6.4 域判定
+
+- `src/router/domain.ts` 按 `window.location.hostname` 选择公开域 / 私有域路由表，同一份构建服务两个域名；
+- `hostname` 等于 `VITE_PRIVATE_HOST` 时为私有域；`localhost` 与 IP 一律视为私有域（便于本地开发）；其余一律公开域。
 
 ## 七、静态文件托管与路由
 
@@ -210,28 +241,44 @@ TUI / Neovim ──→ Go 后端（Authorization: Bearer <token>）
 
 **理由**：自用项目、单机部署，多一个 nginx 就多一个组件要运维。Go 的静态文件服务足够。
 
-## 八、部署形态（占位）
+## 八、部署形态
 
-**当前状态：待定**。已知约束：
+**当前形态：宿主机直接运行**，不用容器。
 
-- 不使用 Docker / Docker Compose；
-- 不使用 Kubernetes；
-- 使用宿主机直接运行（Go 二进制 + 前端静态文件 + 本机 PostgreSQL）；
-- Gogs 也在同机部署（备案通过后），使用 Gogs 内置 SSH server，与宿主机 sshd 端口不冲突；
+- Go 二进制 + 前端静态文件 + 本机 PostgreSQL，三者跑在同一台宿主机；
+- 后端由 **systemd** 常驻（unit 名 `haven`，`ExecStart=/opt/haven/bin/haven`）；
+- 后端默认只监听 `127.0.0.1:8080`，对外由反向代理（Caddy）终止 TLS；
+- 同一份二进制与同一份 `dist` 同时服务公开域与私有域，后端**不按 Host 分支**，分工由 `HAVEN_COOKIE_DOMAIN`（运行时）与 `VITE_PRIVATE_HOST`（构建期）共同决定；
+- Gogs 同机部署，使用 Gogs 内置 SSH server，与宿主机 sshd 端口不冲突；
 - Haven 本身不提供 SSH 服务。
 
-**待 Gogs 部署完成后补充**：
+**生产目录布局**：
 
-- PG / 后端 / 前端的运行方式（systemd unit 或手动）；
-- 端口分配（Haven 后端端口、Gogs HTTP 端口、Gogs SSH 端口）；
-- 反向代理（如需要 HTTPS）；
-- 备份策略（`pg_dump` 定时任务）。
+| 路径 | 内容 |
+|---|---|
+| `/opt/haven/bin/haven` | 后端二进制 |
+| `/opt/haven/bin/haven-init-user` | 唯一账号初始化脚本 |
+| `/opt/haven/frontend/dist/` | 前端构建产物（`HAVEN_FRONTEND_DIR`） |
+| `/opt/haven/migrations/` + `/opt/haven/migrate.sh` | migration 与执行脚本 |
+| `/etc/haven/haven.env` | 环境变量（权限 `0600`） |
+| `/var/backups/haven/` | `pg_dump` 备份输出 |
 
-## 九、不做的事（与 conventions.md 呼应）
+**构建与部署流程**：
 
-`conventions.md` 第四节是完整禁令清单，本文件不重复。这里只强调与架构相关的四条：
+1. `deploy/build.sh` 构建后端二进制与前端 `dist`，产物集中到 `deploy/out/`（已 gitignore）；
+2. `deploy/migrate.sh up` 显式执行 migration（后端启动不自动跑）；
+3. `deploy/deploy.sh` 一键完成构建、安装、migration、重启，可选 `--backup-db` / `--reset` / `--reset-db` / `--caddy`。
 
-- 不用 Docker / K8s 部署；
-- 不引入 PG 之外的存储作为真值源；
-- 不做 SSR / 预渲染；
-- 后端 HTTP 层统一用 Gin，不混用其他 Web 框架，`*gin.Context` 不得越出 handler 层。
+**migration 执行方式**：`deploy/migrate.sh` 自带版本表 `schema_migrations(version, dirty)`，与 golang-migrate 同构；每个文件在单事务内执行，失败整体回滚并置 `dirty`，`dirty` 为真时拒绝继续。支持 `status` / `up` / `down N` 三个子命令。
+
+**备份策略**：`pg_dump` 输出到 `/var/backups/haven/`，由 `deploy/deploy.sh --backup-db` 触发；定时任务的时间点与保留份数由运维另行配置，不在本仓库脚本内写死。
+
+**端口分配**：Haven 后端 `127.0.0.1:8080`；Gogs 的 HTTP / SSH 端口归 Gogs 部署，Haven 不依赖其具体取值（作品集只存 base URL）。对外 HTTPS 由反向代理承担，反向代理必须原样透传 `Host`，两个域名的 `server` 块都指向同一个 `127.0.0.1:8080`。
+
+**`www` 重定向**：`www.example.com` → `example.com` 的 301 由反向代理（Caddy）配置，Haven 后端不处理，也不按 Host 分支。理由：后端只服务公开域与私有域两个精确主机名，`www` 属于部署侧的规范跳转，放在这里会多一层与 TLS 证书绑定的逻辑。Caddyfile 不在本仓库内（`deploy/deploy.sh --caddy` 只修改宿主机上已有的 `/etc/caddy/Caddyfile`），该跳转需在部署时手工加一条 `www` 的 site 块，指向与 `example.com` 相同的 `127.0.0.1:8080`。
+
+**健康检查**：`GET /api/health` 返回 `{"status":"ok"}`，可匿名访问，部署脚本据此判定启动成功。
+
+## 九、不做的事
+
+完整禁令清单见 `conventions.md` 第四节，本文件不重复列举。
