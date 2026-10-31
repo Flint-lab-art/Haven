@@ -50,7 +50,10 @@
 | 9 | `v1/api.md`（无对应章节） | 新增 | 私有作品详情 `GET /api/portfolio/:id`（列表不含正文） | `v3/api.md` 1.2 |
 | 9.1 | `v1/api.md`（无对应章节） | 新增 | 公开作品详情 `GET /api/public/portfolio/:id` | `v3/api.md` 2.2 |
 | 10 | `v1/backend/data-model.md` 的 migration 顺序 | 扩展 | 追加 `0008_portfolio_content` | `v3/backend/data-model.md` 第二节 |
-| 11 | `v1/frontend/frontend.md` 第四节「私有域路由」的 `/tags` | **替换** | 标签页改为只读的卡片网格，去掉新建与删除操作 | `v3/frontend/frontend.md` 第十节 |
+| 11 | `v1/frontend/frontend.md` 第四节「私有域路由」的 `/tags` | **替换** | 标签页改为只读的卡片网格，去掉新建与删除操作 | `v3/frontend/frontend.md` 第八节 |
+| 12 | `v1/backend/data-model.md` 第十四节「portfolio_repos」 | **替换** | 改为直接存完整 `url`，删 `platform` / `repo_path`，加 `title` | `v3/backend/data-model.md` 第二节 |
+| 13 | `v1/api.md` 11.5 / 11.6「作品仓库」 | **替换** | 入参改为 `url` + `title`；响应加只读的 `kind` | `v3/api.md` 第三节 |
+| 14 | `v1/backend/data-model.md` 的 migration 顺序 | 扩展 | 追加 `0009_portfolio_repos_url` | `v3/backend/data-model.md` 第三节 |
 
 ## 四、旧版本表述的时效说明
 
