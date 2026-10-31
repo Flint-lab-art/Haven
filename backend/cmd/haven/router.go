@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"path/filepath"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/kairo/haven/internal/portfolio"
 	"github.com/kairo/haven/internal/search"
 	"github.com/kairo/haven/internal/tags"
+	"github.com/kairo/haven/internal/uploads"
 )
 
 // init 关闭 Gin 的 debug 输出（路由表、模式警告）。
@@ -32,6 +34,10 @@ type deps struct {
 	tagsHandler    *tags.Handler
 	searchHandler  *search.Handler
 	portfolio      *portfolio.Handler
+	uploadsHandler *uploads.Handler
+
+	// uploadDir 是 HAVEN_UPLOAD_DIR 的绝对路径，用于挂载 /uploads/* 静态托管。
+	uploadDir string
 
 	// usernameByID 供笔记审计填充 actor_username 快照（audit.md 2 规则 3）。
 	// 为 nil 时审计里的用户名留空（测试装配可用）。
@@ -81,8 +87,37 @@ func newRouter(d deps) *gin.Engine {
 	search.RegisterRoutes(r, d.searchHandler)
 	portfolio.RegisterRoutes(r, d.portfolio)
 
+	if d.uploadsHandler != nil {
+		uploads.RegisterRoutes(r, d.uploadsHandler)
+	}
+	mountUploads(r, d.uploadDir)
+
 	mountStatic(r, d.frontendDir)
 	return r
+}
+
+// mountUploads 托管上传的图片（docs/v4/api.md 第二节）。
+//
+// 与前端静态产物的区别：
+//   - 匿名可访问：公开笔记里的图片也要能看；
+//   - 文件名含随机串，可以长缓存；
+//   - 未命中直接 404，绝不回退到 SPA（否则图片 404 会返回一段 HTML）。
+func mountUploads(r *gin.Engine, dir string) {
+	if dir == "" {
+		return
+	}
+
+	fs := http.Dir(dir)
+	r.GET("/uploads/*filepath", func(c *gin.Context) {
+		rel := c.Param("filepath")
+		// 拒绝 .. 之类的路径穿越
+		if strings.Contains(rel, "..") {
+			c.Status(http.StatusNotFound)
+			return
+		}
+		c.Header("Cache-Control", "public, max-age=31536000, immutable")
+		c.FileFromFS(rel, fs)
+	})
 }
 
 // mountStatic 托管前端构建产物（docs/architecture.md 第七节）。
@@ -107,7 +142,9 @@ func mountStatic(r *gin.Engine, dir string) {
 	index := filepath.Join(dir, "index.html")
 	r.NoRoute(func(c *gin.Context) {
 		path := c.Request.URL.Path
-		if len(path) >= 5 && path[:5] == "/api/" || path == "/api" {
+		// /api 与 /uploads 都不回退到 SPA：前者要 JSON 404，后者要真正的 404
+		if len(path) >= 5 && path[:5] == "/api/" || path == "/api" ||
+			len(path) >= 9 && path[:9] == "/uploads/" {
 			c.JSON(http.StatusNotFound, httpx.ErrorBody{
 				Error:   httpx.CodeNotFound,
 				Message: "资源不存在",

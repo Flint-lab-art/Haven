@@ -26,6 +26,9 @@ type Config struct {
 	CookieSecure bool   // HAVEN_COOKIE_SECURE，默认 true
 	TotpIssuer   string // HAVEN_TOTP_ISSUER，默认 Haven
 	LogLevel     string // HAVEN_LOG_LEVEL，默认 info
+	// UploadDir 是上传文件的根目录（docs/v4/api.md 第一节），默认 ./uploads。
+	// 启动时会自动创建，创建失败拒绝启动。
+	UploadDir string // HAVEN_UPLOAD_DIR
 }
 
 // Load 从环境变量读取并校验配置。
@@ -75,6 +78,11 @@ func Load() (Config, error) {
 	cfg.TotpIssuer = strings.TrimSpace(os.Getenv("HAVEN_TOTP_ISSUER"))
 	if cfg.TotpIssuer == "" {
 		cfg.TotpIssuer = "Haven"
+	}
+
+	cfg.UploadDir = strings.TrimSpace(os.Getenv("HAVEN_UPLOAD_DIR"))
+	if cfg.UploadDir == "" {
+		cfg.UploadDir = "./uploads"
 	}
 
 	cfg.LogLevel = strings.ToLower(strings.TrimSpace(os.Getenv("HAVEN_LOG_LEVEL")))

@@ -75,8 +75,8 @@ func TestFoldersIcon(t *testing.T) {
 		t.Errorf("null 应清除 icon，实际 %v", got)
 	}
 
-	// 超过 16 个 rune → 422
-	tooLong := strings.Repeat("a", 17)
+	// 超过 256 个 rune → 422（v4 起放宽，见 docs/v4/backend/data-model.md 第一节）
+	tooLong := strings.Repeat("a", 257)
 	if w := e.do(http.MethodPatch, "/api/folders/"+folderID,
 		map[string]any{"icon": tooLong}, cookie); w.Code != http.StatusUnprocessableEntity {
 		t.Errorf("超长 icon 应 422，实际 %d: %s", w.Code, w.Body.String())

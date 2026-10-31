@@ -27,6 +27,7 @@ import (
 	"github.com/kairo/haven/internal/portfolio"
 	"github.com/kairo/haven/internal/search"
 	"github.com/kairo/haven/internal/tags"
+	"github.com/kairo/haven/internal/uploads"
 )
 
 // 端到端测试：真实 PostgreSQL + 完整路由栈，逐条对照 docs/api.md。
@@ -111,10 +112,16 @@ func newTestEnv(t *testing.T) *testEnv {
 	notesHandler := notes.NewHandler(notes.NewService(conn))
 	audit.UseNoteHooks(notesHandler, auditWriter)
 
+	// 上传目录用临时目录，每个用例独立，测试结束随 t.TempDir 清理
+	uploadsSvc, err := uploads.NewService(t.TempDir())
+	if err != nil {
+		t.Fatalf("创建上传服务失败: %v", err)
+	}
+
 	router := newRouter(deps{
-		authStore:      store,
-		authHandler:    h,
-		notesHandler:   notesHandler,
+		authStore:    store,
+		authHandler:  h,
+		notesHandler: notesHandler,
 		usernameByID: func(ctx context.Context, id string) (string, error) {
 			u, err := store.GetUser(ctx, id)
 			if err != nil {
@@ -126,6 +133,8 @@ func newTestEnv(t *testing.T) *testEnv {
 		tagsHandler:    tags.NewHandler(tags.NewService(conn)),
 		searchHandler:  search.NewHandler(search.NewService(conn)),
 		portfolio:      portfolio.NewHandler(portfolio.NewService(conn, cfg.GogsBaseURL)),
+		uploadsHandler: uploads.NewHandler(uploadsSvc),
+		uploadDir:      uploadsSvc.Root(),
 		frontendDir:    cfg.FrontendDir,
 	})
 

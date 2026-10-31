@@ -37,6 +37,9 @@ PrivateTmp=true
 PrivateDevices=true
 ProtectSystem=strict
 ProtectHome=true
+# 上传目录例外：ProtectSystem=strict 下整个文件系统只读，
+# 必须在这里显式开放写权限，否则图片上传会 permission denied（docs/v4/conventions.md 第三节）
+ReadWritePaths=/opt/haven/uploads
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
