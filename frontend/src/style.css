@@ -3432,7 +3432,8 @@ button.tag[aria-pressed='true'] {
 .tag-dropdown__list,
 .version-timeline,
 .version-diff,
-.tag-notes-modal__body {
+.tag-notes-modal__body,
+.icon-picker__brand-grid {
   scrollbar-width: none; /* Firefox */
   -ms-overflow-style: none; /* 旧 Edge */
 }
@@ -3450,7 +3451,8 @@ button.tag[aria-pressed='true'] {
 .tag-dropdown__list::-webkit-scrollbar,
 .version-timeline::-webkit-scrollbar,
 .version-diff::-webkit-scrollbar,
-.tag-notes-modal__body::-webkit-scrollbar {
+.tag-notes-modal__body::-webkit-scrollbar,
+.icon-picker__brand-grid::-webkit-scrollbar {
   width: 0;
   height: 0;
   display: none;
@@ -3583,6 +3585,12 @@ button.tag[aria-pressed='true'] {
   color: var(--label-2);
 }
 
+/* 上传的图片图标：等比缩放，不拉伸 */
+.tree-icon--image {
+  object-fit: contain;
+  border-radius: 3px;
+}
+
 .tree-icon--emoji {
   display: grid;
   place-items: center;
@@ -3706,7 +3714,9 @@ button.tag[aria-pressed='true'] {
   top: 100%;
   right: var(--sp-2);
   z-index: 60;
-  width: 236px;
+  /* 自适应：随中间栏宽度伸缩，窄屏时不会把文字挤成竖排 */
+  width: max(236px, min(320px, calc(100% - var(--sp-4))));
+  max-width: calc(100vw - var(--sp-6));
   padding: var(--sp-2);
   background: var(--bg);
   border: 1px solid var(--sep);
@@ -3736,19 +3746,260 @@ button.tag[aria-pressed='true'] {
   background: var(--fill);
 }
 
-.icon-picker__custom {
+/* 品牌图标：构建期导入的 simple-icons SVG，按当前文字色渲染 */
+.tree-icon--brand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--label-2);
+}
+
+.tree-icon--brand svg {
+  width: 14px;
+  height: 14px;
+  /* 品牌色由模板传入，取不到时退回文字色 */
+  fill: var(--brand-color, currentColor);
+}
+
+/* 图标来源标签页：默认停在 Emoji，像浏览器多标签 */
+.icon-picker__tabs {
   display: flex;
-  gap: var(--sp-1);
+  gap: 2px;
+  padding: 3px;
+  background: var(--fill);
+  border-radius: var(--r-md);
+}
+
+.icon-picker__tab {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  /* 文字不换行：空间不够时靠省略号，而不是竖排 */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 5px 4px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--label-2);
+  font: var(--text-caption);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease-smooth),
+    color var(--dur-fast) var(--ease-smooth);
+}
+
+.icon-picker__tab:hover {
+  color: var(--label);
+}
+
+.icon-picker__tab--active {
+  background: var(--bg-elevated);
+  color: var(--label);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.icon-picker__brands {
   margin-top: var(--sp-2);
 }
 
-.icon-picker__input {
-  flex: 1;
-  min-width: 0;
-  min-height: 28px;
-  padding: 2px var(--sp-2);
-  font: var(--text-footnote);
+/* 品牌页：分组标题 + 网格，整体可滚动 */
+.icon-picker__brand-scroll {
+  max-height: 220px;
+  overflow-y: auto;
+  margin-top: var(--sp-2);
+  scrollbar-width: none;
 }
+
+.icon-picker__brand-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.icon-picker__brand-group + .icon-picker__brand-group {
+  margin-top: var(--sp-2);
+}
+
+.icon-picker__search {
+  height: 30px;
+  font-size: 13px;
+}
+
+.icon-picker__brand-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+}
+
+.icon-picker__brand {
+  display: grid;
+  place-items: center;
+  height: 32px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: none;
+  cursor: pointer;
+  color: var(--label);
+}
+
+.icon-picker__brand:hover {
+  background: var(--fill);
+  border-color: var(--sep-strong);
+}
+
+.icon-picker__brand-svg {
+  display: inline-flex;
+}
+
+.icon-picker__brand-svg svg {
+  width: 18px;
+  height: 18px;
+  /* 品牌色由按钮上的 --brand-color 传入，取不到时跟随文字色 */
+  fill: var(--brand-color, currentColor);
+}
+
+/* Emoji 页：分组标题 + 网格，整体可滚动 */
+.icon-picker__emojis {
+  margin-top: var(--sp-2);
+}
+
+.icon-picker__emoji-scroll {
+  max-height: 220px;
+  overflow-y: auto;
+  margin-top: var(--sp-2);
+  scrollbar-width: none;
+}
+
+.icon-picker__emoji-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.icon-picker__emoji-group + .icon-picker__emoji-group {
+  margin-top: var(--sp-2);
+}
+
+.icon-picker__emoji-label {
+  font: var(--text-caption-caps);
+  color: var(--label-3);
+  letter-spacing: 0.04em;
+  margin-bottom: 2px;
+}
+
+/* 「全部」页：搜索框 + 上传小按钮 + 混合网格 */
+.icon-picker__all {
+  margin-top: var(--sp-2);
+}
+
+/* 「全部」页的网格限高滚动，避免把面板撑得很长 */
+.icon-picker__grid-scroll {
+  max-height: 220px;
+  overflow-y: auto;
+  margin-top: var(--sp-2);
+  scrollbar-width: none;
+}
+
+.icon-picker__grid-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.icon-picker__allbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.icon-picker__upload-btn {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--sep);
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--label-2);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease-smooth),
+    color var(--dur-fast) var(--ease-smooth);
+}
+
+.icon-picker__upload-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.icon-picker__emoji-btn,
+.icon-picker__image-btn {
+  display: grid;
+  place-items: center;
+  height: 32px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: none;
+  cursor: pointer;
+}
+
+.icon-picker__emoji-btn {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.icon-picker__image-btn img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  border-radius: 3px;
+}
+
+.icon-picker__emoji-btn:hover,
+.icon-picker__image-btn:hover {
+  background: var(--fill);
+  border-color: var(--sep-strong);
+}
+
+.icon-picker__images {
+  margin-top: var(--sp-2);
+}
+
+/* 图片图标页 */
+.icon-picker__upload {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}
+
+.icon-picker__preview {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2);
+  background: var(--fill-3);
+  border: 1px solid var(--sep);
+  border-radius: var(--r-md);
+}
+
+.icon-picker__preview img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  border-radius: var(--r-xs);
+}
+
+.icon-picker__upload-actions {
+  display: flex;
+  gap: var(--sp-2);
+}
+
 
 .icon-picker__actions {
   display: flex;

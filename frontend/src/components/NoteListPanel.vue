@@ -24,14 +24,19 @@ import {
 } from '@/api/folders'
 import { deleteNote, listNotes, publishNote, unpublishNote, updateNote, type NoteSummary } from '@/api/notes'
 import { useUiStore } from '@/stores/ui'
+import { isUploadableImage, listUploads, uploadImage, type UploadedFile } from '@/api/uploads'
+import { BRAND_ICONS, brandColor, searchBrandGroups, type BrandIcon } from '@/utils/brand-icons'
+import { searchEmojiGroups } from '@/utils/emoji'
 
 /** 分页上限 100，内部循环取完所有笔记。 */
 const PAGE_SIZE = 100
 
-/** 文件夹图标快捷选择（不引入第三方 Emoji Picker）。 */
-const ICON_CHOICES = [
-  '📁', '📚', '💡', '🔥', '⭐', '🧠', '🛠️', '🧪',
-  '🎨', '📝', '📌', '🚀', '🌱', '🧩', '🔒', '🗂️',
+/** 图标面板的三个来源页（docs/v4/frontend/frontend.md 3.3）。 */
+const ICON_TABS = [
+  { key: 'all' as const, label: '全部', emoji: '' },
+  { key: 'emoji' as const, label: 'Emoji', emoji: '😀' },
+  { key: 'brand' as const, label: '品牌', emoji: '🔷' },
+  { key: 'image' as const, label: '图片', emoji: '🖼️' },
 ]
 
 type Row =
@@ -74,7 +79,21 @@ const renameDraft = ref('')
 
 /** 正在设置图标的文件夹，以及手动输入的 Emoji。 */
 const iconFolderId = ref<string | null>(null)
-const iconDraft = ref('')
+/** 品牌图标区的搜索词。 */
+const iconQuery = ref('')
+/** 当前图标来源页：all（默认）/ emoji / brand / image。 */
+const iconTab = ref<'all' | 'emoji' | 'brand' | 'image'>('all')
+/** 已上传的图片（来自 GET /api/uploads），打开「图片」页时拉取。 */
+const uploadedImages = ref<UploadedFile[]>([])
+const uploadsLoading = ref(false)
+const brandGroups = computed(() => searchBrandGroups(iconQuery.value))
+const brandIcons = computed(() => brandGroups.value.flatMap((g) => g.items))
+/** Emoji 页按分组名过滤后的分组。 */
+const emojiGroups = computed(() => searchEmojiGroups(iconQuery.value))
+/** 「全部」页里的 emoji 也跟随搜索（匹配分组名）。 */
+const filteredEmoji = computed(() => emojiGroups.value.flatMap((g) => g.items))
+/** 「全部」页里已上传图片不过滤（没有名字可搜）。 */
+const filteredUploads = computed(() => (iconQuery.value.trim() ? [] : uploadedImages.value))
 
 /** 待确认的删除目标。 */
 const pendingDelete = ref<{
@@ -275,10 +294,36 @@ function openMenu(folder: Folder): void {
 function startChangeIcon(folder: Folder): void {
   menuFolderId.value = null
   iconFolderId.value = folder.id
-  iconDraft.value = folder.icon ?? ''
-  void nextTick(() => {
-    document.querySelector<HTMLInputElement>('.icon-picker__input')?.focus()
-  })
+  iconQuery.value = ''
+  iconTab.value = 'all'
+}
+
+/** 切换图标来源页；「图片」页要先拉一次列表。 */
+function selectIconTab(tab: 'all' | 'emoji' | 'brand' | 'image'): void {
+  iconTab.value = tab
+  if (tab === 'image' || tab === 'all') {
+    void loadUploads()
+    return
+  }
+  if (tab === 'brand') {
+    void nextTick(() => {
+      document.querySelector<HTMLInputElement>('.icon-picker__search')?.focus()
+    })
+  }
+}
+
+/** 拉取已上传的图片列表（docs/v4/api.md 4.1）。 */
+async function loadUploads(): Promise<void> {
+  if (uploadsLoading.value) return
+  uploadsLoading.value = true
+  try {
+    uploadedImages.value = (await listUploads(60)).items
+  } catch {
+    // 拉取失败只影响「图片」页，不打断其他页
+    uploadedImages.value = []
+  } finally {
+    uploadsLoading.value = false
+  }
 }
 
 /** 点击图标本身：再点一次收起面板。 */
@@ -292,7 +337,77 @@ function toggleIconPicker(folder: Folder): void {
 
 function closeIconPicker(): void {
   iconFolderId.value = null
-  iconDraft.value = ''
+}
+
+/** 图标是不是图片路径：以 / 开头的按图片渲染，其余按 Emoji（docs/v4/frontend/frontend.md 3.3）。 */
+function isImageIcon(icon: string | null | undefined): boolean {
+  return Boolean(icon && icon.startsWith('/'))
+}
+
+/** 图标是不是品牌 logo 的 key（如 go / python）。 */
+function brandIcon(icon: string | null | undefined): BrandIcon | undefined {
+  if (!icon || isImageIcon(icon)) return undefined
+  return BRAND_ICONS.find((it) => it.key === icon)
+}
+
+/** 图片加载失败时退回默认图标，不显示破图。 */
+function onIconError(event: Event): void {
+  ;(event.target as HTMLImageElement).style.display = 'none'
+}
+
+/** 选择一个本地图片作为文件夹图标：先上传，再把返回的 URL 存进 folders.icon。 */
+function pickIconFile(folder: Folder): void {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = 'image/png,image/jpeg,image/gif,image/webp'
+  input.addEventListener('change', () => {
+    const file = input.files?.[0]
+    if (file) void uploadIcon(folder, file)
+  })
+  input.click()
+}
+
+/** 上传图片并保存为图标。 */
+async function uploadIcon(folder: Folder, file: File): Promise<void> {
+  if (busy.value) return
+
+  busy.value = true
+  error.value = ''
+  try {
+    const res = await uploadImage(file, 'icon')
+    await updateFolder(folder.id, { icon: res.url })
+    closeIconPicker()
+    ui.foldersChanged()
+    await refresh()
+  } catch (err) {
+    error.value = actionError(err, '上传图标失败')
+  } finally {
+    busy.value = false
+  }
+}
+
+/**
+ * 面板内粘贴：图片走上传，短文本当作 Emoji。
+ *
+ * 合并了原来单独的「粘贴 Emoji」输入框（docs/v4/frontend/frontend.md 3.3）。
+ */
+function onIconPaste(folder: Folder, event: ClipboardEvent): void {
+  const data = event.clipboardData
+  if (!data) return
+
+  const file = Array.from(data.files ?? []).find(isUploadableImage)
+  if (file) {
+    event.preventDefault()
+    void uploadIcon(folder, file)
+    return
+  }
+
+  // 纯文本：只在内容像一个短图标（不超过 MaxIconRunes）时才接管，
+  // 避免复制一段正文后误把整段文字设成图标
+  const text = data.getData('text/plain').trim()
+  if (!text || text.length > 16) return
+  event.preventDefault()
+  void saveIcon(folder, text)
 }
 
 /** value 为 null / 空串时清除图标，回到默认文件夹图标。 */
@@ -316,10 +431,6 @@ async function saveIcon(folder: Folder, value: string | null): Promise<void> {
   } finally {
     busy.value = false
   }
-}
-
-function submitIcon(folder: Folder): void {
-  void saveIcon(folder, iconDraft.value)
 }
 
 /** 顶部「新建文件夹」：建在根目录，不跟随当前选中的目录。 */
@@ -991,7 +1102,22 @@ onBeforeUnmount(() => {
               :aria-label="`更改「${row.folder.name}」的图标`"
               @click.stop="toggleIconPicker(row.folder)"
             >
-              <span v-if="row.folder.icon" class="tree-icon tree-icon--emoji" aria-hidden="true">
+              <img
+                v-if="isImageIcon(row.folder.icon)"
+                class="tree-icon tree-icon--image"
+                :src="row.folder.icon!"
+                alt=""
+                aria-hidden="true"
+                @error="onIconError"
+              />
+              <span
+                v-else-if="brandIcon(row.folder.icon)"
+                class="tree-icon tree-icon--brand"
+                :style="{ '--brand-color': brandColor(brandIcon(row.folder.icon)!) }"
+                aria-hidden="true"
+                v-html="brandIcon(row.folder.icon)!.svg"
+              ></span>
+              <span v-else-if="row.folder.icon" class="tree-icon tree-icon--emoji" aria-hidden="true">
                 {{ row.folder.icon }}
               </span>
               <svg v-else class="tree-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true">
@@ -1054,33 +1180,171 @@ onBeforeUnmount(() => {
               role="dialog"
               aria-label="选择文件夹图标"
               @click.stop
+              @paste="onIconPaste(row.folder, $event)"
             >
-              <div class="icon-picker__grid">
+              <div class="icon-picker__tabs" role="tablist" aria-label="图标来源">
                 <button
-                  v-for="emoji in ICON_CHOICES"
-                  :key="emoji"
-                  class="icon-picker__choice"
+                  v-for="tab in ICON_TABS"
+                  :key="tab.key"
+                  class="icon-picker__tab"
+                  :class="{ 'icon-picker__tab--active': iconTab === tab.key }"
                   type="button"
-                  :aria-label="`使用 ${emoji} 作为图标`"
-                  @click="saveIcon(row.folder, emoji)"
+                  role="tab"
+                  :aria-selected="iconTab === tab.key"
+                  @click="selectIconTab(tab.key)"
                 >
-                  {{ emoji }}
+                  <span aria-hidden="true">{{ tab.emoji }}</span>
+                  {{ tab.label }}
                 </button>
               </div>
-              <div class="icon-picker__custom">
+
+              <!-- 全部：emoji + 品牌 + 已上传图片，带搜索与上传入口 -->
+              <div v-if="iconTab === 'all'" class="icon-picker__all">
+                <div class="icon-picker__allbar">
+                  <input
+                    v-model="iconQuery"
+                    class="input icon-picker__search"
+                    type="search"
+                    placeholder="搜索图标"
+                    aria-label="搜索图标"
+                  />
+                  <button
+                    class="icon-picker__upload-btn"
+                    type="button"
+                    title="上传图片作为图标"
+                    aria-label="上传图片作为图标"
+                    :disabled="busy"
+                    @click="pickIconFile(row.folder)"
+                  >
+                    +
+                  </button>
+                </div>
+
+                <div class="icon-picker__grid-scroll">
+                  <div class="icon-picker__brand-grid">
+                    <button
+                      v-for="emoji in filteredEmoji"
+                      :key="`e-${emoji}`"
+                      class="icon-picker__emoji-btn"
+                      type="button"
+                      :aria-label="`使用 ${emoji} 作为图标`"
+                      @click="saveIcon(row.folder, emoji)"
+                    >
+                      {{ emoji }}
+                    </button>
+                    <button
+                      v-for="icon in brandIcons"
+                      :key="icon.key"
+                      class="icon-picker__brand"
+                      type="button"
+                      :title="icon.label"
+                      :aria-label="`使用 ${icon.label} 图标`"
+                      :style="{ '--brand-color': brandColor(icon) }"
+                      @click="saveIcon(row.folder, icon.key)"
+                    >
+                      <!-- eslint-disable-next-line vue/no-v-html -- 构建期导入的可信 SVG -->
+                      <span class="icon-picker__brand-svg" v-html="icon.svg"></span>
+                    </button>
+                    <button
+                      v-for="file in filteredUploads"
+                      :key="file.url"
+                      class="icon-picker__image-btn"
+                      type="button"
+                      title="已上传的图片"
+                      @click="saveIcon(row.folder, file.url)"
+                    >
+                      <img :src="file.url" alt="" />
+                    </button>
+                </div>
+
+                </div>
+
+                <p v-if="brandIcons.length === 0 && filteredUploads.length === 0 && filteredEmoji.length === 0" class="field__hint">
+                  没有匹配的图标
+                </p>
+              </div>
+
+              <!-- Emoji：按分组展示，可按分组名搜索 -->
+              <div v-else-if="iconTab === 'emoji'" class="icon-picker__emojis">
                 <input
-                  v-model="iconDraft"
-                  class="input icon-picker__input"
-                  type="text"
-                  placeholder="粘贴 Emoji"
-                  aria-label="自定义文件夹图标"
-                  @keydown.enter.prevent="submitIcon(row.folder)"
-                  @keydown.esc.prevent="closeIconPicker"
+                  v-model="iconQuery"
+                  class="input icon-picker__search"
+                  type="search"
+                  placeholder="搜索分类：技术 / 文档 / 自然…"
+                  aria-label="搜索 emoji 分类"
                 />
-                <button class="btn btn--sm" type="button" :disabled="busy" @click="submitIcon(row.folder)">
-                  保存
-                </button>
+                <div class="icon-picker__emoji-scroll">
+                  <div v-for="group in emojiGroups" :key="group.label" class="icon-picker__emoji-group">
+                    <p class="icon-picker__emoji-label">{{ group.label }}</p>
+                    <div class="icon-picker__grid">
+                      <button
+                        v-for="emoji in group.items"
+                        :key="emoji"
+                        class="icon-picker__choice"
+                        type="button"
+                        :aria-label="`使用 ${emoji} 作为图标`"
+                        @click="saveIcon(row.folder, emoji)"
+                      >
+                        {{ emoji }}
+                      </button>
+                    </div>
+                  </div>
+                  <p v-if="emojiGroups.length === 0" class="field__hint">没有匹配的分类</p>
+                </div>
               </div>
+
+              <!-- 品牌图标：按分组展示，可按分类名或图标名搜索 -->
+              <div v-else-if="iconTab === 'brand'" class="icon-picker__brands">
+                <input
+                  v-model="iconQuery"
+                  class="input icon-picker__search"
+                  type="search"
+                  placeholder="搜索分类或图标：前端 / Go…"
+                  aria-label="搜索品牌图标"
+                />
+                <div class="icon-picker__brand-scroll">
+                  <div v-for="group in brandGroups" :key="group.label" class="icon-picker__brand-group">
+                    <p class="icon-picker__emoji-label">{{ group.label }}</p>
+                    <div class="icon-picker__brand-grid">
+                      <button
+                        v-for="icon in group.items"
+                        :key="icon.key"
+                        class="icon-picker__brand"
+                        type="button"
+                        :title="icon.label"
+                        :aria-label="`使用 ${icon.label} 图标`"
+                        :style="{ '--brand-color': brandColor(icon) }"
+                        @click="saveIcon(row.folder, icon.key)"
+                      >
+                        <!-- eslint-disable-next-line vue/no-v-html -- 构建期导入的可信 SVG -->
+                        <span class="icon-picker__brand-svg" v-html="icon.svg"></span>
+                      </button>
+                    </div>
+                  </div>
+                  <p v-if="brandGroups.length === 0" class="field__hint">没有匹配的图标</p>
+                </div>
+              </div>
+
+              <!-- 已上传的图片 -->
+              <div v-else class="icon-picker__images">
+                <div v-if="uploadsLoading" class="field__hint">加载中…</div>
+                <p v-else-if="uploadedImages.length === 0" class="field__hint">
+                  还没有上传过图片。在「全部」页点 + 上传，或直接粘贴。
+                </p>
+                <div v-else class="icon-picker__brand-grid">
+                  <button
+                    v-for="file in uploadedImages"
+                    :key="file.url"
+                    class="icon-picker__image-btn"
+                    type="button"
+                    title="使用这张图片作为图标"
+                    @click="saveIcon(row.folder, file.url)"
+                  >
+                    <img :src="file.url" alt="" />
+                  </button>
+                </div>
+              </div>
+
               <div class="icon-picker__actions">
                 <button class="btn btn--sm" type="button" :disabled="busy" @click="saveIcon(row.folder, null)">
                   恢复默认
