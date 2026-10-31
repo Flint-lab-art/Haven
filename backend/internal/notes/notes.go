@@ -313,14 +313,27 @@ func (s *Service) Update(ctx context.Context, userID, id string, in UpdateInput)
 	// 先确认归属并取出当前文件夹，顺便区分 404 与「是否真的移动」。
 	// 已移入回收站的笔记不可编辑（docs/v2/api.md 1.1），按不存在处理。
 	var currentFolderID *string
+	var beforeTitle, beforeContent string
 	err = tx.QueryRowContext(ctx,
-		`SELECT folder_id FROM notes WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`,
-		id, userID).Scan(&currentFolderID)
+		`SELECT folder_id, title, content FROM notes WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`,
+		id, userID).Scan(&currentFolderID, &beforeTitle, &beforeContent)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Note{}, ErrNotFound
 	}
 	if err != nil {
 		return Note{}, fmt.Errorf("查询笔记失败: %w", err)
+	}
+
+	// 更新前的完整状态，供写历史快照使用（docs/v2/backend/data-model.md 第二、1 条）。
+	beforeTagIDs, err := tagIDsOf(ctx, tx, id)
+	if err != nil {
+		return Note{}, err
+	}
+	before := snapshot{
+		Title:    beforeTitle,
+		Content:  beforeContent,
+		FolderID: currentFolderID,
+		TagIDs:   beforeTagIDs,
 	}
 
 	if in.SortOrder != nil && *in.SortOrder < 0 {
@@ -393,6 +406,36 @@ func (s *Service) Update(ctx context.Context, userID, id string, in UpdateInput)
 		if _, err := tx.ExecContext(ctx,
 			`UPDATE notes SET updated_at = now() WHERE id = $1`, id); err != nil {
 			return Note{}, fmt.Errorf("更新笔记时间失败: %w", err)
+		}
+	}
+
+	// 写历史快照（docs/v2/backend/data-model.md 第二节）。
+	// 只调 sort_order 不留快照；同一笔记在合并窗口内只保留最早的一条。
+	if !onlySortOrder {
+		afterTagIDs, err := tagIDsOf(ctx, tx, id)
+		if err != nil {
+			return Note{}, err
+		}
+		after := snapshot{
+			Title:    before.Title,
+			Content:  before.Content,
+			FolderID: before.FolderID,
+			TagIDs:   beforeTagIDs,
+		}
+		if in.Title != nil {
+			after.Title = strings.TrimSpace(*in.Title)
+		}
+		if in.Content != nil {
+			after.Content = *in.Content
+		}
+		if folderChanged {
+			after.FolderID = targetFolder
+		}
+		if in.TagIDs != nil {
+			after.TagIDs = afterTagIDs
+		}
+		if err := s.snapshotIfChanged(ctx, tx, userID, id, before, after, s.now()); err != nil {
+			return Note{}, err
 		}
 	}
 

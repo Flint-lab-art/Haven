@@ -298,6 +298,43 @@ func (h *Handler) Unpublish(c *gin.Context) {
 	c.JSON(http.StatusOK, note)
 }
 
+// ListVersions 实现 GET /api/notes/:id/versions（docs/v2/api.md 3.1）。
+func (h *Handler) ListVersions(c *gin.Context) {
+	page, err := httpx.ParsePagination(c)
+	if err != nil {
+		httpx.FailValidation(c, map[string]string{"limit": err.Error()})
+		return
+	}
+
+	items, total, err := h.svc.ListVersions(c.Request.Context(), auth.UserID(c), c.Param("id"),
+		page.Limit, page.Offset)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, httpx.NewList(items, total))
+}
+
+// GetVersion 实现 GET /api/notes/:id/versions/:versionId（docs/v2/api.md 3.2）。
+func (h *Handler) GetVersion(c *gin.Context) {
+	v, err := h.svc.GetVersion(c.Request.Context(), auth.UserID(c), c.Param("id"), c.Param("versionId"))
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, v)
+}
+
+// RestoreVersion 实现 POST /api/notes/:id/versions/:versionId/restore（docs/v2/api.md 3.3）。
+func (h *Handler) RestoreVersion(c *gin.Context) {
+	note, err := h.svc.RestoreVersion(c.Request.Context(), auth.UserID(c), c.Param("id"), c.Param("versionId"))
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, note)
+}
+
 // ListPublic 实现 GET /api/public/notes（api.md 7.1）。
 func (h *Handler) ListPublic(c *gin.Context) {
 	page, err := httpx.ParsePagination(c)
@@ -342,6 +379,9 @@ func RegisterRoutes(r gin.IRouter, h *Handler) {
 	write.DELETE("/trash", h.EmptyTrash)
 	write.POST("/:id/restore", h.Restore)
 	write.DELETE("/:id/purge", h.Purge)
+	write.GET("/:id/versions", h.ListVersions)
+	write.GET("/:id/versions/:versionId", h.GetVersion)
+	write.POST("/:id/versions/:versionId/restore", h.RestoreVersion)
 	write.PATCH("/:id", h.Update)
 	write.DELETE("/:id", h.Delete)
 	write.POST("/:id/publish", h.Publish)

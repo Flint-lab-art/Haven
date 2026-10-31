@@ -78,16 +78,16 @@
 
 ### F2.1 数据层
 
-- [ ] `migrations/0007_note_versions.up.sql` / `.down.sql`：`note_versions` 表（`tag_ids uuid[]`）+ `idx_note_versions_note`
-- [ ] `notes.Update` 事务内、更新前写快照；仅当标题 / 正文 / 文件夹 / 标签真的变化
-- [ ] 同一笔记 5 分钟内合并为一条（代码常量，不走环境变量）
+- [x] `migrations/0007_note_versions.up.sql` / `.down.sql`：`note_versions` 表（`tag_ids uuid[]`）+ `idx_note_versions_note`（已应用）
+- [x] `notes.Update` 事务内、更新前写快照；仅当标题 / 正文 / 文件夹 / 标签真的变化
+- [x] 同一笔记 5 分钟内合并为一条（代码常量 `VersionMergeWindow`，不走环境变量）
 
 ### F2.2 接口层
 
-- [ ] `GET /api/notes/:id/versions`：`created_at DESC`，返回标题、时间、`content_size`，不返回正文
-- [ ] `GET /api/notes/:id/versions/:versionId`：返回完整快照含 `tag_ids`
-- [ ] `POST /api/notes/:id/versions/:versionId/restore`：覆盖标题 / 正文 / 文件夹 / 标签，还原本身也产生一条快照
-- [ ] 已删除笔记的版本接口一律 404；跨用户 404
+- [x] `GET /api/notes/:id/versions`：`created_at DESC`，返回标题、时间、`content_size`，不返回正文
+- [x] `GET /api/notes/:id/versions/:versionId`：返回完整快照含 `tag_ids`
+- [x] `POST /api/notes/:id/versions/:versionId/restore`：覆盖标题 / 正文 / 文件夹 / 标签，还原本身也产生一条快照
+- [x] 已删除笔记的版本接口一律 404；跨用户 404
 
 ### F2.3 前端
 
@@ -99,10 +99,10 @@
 
 ### F2.4 测试（与原 F3.2 / F3.3 对应，跟功能一起完成）
 
-- [ ] 标题 / 正文 / 文件夹 / 标签变化时产生版本快照；只改 `sort_order` 不产生
-- [ ] 5 分钟内的多次修改合并为一条快照
-- [ ] 版本还原后标题、正文、文件夹、标签与快照一致
-- [ ] 跨用户无法查看他人的版本
+- [x] 标题 / 正文 / 文件夹 / 标签变化时产生版本快照；只改 `sort_order` 不产生——`cmd/haven/versions_test.go`
+- [x] 5 分钟内的多次修改合并为一条快照
+- [x] 版本还原后标题、正文、文件夹、标签与快照一致
+- [x] 跨用户无法查看他人的版本
 - [ ] DIFF 行分类（新增 / 删除 / 未变）纯函数单测
 
 ---
