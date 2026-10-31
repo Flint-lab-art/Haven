@@ -15,59 +15,41 @@
 
 ## 二期.0 开工前置
 
-- [ ] 按 `docs/v2/backend/test-plan.md` 第二节确认基线：`go build ./...`、`go vet ./...`、`go test ./...`（**必须设置 `HAVEN_TEST_DB_DSN`，skip 不算通过**）、`pnpm test`、`pnpm build` 全绿
-- [ ] 确认本地库已执行到 `0005_inbox_folder`，且 `schema_migrations` 无 `dirty`
+- [x] 按 `docs/v2/backend/test-plan.md` 第二节确认基线：`go build ./...`、`go vet ./...`、`go test ./...`（**必须设置 `HAVEN_TEST_DB_DSN`，skip 不算通过**）、`pnpm test`、`pnpm build` 全绿（2026-10-31 实测：四项全通过）
+- [x] 确认本地库已执行到 `0005_inbox_folder`，且 `schema_migrations` 无 `dirty`（实测 `version=5, dirty=f`）
 
 ## 二期.F3 测试补齐（最先做，见 `docs/v2/backend/test-plan.md`）
 
-### F3.1 纯函数单测
+> 调整说明：F3.2 与 F3.3 的用例断言的是 F1 / F2 才引入的行为，先写只会是红的。
+> 已按 `docs/v2/backend/test-plan.md` 的意图拆开：**现有代码的测试在 F3.1 完成**，
+> **F1 / F2 的测试分别挂在 F1.4、F2.4**，与功能同一条提交完成。
 
-- [ ] `internal/search`：`escapeLike` 单测（`%`、`_`、`\` 转义；空串；中文多字节）
-- [ ] `internal/notes`：`Preview` 单测（空串 / 恰好 200 rune / 201 rune / 多字节不按字节截断）
-- [ ] `internal/notes`：`sameFolder` 单测（nil 与 nil / nil 与值 / 相同 / 不同）
-- [ ] `internal/folders`：`isSelfOrDescendant` 单测（自身 / 直接子级 / 隔代 / 兄弟 / 无关节点，能识别成环）
-- [ ] `internal/folders`：`normalizeIcon` 单测（空 / 单 Emoji / 16 rune 边界 / 17 rune / 含换行）
-- [ ] `internal/tags`：标签名长度单测（63 / 64 / 65 rune；trim 后为空；多字节按 rune 计数）
+### F3.1 纯函数单测（已完成）
 
-### F3.2 边界集成测试（`cmd/haven`）
-
-- [ ] 软删除后 `GET /api/public/notes` 与 `/api/public/notes/:id` 不可见
-- [ ] 软删除后 `GET /api/public/search` 不返回
-- [ ] 软删除后 `GET /api/search` 不返回
-- [ ] 软删除后 `GET /api/tags/:id/notes` 不返回，且 `note_count` 不计已删
-- [ ] 软删除后 `GET /api/notes` 不返回
-- [ ] 还原后上述接口重新可见
-- [ ] 原文件夹已删除时还原，笔记落到收件箱
-- [ ] 超过 30 天的回收站记录在访问回收站时被清理
-- [ ] 标题 / 正文 / 文件夹 / 标签变化时产生版本快照；只改 `sort_order` 不产生
-- [ ] 5 分钟内的多次修改合并为一条快照
-- [ ] 版本还原后标题、正文、文件夹、标签与快照一致
-- [ ] 跨用户无法查看他人的回收站与版本
-
-### F3.3 前端测试
-
-- [ ] `/trash` 路由需要登录，未登录跳 `/login`
-- [ ] 在 `/trash` 时侧边栏对应项高亮、其他项不高亮
-- [ ] 笔记删除确认框提示「可在回收站中还原」；文件夹删除仍为「不可恢复」
-- [ ] DIFF 行分类（新增 / 删除 / 未变）纯函数单测
+- [x] `internal/search`：`escapeLike` 单测（`%`、`_`、`\` 转义；空串；中文多字节）——`internal/search/search_test.go`，12 个用例
+- [x] `internal/notes`：`Preview` 单测（空串 / 恰好 200 rune / 201 rune / 多字节不按字节截断）——`internal/notes/preview_test.go`
+- [x] `internal/notes`：`sameFolder` 单测（nil 与 nil / nil 与值 / 相同 / 不同）——`internal/notes/folder_test.go`
+- [x] `internal/folders`：`isSelfOrDescendant` 单测（自身 / 直接子级 / 隔代 / 兄弟 / 无关节点，能识别成环）——依赖 `*sql.Tx` 无法纯函数单测，改为 `cmd/haven/folders_cycle_test.go` 通过 PATCH 防环验证（自身 / 直接子级 / 隔代 / 兄弟合法 / 先移动再成环）
+- [x] `internal/folders`：`normalizeIcon` 单测（空 / 单 Emoji / 16 rune 边界 / 17 rune / 含换行）——`internal/folders/icon_test.go`；顺带确认纯空白与纯换行均按「未设置」处理
+- [x] `internal/tags`：标签名长度单测（63 / 64 / 65 rune；trim 后为空；多字节按 rune 计数）——校验内联在 `Create` 且依赖数据库，改为 `cmd/haven/tags_length_test.go` 通过 API 验证边界
 
 ## 二期.F1 回收站（见 `docs/v2/api.md` 第二、四节，`docs/v2/backend/data-model.md` 第一、三节）
 
 ### F1.1 数据层
 
-- [ ] `migrations/0006_notes_recycle_bin.up.sql` / `.down.sql`：`notes.deleted_at` + `idx_notes_deleted` 部分索引
-- [ ] `auth.VisibilityPublic` / `auth.VisibilityOwnedOrPublic` 追加 `deleted_at IS NULL`（**唯一一处**，不在 handler 另拼）
-- [ ] `folders.Delete` 迁移笔记时加 `AND deleted_at IS NULL`，不搬动回收站中的笔记
+- [x] `migrations/0006_notes_recycle_bin.up.sql` / `.down.sql`：`notes.deleted_at` + `idx_notes_deleted` 部分索引（已应用，`up`/`down` 均验证通过）
+- [x] `auth.VisibilityPublic` / `auth.VisibilityOwnedOrPublic` 追加 `deleted_at IS NULL`（**唯一一处**，不在 handler 另拼）——注意「自己的」分支也必须排除已删行，否则登录用户仍能看到自己删掉的笔记；同时补齐 `notes.Get`、`tags.NotesByTag`、`tags.List` 与 `search.Private` 的标签计数
+- [x] `folders.Delete` 迁移笔记时加 `AND deleted_at IS NULL`，不搬动回收站中的笔记——`cmd/haven/folders_trash_test.go` 覆盖两条路径
 
 ### F1.2 接口层
 
-- [ ] `notes.Delete` 改为 `UPDATE notes SET deleted_at = now()`；已删除再删返回 404
-- [ ] `notes.Update` / `Publish` / `Unpublish` 对已删除笔记返回 404
-- [ ] `GET /api/notes/trash`：`deleted_at DESC`，返回 `content_preview`、`folder_path`、`deleted_at`，访问时顺带惰性清理
-- [ ] `POST /api/notes/:id/restore`：清 `deleted_at`；原文件夹不存在时归入收件箱
-- [ ] `DELETE /api/notes/:id/purge`：仅对回收站中的笔记有效
-- [ ] `DELETE /api/notes/trash`：清空回收站
-- [ ] 惰性清理：保留 30 天（代码常量，不走环境变量）
+- [x] `notes.Delete` 改为 `UPDATE notes SET deleted_at = now()`；已删除再删返回 404—`TestDeleteMovesToTrash`
+- [x] `notes.Update` / `Publish` / `Unpublish` 对已删除笔记返回 404
+- [x] `GET /api/notes/trash`：`deleted_at DESC`，返回 `content_preview`、`folder_path`、`deleted_at`，访问时顺带惰性清理
+- [x] `POST /api/notes/:id/restore`：清 `deleted_at`；原文件夹不存在时归入收件箱
+- [x] `DELETE /api/notes/:id/purge`：仅对回收站中的笔记有效
+- [x] `DELETE /api/notes/trash`：清空回收站
+- [x] 惰性清理：保留 30 天（代码常量，不走环境变量）——`TrashRetention`，`cmd/haven/trash_api_test.go` 覆盖
 
 ### F1.3 前端
 
@@ -76,6 +58,21 @@
 - [ ] 侧边栏：在 `sidebar__spacer` 与用户区之间新增「回收站」入口，Mini 模式显示 tooltip
 - [ ] 回收站页面：列表（标题 / 原路径 / 删除时间）+ 只读预览 + 还原 / 永久删除 / 清空
 - [ ] 删除确认文案改为「可在回收站中还原」（仅笔记，文件夹不变）
+
+### F1.4 测试（与原 F3.2 / F3.3 对应，跟功能一起完成）
+
+- [x] 软删除后 `GET /api/public/notes` 与 `/api/public/notes/:id` 不可见 —— `cmd/haven/trash_visibility_test.go`
+- [x] 软删除后 `GET /api/public/search` 不返回
+- [x] 软删除后 `GET /api/search` 不返回
+- [x] 软删除后 `GET /api/tags/:id/notes` 不返回，且 `note_count` 不计已删
+- [x] 软删除后 `GET /api/notes` 不返回
+- [ ] 还原后上述接口重新可见
+- [ ] 原文件夹已删除时还原，笔记落到收件箱
+- [ ] 超过 30 天的回收站记录在访问回收站时被清理
+- [ ] 跨用户无法查看他人的回收站
+- [ ] `/trash` 路由需要登录，未登录跳 `/login`
+- [ ] 在 `/trash` 时侧边栏对应项高亮、其他项不高亮
+- [ ] 笔记删除确认框提示「可在回收站中还原」；文件夹删除仍为「不可恢复」
 
 ## 二期.F2 历史版本（见 `docs/v2/api.md` 第三、四节，`docs/v2/backend/data-model.md` 第二、三节）
 
@@ -99,6 +96,14 @@
 - [ ] 只对正文做 DIFF；标题变化在顶部单独提示
 - [ ] 还原前二次确认；还原时先 `sync()` 再覆盖，避免与自动保存竞争
 - [ ] 点击外部或 `Esc` 关闭浮层（`pointerdown` 判断，不用 `focusout`）
+
+### F2.4 测试（与原 F3.2 / F3.3 对应，跟功能一起完成）
+
+- [ ] 标题 / 正文 / 文件夹 / 标签变化时产生版本快照；只改 `sort_order` 不产生
+- [ ] 5 分钟内的多次修改合并为一条快照
+- [ ] 版本还原后标题、正文、文件夹、标签与快照一致
+- [ ] 跨用户无法查看他人的版本
+- [ ] DIFF 行分类（新增 / 删除 / 未变）纯函数单测
 
 ---
 

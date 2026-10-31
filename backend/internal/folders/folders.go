@@ -314,11 +314,13 @@ func (s *Service) Delete(ctx context.Context, userID, id string) error {
 		)
 		UPDATE notes
 		SET folder_id = $3
-		WHERE user_id = $2 AND folder_id IN (SELECT id FROM subtree)`,
+		WHERE user_id = $2
+		  AND folder_id IN (SELECT id FROM subtree)
+		  -- 回收站里的笔记保持原 folder_id，还原时才能回到原位（docs/v2/backend/data-model.md 第一节规则 2）
+		  AND deleted_at IS NULL`,
 		id, userID, parentValue(inboxID)); err != nil {
 		return fmt.Errorf("迁移文件夹内笔记失败: %w", err)
 	}
-
 	if _, err := tx.ExecContext(ctx,
 		`DELETE FROM folders WHERE id = $1 AND user_id = $2`, id, userID); err != nil {
 		return fmt.Errorf("删除文件夹失败: %w", err)

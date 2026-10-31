@@ -11,13 +11,20 @@ import (
 //
 // 所有读接口必须使用这里算出的条件，不得各自拼 visibility 判断
 // （conventions.md 第四节、auth.md 6.3）。
+//
+// 二期（docs/v2/backend/data-model.md 第一节规则 3）：已移入回收站的笔记
+// （notes.deleted_at IS NOT NULL）对任何身份都不可见，因此两条常量都带上了
+// deleted_at IS NULL。这是全库唯一的删除状态判断，**禁止**在 handler 或
+// service 里另拼一份（docs/v2/conventions.md 第一节第 4 条）。
 const (
 	// VisibilityPublic 是「公开可见」的唯一判定条件。
-	VisibilityPublic = `visibility = 'public' AND published_at IS NOT NULL`
+	VisibilityPublic = `visibility = 'public' AND published_at IS NOT NULL AND deleted_at IS NULL`
 
 	// VisibilityOwnedOrPublic 供已登录用户使用：自己的 OR 公开。
 	// 使用方需把 $1 绑定为当前用户 id。
-	VisibilityOwnedOrPublic = `(user_id = $1) OR (` + VisibilityPublic + `)`
+	//
+	// 「自己的」这一支同样要排除回收站里的笔记，否则登录用户仍能读到已删除的自己的笔记。
+	VisibilityOwnedOrPublic = `(user_id = $1 AND deleted_at IS NULL) OR (` + VisibilityPublic + `)`
 )
 
 // 注入 *gin.Context 的键。

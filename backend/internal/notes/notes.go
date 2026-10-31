@@ -230,11 +230,13 @@ func (s *Service) ListPrivate(ctx context.Context, userID string, vis auth.Visib
 }
 
 // Get 返回当前用户的一篇笔记详情（api.md 6.2）。
+//
+// 已移入回收站的笔记不可见（docs/v2/backend/data-model.md 第一节规则 3），返回 404。
 func (s *Service) Get(ctx context.Context, userID, id string) (Note, error) {
 	const q = `
 		SELECT id, folder_id, sort_order, title, content, visibility, published_at, created_at, updated_at
 		FROM notes
-		WHERE id = $1 AND user_id = $2`
+		WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`
 
 	var n Note
 	err := s.db.QueryRowContext(ctx, q, id, userID).Scan(
@@ -309,9 +311,10 @@ func (s *Service) Update(ctx context.Context, userID, id string, in UpdateInput)
 	defer tx.Rollback()
 
 	// 先确认归属并取出当前文件夹，顺便区分 404 与「是否真的移动」。
+	// 已移入回收站的笔记不可编辑（docs/v2/api.md 1.1），按不存在处理。
 	var currentFolderID *string
 	err = tx.QueryRowContext(ctx,
-		`SELECT folder_id FROM notes WHERE id = $1 AND user_id = $2`,
+		`SELECT folder_id FROM notes WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`,
 		id, userID).Scan(&currentFolderID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Note{}, ErrNotFound
@@ -399,9 +402,16 @@ func (s *Service) Update(ctx context.Context, userID, id string, in UpdateInput)
 	return s.Get(ctx, userID, id)
 }
 
-// Delete 删除笔记（api.md 6.5）。关联由外键级联清理。
+// Delete 把笔记移入回收站（api.md 6.5，docs/v2/api.md 1.1）。
+//
+// 只写 deleted_at，不删行、不动 folder_id——folder_id 就是还原时的「原位置」。
+// 关联的 note_tags 一并保留，还原后标签仍在。
+// 已被删除的笔记再次删除返回 ErrNotFound。
 func (s *Service) Delete(ctx context.Context, userID, id string) error {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM notes WHERE id = $1 AND user_id = $2`, id, userID)
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE notes
+		SET deleted_at = now()
+		WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`, id, userID)
 	if err != nil {
 		return fmt.Errorf("删除笔记失败: %w", err)
 	}

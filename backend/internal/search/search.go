@@ -121,9 +121,10 @@ func (s *Service) Private(ctx context.Context, userID string, vis auth.Visibilit
 
 	// 标签：name ILIKE
 	const tagsQ = `
-		SELECT t.id, t.name, count(nt.note_id) AS note_count
+		SELECT t.id, t.name, count(n.id) AS note_count
 		FROM tags t
 		LEFT JOIN note_tags nt ON nt.tag_id = t.id
+		LEFT JOIN notes n ON n.id = nt.note_id AND n.deleted_at IS NULL
 		WHERE t.user_id = $1 AND t.name ILIKE $2
 		GROUP BY t.id, t.name
 		ORDER BY t.name`

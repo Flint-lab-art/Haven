@@ -219,9 +219,53 @@ func (h *Handler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, note)
 }
 
-// Delete 实现 DELETE /api/notes/:id（api.md 6.5）。
+// Delete 实现 DELETE /api/notes/:id（api.md 6.5，docs/v2/api.md 1.1）：移入回收站。
 func (h *Handler) Delete(c *gin.Context) {
 	if err := h.svc.Delete(c.Request.Context(), auth.UserID(c), c.Param("id")); err != nil {
+		fail(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+// ListTrash 实现 GET /api/notes/trash（docs/v2/api.md 2.1）。
+func (h *Handler) ListTrash(c *gin.Context) {
+	page, err := httpx.ParsePagination(c)
+	if err != nil {
+		httpx.FailValidation(c, map[string]string{"limit": err.Error()})
+		return
+	}
+
+	items, total, err := h.svc.ListTrash(c.Request.Context(), auth.UserID(c), page.Limit, page.Offset)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, httpx.NewList(items, total))
+}
+
+// Restore 实现 POST /api/notes/:id/restore（docs/v2/api.md 2.2）。
+func (h *Handler) Restore(c *gin.Context) {
+	note, err := h.svc.Restore(c.Request.Context(), auth.UserID(c), c.Param("id"))
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, note)
+}
+
+// Purge 实现 DELETE /api/notes/:id/purge（docs/v2/api.md 2.3）。
+func (h *Handler) Purge(c *gin.Context) {
+	if err := h.svc.Purge(c.Request.Context(), auth.UserID(c), c.Param("id")); err != nil {
+		fail(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+// EmptyTrash 实现 DELETE /api/notes/trash（docs/v2/api.md 2.4）。
+func (h *Handler) EmptyTrash(c *gin.Context) {
+	if err := h.svc.EmptyTrash(c.Request.Context(), auth.UserID(c)); err != nil {
 		fail(c, err)
 		return
 	}
@@ -289,10 +333,15 @@ func (h *Handler) GetPublic(c *gin.Context) {
 func RegisterRoutes(r gin.IRouter, h *Handler) {
 	read := r.Group("/api/notes", auth.RequireLogin())
 	read.GET("", h.List)
+	// 静态段必须显式注册在 /:id 之前，否则会被参数路由吞掉。
+	read.GET("/trash", h.ListTrash)
 	read.GET("/:id", h.Get)
 
 	write := r.Group("/api/notes", auth.RequireWrite())
 	write.POST("", h.Create)
+	write.DELETE("/trash", h.EmptyTrash)
+	write.POST("/:id/restore", h.Restore)
+	write.DELETE("/:id/purge", h.Purge)
 	write.PATCH("/:id", h.Update)
 	write.DELETE("/:id", h.Delete)
 	write.POST("/:id/publish", h.Publish)

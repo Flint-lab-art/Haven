@@ -60,9 +60,10 @@ func NewService(db *sql.DB) *Service {
 // note_count 含私有笔记：查询本身就限定在 user_id 内（data-model.md 第四节规则 4）。
 func (s *Service) List(ctx context.Context, userID string) ([]Tag, error) {
 	const q = `
-		SELECT t.id, t.name, t.created_at, count(nt.note_id)
+		SELECT t.id, t.name, t.created_at, count(n.id)
 		FROM tags t
 		LEFT JOIN note_tags nt ON nt.tag_id = t.id
+		LEFT JOIN notes n ON n.id = nt.note_id AND n.deleted_at IS NULL
 		WHERE t.user_id = $1
 		GROUP BY t.id, t.name, t.created_at
 		ORDER BY t.name`
@@ -150,7 +151,7 @@ func (s *Service) NotesByTag(ctx context.Context, userID, tagID string, limit, o
 		SELECT count(*)
 		FROM notes n
 		JOIN note_tags nt ON nt.note_id = n.id
-		WHERE n.user_id = $1 AND nt.tag_id = $2`
+		WHERE n.user_id = $1 AND nt.tag_id = $2 AND n.deleted_at IS NULL`
 
 	var total int
 	if err := s.db.QueryRowContext(ctx, countQ, userID, tagID).Scan(&total); err != nil {
@@ -161,7 +162,7 @@ func (s *Service) NotesByTag(ctx context.Context, userID, tagID string, limit, o
 		SELECT n.id, n.folder_id, n.title, n.content, n.visibility, n.published_at, n.created_at, n.updated_at
 		FROM notes n
 		JOIN note_tags nt ON nt.note_id = n.id
-		WHERE n.user_id = $1 AND nt.tag_id = $2
+		WHERE n.user_id = $1 AND nt.tag_id = $2 AND n.deleted_at IS NULL
 		ORDER BY n.updated_at DESC
 		LIMIT $3 OFFSET $4`
 
