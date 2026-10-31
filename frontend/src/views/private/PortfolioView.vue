@@ -18,6 +18,7 @@ import {
   type PortfolioRepo,
 } from '@/api/portfolio'
 import { useUiStore } from '@/stores/ui'
+import { repoLabel } from '@/utils/portfolio'
 
 const ui = useUiStore()
 
@@ -168,11 +169,9 @@ async function confirmRemove(): Promise<void> {
   }
 }
 
-/** 链接类型的中文标签：仓库显示平台名，其他显示「链接」。 */
+/** 私有域里给链接加前缀说明类型，实际显示文字与公开页一致。 */
 function kindLabel(repo: PortfolioRepo): string {
-  if (repo.kind === 'github') return 'GitHub'
-  if (repo.kind === 'gogs') return 'Gogs'
-  return repo.title || '链接'
+  return repoLabel(repo)
 }
 
 async function addLink(item: PortfolioItem): Promise<void> {
