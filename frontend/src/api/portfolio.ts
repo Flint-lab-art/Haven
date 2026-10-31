@@ -4,10 +4,12 @@ import type { ListResult } from './client'
 
 export interface PortfolioRepo {
   id: string
-  platform: 'gogs' | 'github'
-  repo_path: string
-  /** 后端拼好的完整地址，前端直接使用。 */
+  /** 完整地址，直接保存与展示，不再拼接。 */
   url: string
+  /** 非仓库链接在公开页展示的文字；仓库链接留空，按域名显示图标。 */
+  title: string
+  /** 由后端按域名推断：github / gogs / link。 */
+  kind: 'github' | 'gogs' | 'link'
   is_primary: boolean
 }
 
@@ -36,13 +38,15 @@ export interface UpdateItemInput {
 }
 
 export interface CreateRepoInput {
-  platform: 'gogs' | 'github'
-  repo_path: string
+  url: string
+  /** 留空时后端会尝试抓取页面标题。 */
+  title?: string
   is_primary: boolean
 }
 
 export interface UpdateRepoInput {
-  repo_path?: string
+  url?: string
+  title?: string
   is_primary?: boolean
 }
 

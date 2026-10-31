@@ -477,6 +477,13 @@ a:hover {
   gap: var(--sp-2);
 }
 
+/* 纵向排列的表单组：子项之间留出与 .row 一致的间距 */
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
 .row--wrap {
   flex-wrap: wrap;
 }
@@ -3416,6 +3423,7 @@ button.tag[aria-pressed='true'] {
 .app__detail,
 .list-rows,
 .tree,
+.textarea,
 .list-panel > .detail-empty,
 .editor-surface,
 .note-outline,
@@ -3433,6 +3441,7 @@ button.tag[aria-pressed='true'] {
 .app__detail::-webkit-scrollbar,
 .list-rows::-webkit-scrollbar,
 .tree::-webkit-scrollbar,
+.textarea::-webkit-scrollbar,
 .list-panel > .detail-empty::-webkit-scrollbar,
 .editor-surface::-webkit-scrollbar,
 .note-outline::-webkit-scrollbar,
@@ -4650,15 +4659,6 @@ select:focus-visible {
   opacity: 0.8;
 }
 
-/* 多行文本输入（作品介绍正文） */
-.textarea {
-  min-height: 120px;
-  resize: vertical;
-  font-family: var(--font-mono);
-  font-size: 13px;
-  line-height: 1.6;
-}
-
 /* 作品编辑：基本信息在左、仓库链接在右，避免右侧大片留白 */
 .portfolio-editor {
   display: grid;
@@ -4704,6 +4704,15 @@ select:focus-visible {
 }
 
 .tag-card {
+  /*
+   * 四档色阶的默认值（最低档）：具体档位由 .tag-card--tier-N 覆盖。
+   * 一律用语义变量 + accent 混色，浅色与深色主题下都能分辨
+   * （docs/v3/frontend/frontend.md 8.2）。
+   */
+  --tier-bg: var(--fill-3);
+  --tier-fg: var(--label-2);
+  --tier-border: var(--sep);
+
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -4711,9 +4720,9 @@ select:focus-visible {
   gap: 4px;
   min-height: 88px;
   padding: var(--sp-4);
-  border: 1px solid var(--sep);
+  border: 1px solid var(--tier-border);
   border-radius: var(--r-xl);
-  background: var(--fill-3);
+  background: var(--tier-bg);
   cursor: pointer;
   font: inherit;
   transition:
@@ -4727,43 +4736,44 @@ select:focus-visible {
 }
 
 .tag-card__name {
-  font: 500 15px/1.35 var(--font-ui);
-  color: var(--label);
+  font: 600 16px/1.35 var(--font-ui);
+  color: var(--tier-fg, var(--label));
   text-align: center;
   word-break: break-word;
 }
 
 .tag-card__count {
   font: var(--text-caption);
-  color: var(--label-2);
+  color: var(--tier-fg, var(--label-2));
+  opacity: 0.75;
 }
 
-/* 引用次数分三档：多的更醒目，一眼能看出常用标签 */
-.tag-card--high {
-  background: var(--label);
-  border-color: var(--label);
+/* 四档色阶：引用越多颜色越深 */
+/* 引用最多：铺满强调色 */
+.tag-card--tier-1 {
+  --tier-bg: var(--accent);
+  --tier-fg: var(--on-accent);
+  --tier-border: var(--accent);
 }
 
-.tag-card--high .tag-card__name {
-  color: var(--bg);
+/* 次多：强调色半透明，叠加在卡片底色上 */
+.tag-card--tier-2 {
+  --tier-bg: color-mix(in srgb, var(--accent) 42%, var(--bg-elevated));
+  --tier-fg: var(--label);
+  --tier-border: color-mix(in srgb, var(--accent) 55%, var(--sep));
 }
 
-.tag-card--high .tag-card__count {
-  color: color-mix(in srgb, var(--bg) 70%, transparent);
+.tag-card--tier-3 {
+  --tier-bg: color-mix(in srgb, var(--accent) 16%, var(--bg-elevated));
+  --tier-fg: var(--label);
+  --tier-border: var(--sep);
 }
 
-.tag-card--mid {
-  background: var(--fill);
-  border-color: var(--sep-strong);
-}
-
-.tag-card--low {
-  background: var(--fill-3);
-  border-color: var(--sep);
-}
-
-.tag-card--low .tag-card__name {
-  color: var(--label-2);
+/* 引用最少：最朴素，只比背景稍深 */
+.tag-card--tier-4 {
+  --tier-bg: var(--fill-3);
+  --tier-fg: var(--label-2);
+  --tier-border: var(--sep);
 }
 
 /* 标签引用笔记的居中弹窗 */

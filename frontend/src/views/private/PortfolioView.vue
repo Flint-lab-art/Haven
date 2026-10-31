@@ -15,6 +15,7 @@ import {
   listPortfolio,
   updateItem,
   type PortfolioItem,
+  type PortfolioRepo,
 } from '@/api/portfolio'
 import { useUiStore } from '@/stores/ui'
 
@@ -30,7 +31,7 @@ const deleting = ref(false)
 
 const draft = reactive({ title: '', description: '', content: '', sort_order: 0 })
 const newItem = reactive({ title: '', description: '', content: '', sort_order: 0 })
-const repoDraft = reactive({ platform: 'gogs' as 'gogs' | 'github', repo_path: '', is_primary: false })
+const repoDraft = reactive({ url: '', title: '', is_primary: false })
 
 const selected = computed(() => items.value.find((item) => item.id === ui.selectedPortfolioId) ?? null)
 
@@ -167,18 +168,27 @@ async function confirmRemove(): Promise<void> {
   }
 }
 
+/** 链接类型的中文标签：仓库显示平台名，其他显示「链接」。 */
+function kindLabel(repo: PortfolioRepo): string {
+  if (repo.kind === 'github') return 'GitHub'
+  if (repo.kind === 'gogs') return 'Gogs'
+  return repo.title || '链接'
+}
+
 async function addLink(item: PortfolioItem): Promise<void> {
-  if (!repoDraft.repo_path.trim() || busy.value) return
+  if (!repoDraft.url.trim() || busy.value) return
 
   busy.value = true
   error.value = ''
   try {
     await addRepo(item.id, {
-      platform: repoDraft.platform,
-      repo_path: repoDraft.repo_path.trim(),
+      url: repoDraft.url.trim(),
+      // 留空时由后端抓取页面标题（docs/v3/api.md 5.1）
+      title: repoDraft.title.trim() || undefined,
       is_primary: repoDraft.is_primary,
     })
-    repoDraft.repo_path = ''
+    repoDraft.url = ''
+    repoDraft.title = ''
     repoDraft.is_primary = false
     ui.portfolioChanged()
     await load()
@@ -297,13 +307,13 @@ onMounted(load)
       </section>
 
       <section class="panel panel--pad">
-        <h2 class="row-item__title">仓库链接</h2>
+        <h2 class="row-item__title">相关链接</h2>
 
         <ul v-if="selected.repos.length" class="rows" style="margin-top: 12px">
           <li v-for="repo in selected.repos" :key="repo.id" class="row-item">
             <div class="row-item__main">
               <div class="row-item__title">
-                {{ repo.platform === 'gogs' ? 'Gogs' : 'GitHub' }} · {{ repo.repo_path }}
+                {{ kindLabel(repo) }}
                 <span v-if="repo.is_primary" class="badge badge--public">主链接</span>
               </div>
               <a :href="repo.url" target="_blank" rel="noopener noreferrer" class="row-item__sub">
@@ -315,26 +325,31 @@ onMounted(load)
             </button>
           </li>
         </ul>
-        <p v-else class="field__hint" style="margin-top: 12px">还没有关联仓库。</p>
+        <p v-else class="field__hint" style="margin-top: 12px">还没有添加链接。</p>
 
-        <form class="row row--wrap" style="gap: 8px; margin-top: 16px" @submit.prevent="addLink(selected)">
-          <select v-model="repoDraft.platform" class="select" style="max-width: 116px" aria-label="平台">
-            <option value="gogs">Gogs</option>
-            <option value="github">GitHub</option>
-          </select>
+        <form class="column" style="margin-top: 16px" @submit.prevent="addLink(selected)">
           <input
-            v-model="repoDraft.repo_path"
+            v-model="repoDraft.url"
+            class="input"
+            type="url"
+            placeholder="https://github.com/kairo/haven"
+            aria-label="链接地址"
+            required
+          />
+          <input
+            v-model="repoDraft.title"
             class="input"
             type="text"
-            placeholder="kairo/haven"
-            aria-label="仓库路径"
-            style="flex: 1; min-width: 150px"
+            placeholder="标题（留空则自动抓取）"
+            aria-label="链接标题"
           />
-          <label class="checkbox-row">
-            <input v-model="repoDraft.is_primary" type="checkbox" />
-            主链接
-          </label>
-          <button class="btn btn--sm" type="submit" :disabled="busy">添加仓库</button>
+          <div class="row" style="justify-content: space-between">
+            <label class="checkbox-row">
+              <input v-model="repoDraft.is_primary" type="checkbox" />
+              主链接
+            </label>
+            <button class="btn btn--sm" type="submit" :disabled="busy">添加链接</button>
+          </div>
         </form>
       </section>
       </div>

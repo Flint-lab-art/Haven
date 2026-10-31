@@ -3,7 +3,7 @@
 import { onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import PublicEmpty from '@/components/PublicEmpty.vue'
-import { listPortfolio, type PortfolioItem } from '@/api/portfolio'
+import { listPortfolio, type PortfolioItem, type PortfolioRepo } from '@/api/portfolio'
 
 const items = ref<PortfolioItem[]>([])
 const loading = ref(true)
@@ -18,6 +18,12 @@ onMounted(async () => {
     loading.value = false
   }
 })
+
+/** 仓库链接显示平台名，普通链接显示标题（没有标题时退回地址）。 */
+function repoLabel(repo: PortfolioRepo): string {
+  if (repo.kind === 'link') return repo.title || repo.url
+  return repo.kind === 'gogs' ? 'Gogs' : 'GitHub'
+}
 
 function sortedRepos(item: PortfolioItem) {
   // 主链接在前，其余保持后端顺序
@@ -71,8 +77,7 @@ function sortedRepos(item: PortfolioItem) {
             class="repo-link"
             :class="{ 'repo-link--primary': repo.is_primary }"
           >
-            {{ repo.platform === 'gogs' ? 'Gogs' : 'GitHub' }}
-            <span style="opacity: 0.7">{{ repo.repo_path }}</span>
+            {{ repoLabel(repo) }}
           </a>
         </div>
         <p v-else class="field__hint">暂无仓库链接</p>

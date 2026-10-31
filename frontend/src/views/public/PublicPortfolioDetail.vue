@@ -7,7 +7,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import PublicEmpty from '@/components/PublicEmpty.vue'
-import { getPublicPortfolioItem, type PortfolioItem } from '@/api/portfolio'
+import { getPublicPortfolioItem, type PortfolioItem, type PortfolioRepo } from '@/api/portfolio'
 import { renderMarkdown, decorateLinks } from '@/utils/markdown'
 
 const route = useRoute()
@@ -17,6 +17,12 @@ const loading = ref(true)
 const error = ref('')
 
 const rendered = computed(() => decorateLinks(renderMarkdown(item.value?.content ?? '')))
+
+/** 仓库链接显示平台名，普通链接显示标题（没有标题时退回地址）。 */
+function repoLabel(repo: PortfolioRepo): string {
+  if (repo.kind === 'link') return repo.title || repo.url
+  return repo.kind === 'gogs' ? 'Gogs' : 'GitHub'
+}
 
 function sortedRepos(value: PortfolioItem) {
   return [...value.repos].sort((a, b) => Number(b.is_primary) - Number(a.is_primary))
@@ -71,8 +77,7 @@ onMounted(() => void load())
             class="repo-pill repo-pill--link"
             :class="{ 'repo-pill--primary': repo.is_primary }"
           >
-            {{ repo.platform === 'gogs' ? 'Gogs' : 'GitHub' }}
-            <span style="opacity: 0.7">{{ repo.repo_path }}</span>
+            {{ repoLabel(repo) }}
           </a>
         </div>
       </header>

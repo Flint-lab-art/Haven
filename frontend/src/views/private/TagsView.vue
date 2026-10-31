@@ -11,11 +11,13 @@ import TagNotesDialog from '@/components/TagNotesDialog.vue'
 import { listTags, type Tag } from '@/api/tags'
 
 /**
- * 引用次数的分档阈值（docs/v3/conventions.md 第一节第 3 条）。
- * 数字是代码常量，调档只改这里。
+ * 色阶按「当前数据里的相对引用数」分档（docs/v3/frontend/frontend.md 8.2）：
+ * 拿最大引用数当基准，按比例切成四档。
+ *
+ * 用相对值而不是固定阈值，是为了在数据量小的时候也能拉开色阶——
+ * 早期所有标签都只有 1~2 次引用，固定阈值会让它们全落在同一档。
  */
-const TIER_HIGH = 10
-const TIER_MID = 3
+const TIER_RATIO = [1, 0.5, 0.01] as const
 
 const router = useRouter()
 
@@ -29,10 +31,18 @@ const sorted = computed(() =>
   [...tags.value].sort((a, b) => b.note_count - a.note_count || a.name.localeCompare(b.name, 'zh-Hans-CN')),
 )
 
-function tier(tag: Tag): 'high' | 'mid' | 'low' {
-  if (tag.note_count >= TIER_HIGH) return 'high'
-  if (tag.note_count >= TIER_MID) return 'mid'
-  return 'low'
+/** 当前最大引用数，作为分档基准；没有标签时为 0。 */
+const maxCount = computed(() => sorted.value.reduce((max, t) => Math.max(max, t.note_count), 0))
+
+function tier(tag: Tag): 1 | 2 | 3 | 4 {
+  const max = maxCount.value
+  if (max <= 0) return 4
+  const count = tag.note_count
+
+  if (count >= max * TIER_RATIO[0]) return 1
+  if (count >= max * TIER_RATIO[1]) return 2
+  if (count >= max * TIER_RATIO[2]) return 3
+  return 4
 }
 
 async function load(): Promise<void> {
@@ -71,7 +81,7 @@ onMounted(() => void load())
     </p>
 
     <div v-else-if="loading && tags.length === 0" class="tag-grid">
-      <div v-for="n in 8" :key="n" class="tag-card tag-card--low">
+      <div v-for="n in 8" :key="n" class="tag-card tag-card--tier-4">
         <div class="skeleton skeleton--title" style="width: 60%; margin: 0 auto"></div>
         <div class="skeleton skeleton--line" style="width: 40%; margin: 10px auto 0"></div>
       </div>
@@ -87,7 +97,7 @@ onMounted(() => void load())
         v-for="tag in sorted"
         :key="tag.id"
         class="tag-card"
-        :class="`tag-card--${tier(tag)}`"
+        :class="`tag-card--tier-${tier(tag)}`"
         type="button"
         @click="opened = tag"
       >

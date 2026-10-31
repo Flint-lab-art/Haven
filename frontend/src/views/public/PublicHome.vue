@@ -94,7 +94,7 @@ onMounted(() => void load())
               class="repo-pill"
               :class="{ 'repo-pill--primary': repo.is_primary }"
             >
-              {{ repo.platform === 'gogs' ? 'Gogs' : 'GitHub' }}
+              {{ repo.kind === 'link' ? (repo.title || '链接') : repo.kind === 'gogs' ? 'Gogs' : 'GitHub' }}
             </span>
           </div>
         </RouterLink>
