@@ -68,3 +68,6 @@ CREATE INDEX idx_note_versions_note ON note_versions (note_id, created_at DESC);
 - 命名与 v1 一致（`000N_描述.up.sql` / `.down.sql`），放 `backend/migrations/`；
 - 后端启动不跑 migration，仍需显式执行；
 - 两个 migration 都必须提供 `down`，且 `down` 只回滚自己新增的东西。
+- **执行 migration 的数据库角色必须是这些表的属主**：`ALTER TABLE notes` 只有属主能执行。若一期是用 `postgres` 超级用户跑的 `0001_init`，应用角色（如 `haven`）会在二期 migration 上报 `must be owner of table notes`，并把 `schema_migrations` 置为 `dirty`。
+  - 遇到时先确认失败的那条 migration 没有部分生效（如 `deleted_at` 列是否已加），再把 `schema_migrations` 重置到上一个版本后重跑；
+  - 一次性修复：用原属主对 `public` 下各表执行 `ALTER TABLE <表> OWNER TO <应用角色>`，并同步修正 `schema_migrations` 的属主。

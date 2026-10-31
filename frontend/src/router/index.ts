@@ -17,6 +17,13 @@ const publicRoutes: RouteRecordRaw[] = [
         path: '',
         name: 'public-home',
         component: () => import('@/views/public/PublicHome.vue'),
+        meta: { title: 'Haven' },
+      },
+      {
+        // 全部公开笔记（docs/v3/frontend/frontend.md 第五节）
+        path: 'notes',
+        name: 'public-notes',
+        component: () => import('@/views/public/PublicNotes.vue'),
         meta: { title: '笔记' },
       },
       {
@@ -36,6 +43,13 @@ const publicRoutes: RouteRecordRaw[] = [
         name: 'public-portfolio',
         component: () => import('@/views/public/PublicPortfolio.vue'),
         meta: { title: '作品集' },
+      },
+      {
+        // 作品详情（docs/v3/frontend/frontend.md 第六节）
+        path: 'portfolio/:id',
+        name: 'public-portfolio-detail',
+        component: () => import('@/views/public/PublicPortfolioDetail.vue'),
+        meta: { title: '作品' },
       },
       {
         path: ':pathMatch(.*)*',
@@ -115,12 +129,10 @@ const privateRoutes: RouteRecordRaw[] = [
         },
       },
       {
+        // 标签页只读，不需要中间列表栏（docs/v3/frontend/frontend.md 第十节）
         path: 'tags',
         name: 'tags',
-        components: {
-          default: () => import('@/views/private/TagsView.vue'),
-          list: () => import('@/components/TagsPanel.vue'),
-        },
+        component: () => import('@/views/private/TagsView.vue'),
         meta: { title: '标签', section: 'tags' },
       },
       {

@@ -9,11 +9,13 @@ import { ApiError } from '@/api/client'
 import {
   addRepo,
   createItem,
+  getPortfolioItem,
   deleteItem,
   deleteRepo,
   listPortfolio,
   updateItem,
   type PortfolioItem,
+  type PortfolioRepo,
 } from '@/api/portfolio'
 import { useUiStore } from '@/stores/ui'
 
@@ -27,9 +29,9 @@ const error = ref('')
 const pendingItem = ref<PortfolioItem | null>(null)
 const deleting = ref(false)
 
-const draft = reactive({ title: '', description: '', sort_order: 0 })
-const newItem = reactive({ title: '', description: '', sort_order: 0 })
-const repoDraft = reactive({ platform: 'gogs' as 'gogs' | 'github', repo_path: '', is_primary: false })
+const draft = reactive({ title: '', description: '', content: '', sort_order: 0 })
+const newItem = reactive({ title: '', description: '', content: '', sort_order: 0 })
+const repoDraft = reactive({ url: '', title: '', is_primary: false })
 
 const selected = computed(() => items.value.find((item) => item.id === ui.selectedPortfolioId) ?? null)
 
@@ -47,11 +49,32 @@ async function load(): Promise<void> {
   }
 }
 
-function syncDraft(item: PortfolioItem | null): void {
+/**
+ * 选中作品后拉一次详情。
+ *
+ * 列表走的是公开接口，不返回 content（docs/v3/api.md 2.1），
+ * 所以正文必须单独取，否则保存后会被空串覆盖。
+ */
+async function syncDraft(item: PortfolioItem | null): Promise<void> {
   if (!item) return
+  // 保存过程中列表会重新加载，此时不要把草稿覆盖回服务端旧值
+  if (busy.value) return
   draft.title = item.title
   draft.description = item.description
   draft.sort_order = item.sort_order
+  draft.content = item.content ?? ''
+
+  try {
+    const detail = await getPortfolioItem(item.id)
+    // 期间用户可能已切到别的作品，避免把旧请求的结果写进来
+    if (ui.selectedPortfolioId !== item.id) return
+    draft.title = detail.title
+    draft.description = detail.description
+    draft.content = detail.content ?? ''
+    draft.sort_order = detail.sort_order
+  } catch {
+    // 拉详情失败时保留列表里的字段，正文留空不报错
+  }
 }
 
 function handleError(err: unknown): void {
@@ -72,10 +95,12 @@ async function create(): Promise<void> {
     const created = await createItem({
       title,
       description: newItem.description,
+      content: newItem.content,
       sort_order: Number(newItem.sort_order) || 0,
     })
     newItem.title = ''
     newItem.description = ''
+    newItem.content = ''
     newItem.sort_order = 0
     ui.selectPortfolio(created.id)
     ui.portfolioChanged()
@@ -96,6 +121,7 @@ async function save(): Promise<void> {
     await updateItem(selected.value.id, {
       title: draft.title.trim(),
       description: draft.description,
+      content: draft.content,
       sort_order: Number(draft.sort_order) || 0,
     })
     ui.portfolioChanged()
@@ -142,18 +168,27 @@ async function confirmRemove(): Promise<void> {
   }
 }
 
+/** 链接类型的中文标签：仓库显示平台名，其他显示「链接」。 */
+function kindLabel(repo: PortfolioRepo): string {
+  if (repo.kind === 'github') return 'GitHub'
+  if (repo.kind === 'gogs') return 'Gogs'
+  return repo.title || '链接'
+}
+
 async function addLink(item: PortfolioItem): Promise<void> {
-  if (!repoDraft.repo_path.trim() || busy.value) return
+  if (!repoDraft.url.trim() || busy.value) return
 
   busy.value = true
   error.value = ''
   try {
     await addRepo(item.id, {
-      platform: repoDraft.platform,
-      repo_path: repoDraft.repo_path.trim(),
+      url: repoDraft.url.trim(),
+      // 留空时由后端抓取页面标题（docs/v3/api.md 5.1）
+      title: repoDraft.title.trim() || undefined,
       is_primary: repoDraft.is_primary,
     })
-    repoDraft.repo_path = ''
+    repoDraft.url = ''
+    repoDraft.title = ''
     repoDraft.is_primary = false
     ui.portfolioChanged()
     await load()
@@ -177,13 +212,13 @@ async function removeLink(item: PortfolioItem, repoId: string): Promise<void> {
 
 watch(
   () => ui.selectedPortfolioId,
-  () => syncDraft(selected.value),
+  () => void syncDraft(selected.value),
 )
 watch(
   () => ui.portfolioVersion,
   () => void load(),
 )
-watch(selected, (value) => syncDraft(value))
+watch(selected, (value) => void syncDraft(value))
 
 onMounted(load)
 </script>
@@ -209,6 +244,16 @@ onMounted(load)
         <label class="field__label" for="item-desc">一句话简介</label>
         <input id="item-desc" v-model="newItem.description" class="input" type="text" placeholder="自托管的个人知识中台" />
       </div>
+      <div class="field" style="margin-top: 12px">
+        <label class="field__label" for="item-content">介绍正文（Markdown，公开详情页展示）</label>
+        <textarea
+          id="item-content"
+          v-model="newItem.content"
+          class="input textarea"
+          rows="6"
+          placeholder="这个作品是做什么的、解决了什么问题、有什么特性……"
+        ></textarea>
+      </div>
       <div class="field" style="margin-top: 12px; max-width: 160px">
         <label class="field__label" for="item-order">排序（小的在前）</label>
         <input id="item-order" v-model.number="newItem.sort_order" class="input" type="number" />
@@ -220,8 +265,9 @@ onMounted(load)
       </div>
     </form>
 
-    <!-- 编辑已有作品 -->
+    <!-- 编辑已有作品：基本信息在左、仓库链接在右，避免右侧留白 -->
     <template v-else-if="selected">
+      <div class="portfolio-editor">
       <section class="panel panel--pad">
         <div class="row" style="justify-content: space-between; align-items: baseline">
           <h2 class="row-item__title">基本信息</h2>
@@ -239,6 +285,16 @@ onMounted(load)
           <label class="field__label" for="edit-desc">一句话简介</label>
           <input id="edit-desc" v-model="draft.description" class="input" type="text" />
         </div>
+        <div class="field" style="margin-top: 12px">
+          <label class="field__label" for="edit-content">介绍正文（Markdown，公开详情页展示）</label>
+          <textarea
+            id="edit-content"
+            v-model="draft.content"
+            class="input textarea"
+            rows="10"
+            placeholder="这个作品是做什么的、解决了什么问题、有什么特性……"
+          ></textarea>
+        </div>
         <div class="field" style="margin-top: 12px; max-width: 160px">
           <label class="field__label" for="edit-order">排序</label>
           <input id="edit-order" v-model.number="draft.sort_order" class="input" type="number" />
@@ -250,14 +306,14 @@ onMounted(load)
         </div>
       </section>
 
-      <section class="panel panel--pad" style="margin-top: 16px">
-        <h2 class="row-item__title">仓库链接</h2>
+      <section class="panel panel--pad">
+        <h2 class="row-item__title">相关链接</h2>
 
         <ul v-if="selected.repos.length" class="rows" style="margin-top: 12px">
           <li v-for="repo in selected.repos" :key="repo.id" class="row-item">
             <div class="row-item__main">
               <div class="row-item__title">
-                {{ repo.platform === 'gogs' ? 'Gogs' : 'GitHub' }} · {{ repo.repo_path }}
+                {{ kindLabel(repo) }}
                 <span v-if="repo.is_primary" class="badge badge--public">主链接</span>
               </div>
               <a :href="repo.url" target="_blank" rel="noopener noreferrer" class="row-item__sub">
@@ -269,36 +325,35 @@ onMounted(load)
             </button>
           </li>
         </ul>
-        <p v-else class="field__hint" style="margin-top: 12px">还没有关联仓库。</p>
+        <p v-else class="field__hint" style="margin-top: 12px">还没有添加链接。</p>
 
-        <form class="row row--wrap" style="gap: 8px; margin-top: 16px" @submit.prevent="addLink(selected)">
-          <select v-model="repoDraft.platform" class="select" style="max-width: 116px" aria-label="平台">
-            <option value="gogs">Gogs</option>
-            <option value="github">GitHub</option>
-          </select>
+        <form class="column" style="margin-top: 16px" @submit.prevent="addLink(selected)">
           <input
-            v-model="repoDraft.repo_path"
+            v-model="repoDraft.url"
+            class="input"
+            type="url"
+            placeholder="https://github.com/kairo/haven"
+            aria-label="链接地址"
+            required
+          />
+          <input
+            v-model="repoDraft.title"
             class="input"
             type="text"
-            placeholder="kairo/haven"
-            aria-label="仓库路径"
-            style="flex: 1; min-width: 150px"
+            placeholder="标题（留空则自动抓取）"
+            aria-label="链接标题"
           />
-          <label class="checkbox-row">
-            <input v-model="repoDraft.is_primary" type="checkbox" />
-            主链接
-          </label>
-          <button class="btn btn--sm" type="submit" :disabled="busy">添加仓库</button>
+          <div class="row" style="justify-content: space-between">
+            <label class="checkbox-row">
+              <input v-model="repoDraft.is_primary" type="checkbox" />
+              主链接
+            </label>
+            <button class="btn btn--sm" type="submit" :disabled="busy">添加链接</button>
+          </div>
         </form>
       </section>
+      </div>
     </template>
-
-    <!-- 未选中 -->
-    <div v-else-if="!loading" class="detail-empty" style="min-height: 40svh">
-      <p class="detail-empty__title">选择或添加一个作品</p>
-      <p class="detail-empty__text">从左侧选择作品，或点「添加」新建。</p>
-      <button class="btn btn--primary" type="button" @click="ui.startPortfolioCreate()">添加作品</button>
-    </div>
 
     <ConfirmDialog
       :open="pendingItem !== null"

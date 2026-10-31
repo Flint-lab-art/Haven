@@ -1,10 +1,8 @@
 // Package portfolio 实现作品集（docs/api.md 第十节）。
 //
-// 仓库地址只存 repo_path，完整 URL 由后端按 platform 拼接：
-//   - gogs   → HAVEN_GOGS_BASE_URL + "/" + repo_path
-//   - github → https://github.com + "/" + repo_path
-//
-// 见 data-model.md 第七节规则 1。
+// 相关链接直接存完整 URL，不再由后端按 platform 拼接（docs/v3/api.md 第五节）：
+//   - 仓库链接按域名在公开页显示 GitHub / Gogs 图标；
+//   - 其他链接存一条 title，公开页展示标题而不是 URL。
 package portfolio
 
 import (
@@ -29,24 +27,24 @@ var (
 	ErrItemNotFound = errors.New("作品不存在")
 	// ErrRepoNotFound 仓库不存在（404）。
 	ErrRepoNotFound = errors.New("仓库不存在")
-	// ErrDuplicateRepo 同一作品下 platform + repo_path 重复（409）。
-	ErrDuplicateRepo = errors.New("该作品下已存在相同仓库")
+	// ErrDuplicateRepo 同一作品下 URL 重复（409）。
+	ErrDuplicateRepo = errors.New("该作品下已存在相同链接")
 	// ErrPrimaryExists 该作品已有主链接（409）。
 	ErrPrimaryExists = errors.New("该作品已有主链接")
 	// ErrTitleRequired 标题为空（422）。
 	ErrTitleRequired = errors.New("标题不能为空")
-	// ErrInvalidPlatform platform 不是 gogs / github（422）。
-	ErrInvalidPlatform = errors.New("platform 只能是 gogs 或 github")
-	// ErrRepoPathRequired repo_path 为空（422）。
-	ErrRepoPathRequired = errors.New("repo_path 不能为空")
+	// ErrURLRequired 链接地址为空（422）。
+	ErrURLRequired = errors.New("链接地址不能为空")
 )
 
 // Repo 是作品关联的仓库（api.md 10.1）。
 type Repo struct {
-	ID        string `json:"id"`
-	Platform  string `json:"platform"`
-	RepoPath  string `json:"repo_path"`
-	URL       string `json:"url"`
+	ID  string `json:"id"`
+	URL string `json:"url"`
+	// Title 是非仓库链接在公开页展示的文字；仓库链接留空，由前端按域名显示图标。
+	Title string `json:"title"`
+	// Kind 由 URL 域名推断：github / gogs / link。不落库，每次查询时计算。
+	Kind      string `json:"kind"`
 	IsPrimary bool   `json:"is_primary"`
 }
 
@@ -55,8 +53,11 @@ type Item struct {
 	ID          string `json:"id"`
 	Title       string `json:"title"`
 	Description string `json:"description"`
-	SortOrder   int    `json:"sort_order"`
-	Repos       []Repo `json:"repos"`
+	// Content 是作品介绍正文（Markdown 源文本），公开详情页渲染用（docs/v3/api.md 第二节）。
+	// 列表接口不返回它，避免公开列表带上大段正文。
+	Content   string `json:"content,omitempty"`
+	SortOrder int    `json:"sort_order"`
+	Repos     []Repo `json:"repos"`
 }
 
 // Service 承载作品集逻辑。
@@ -68,15 +69,6 @@ type Service struct {
 // NewService 构造 Service。gogsBaseURL 来自 HAVEN_GOGS_BASE_URL（已去掉末尾斜杠）。
 func NewService(db *sql.DB, gogsBaseURL string) *Service {
 	return &Service{db: db, gogsBaseURL: strings.TrimSuffix(gogsBaseURL, "/")}
-}
-
-// buildURL 按 platform 拼接完整地址。
-func (s *Service) buildURL(platform, repoPath string) string {
-	base := s.gogsBaseURL
-	if platform == "github" {
-		base = GitHubBaseURL
-	}
-	return base + "/" + strings.Trim(repoPath, "/")
 }
 
 // ListPublic 返回作品集（api.md 10.1），按 sort_order 升序。
@@ -119,15 +111,43 @@ func (s *Service) ListPublic(ctx context.Context) ([]Item, error) {
 	return items, nil
 }
 
+// GetPublic 返回单个作品的公开详情（docs/v3/api.md 2.2），含介绍正文。
+//
+// 列表接口（ListPublic）不返回正文，只有详情页需要。
+func (s *Service) GetPublic(ctx context.Context, id string) (Item, error) {
+	const q = `
+		SELECT id, title, description, content, sort_order
+		FROM portfolio_items
+		WHERE id = $1`
+
+	var it Item
+	err := s.db.QueryRowContext(ctx, q, id).Scan(
+		&it.ID, &it.Title, &it.Description, &it.Content, &it.SortOrder)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Item{}, ErrItemNotFound
+	}
+	if err != nil {
+		return Item{}, fmt.Errorf("查询作品失败: %w", err)
+	}
+
+	repos, err := s.reposFor(ctx, []string{id})
+	if err != nil {
+		return Item{}, err
+	}
+	it.Repos = repos[id]
+	return it, nil
+}
+
 // Get 返回单个作品（含 repos），用于 CRUD 响应。
 func (s *Service) Get(ctx context.Context, userID, id string) (Item, error) {
 	const q = `
-		SELECT id, title, description, sort_order
+		SELECT id, title, description, content, sort_order
 		FROM portfolio_items
 		WHERE id = $1 AND user_id = $2`
 
 	var it Item
-	err := s.db.QueryRowContext(ctx, q, id, userID).Scan(&it.ID, &it.Title, &it.Description, &it.SortOrder)
+	err := s.db.QueryRowContext(ctx, q, id, userID).Scan(
+		&it.ID, &it.Title, &it.Description, &it.Content, &it.SortOrder)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Item{}, ErrItemNotFound
 	}
@@ -144,7 +164,7 @@ func (s *Service) Get(ctx context.Context, userID, id string) (Item, error) {
 }
 
 // Create 新建作品（api.md 10.2）。
-func (s *Service) Create(ctx context.Context, userID, title, description string, sortOrder int) (Item, error) {
+func (s *Service) Create(ctx context.Context, userID, title, description, content string, sortOrder int) (Item, error) {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		return Item{}, ErrTitleRequired
@@ -152,9 +172,9 @@ func (s *Service) Create(ctx context.Context, userID, title, description string,
 
 	var id string
 	err := s.db.QueryRowContext(ctx,
-		`INSERT INTO portfolio_items (user_id, title, description, sort_order)
-		 VALUES ($1, $2, $3, $4) RETURNING id`,
-		userID, title, description, sortOrder).Scan(&id)
+		`INSERT INTO portfolio_items (user_id, title, description, content, sort_order)
+		 VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+		userID, title, description, content, sortOrder).Scan(&id)
 	if err != nil {
 		return Item{}, fmt.Errorf("创建作品失败: %w", err)
 	}
@@ -165,6 +185,7 @@ func (s *Service) Create(ctx context.Context, userID, title, description string,
 type UpdateInput struct {
 	Title       *string
 	Description *string
+	Content     *string
 	SortOrder   *int
 }
 
@@ -187,6 +208,11 @@ func (s *Service) Update(ctx context.Context, userID, id string, in UpdateInput)
 	if in.Description != nil {
 		if _, err := s.db.ExecContext(ctx, `UPDATE portfolio_items SET description = $2 WHERE id = $1`, id, *in.Description); err != nil {
 			return Item{}, fmt.Errorf("更新作品简介失败: %w", err)
+		}
+	}
+	if in.Content != nil {
+		if _, err := s.db.ExecContext(ctx, `UPDATE portfolio_items SET content = $2 WHERE id = $1`, id, *in.Content); err != nil {
+			return Item{}, fmt.Errorf("更新作品正文失败: %w", err)
 		}
 	}
 	if in.SortOrder != nil {
@@ -215,18 +241,34 @@ func (s *Service) Delete(ctx context.Context, userID, id string) error {
 	return nil
 }
 
-// AddRepo 给作品加仓库（api.md 10.5）。
+// RepoInput 是新增链接的入参（docs/v3/api.md 5.1）。
+type RepoInput struct {
+	URL   string
+	Title string
+	// IsPrimary 仅对仓库链接有意义；非仓库链接一律 false。
+	IsPrimary bool
+}
+
+// AddRepo 给作品加一条相关链接（docs/v3/api.md 5.1）。
+//
+// URL 只接受 http/https 的完整地址；title 留空时后端尽力抓一次页面标题。
 func (s *Service) AddRepo(ctx context.Context, userID, itemID string, in RepoInput) (Repo, error) {
 	if _, err := s.Get(ctx, userID, itemID); err != nil {
 		return Repo{}, err
 	}
-	if err := ValidateRepoInput(in.Platform, in.RepoPath); err != nil {
+
+	link, err := ValidateURL(in.URL)
+	if err != nil {
 		return Repo{}, err
 	}
 
-	// 先查后插必须放在同一个事务里：仅靠查询无法阻止并发写入，
-	// 而主链接的唯一部分索引在冲突时只会报 500。事务内先锁住作品行，
-	// 让同作品的并发新增串行化，命中索引时统一映射成 409（api.md 11.5）。
+	title := strings.TrimSpace(in.Title)
+	kind := s.RepoKind(link)
+	// 仓库链接不需要标题（公开页显示图标）；其他链接在标题为空时抓一次
+	if title == "" && kind == "link" {
+		title = FetchTitle(ctx, link)
+	}
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Repo{}, fmt.Errorf("开启事务失败: %w", err)
@@ -256,23 +298,21 @@ func (s *Service) AddRepo(ctx context.Context, userID, itemID string, in RepoInp
 	}
 
 	const q = `
-		INSERT INTO portfolio_repos (portfolio_item_id, platform, repo_path, is_primary)
+		INSERT INTO portfolio_repos (portfolio_item_id, url, title, is_primary)
 		VALUES ($1, $2, $3, $4)
 		ON CONFLICT DO NOTHING
 		RETURNING id`
 
 	var id string
-	err = tx.QueryRowContext(ctx, q, itemID, in.Platform, in.RepoPath, in.IsPrimary).Scan(&id)
+	err = tx.QueryRowContext(ctx, q, itemID, link, title, in.IsPrimary).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
-		// 命中 idx_portfolio_repos_unique
 		return Repo{}, ErrDuplicateRepo
 	}
 	if err != nil {
 		if isUniqueViolation(err) {
-			// 命中 idx_portfolio_repos_primary（并发下仍有极小概率）
 			return Repo{}, ErrPrimaryExists
 		}
-		return Repo{}, fmt.Errorf("添加仓库失败: %w", err)
+		return Repo{}, fmt.Errorf("添加链接失败: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return Repo{}, fmt.Errorf("提交事务失败: %w", err)
@@ -280,9 +320,9 @@ func (s *Service) AddRepo(ctx context.Context, userID, itemID string, in RepoInp
 
 	return Repo{
 		ID:        id,
-		Platform:  in.Platform,
-		RepoPath:  in.RepoPath,
-		URL:       s.buildURL(in.Platform, in.RepoPath),
+		URL:       link,
+		Title:     title,
+		Kind:      kind,
 		IsPrimary: in.IsPrimary,
 	}, nil
 }
@@ -296,48 +336,27 @@ func isUniqueViolation(err error) bool {
 	return strings.Contains(err.Error(), "23505")
 }
 
-// RepoInput 是新增 / 修改仓库的入参。
-type RepoInput struct {
-	Platform  string
-	RepoPath  string
-	IsPrimary bool
-}
-
-// ValidateRepoInput 校验 platform 与 repo_path（api.md 10.5 的错误清单）。
-func ValidateRepoInput(platform, repoPath string) error {
-	if platform != "gogs" && platform != "github" {
-		return ErrInvalidPlatform
-	}
-	if strings.TrimSpace(repoPath) == "" {
-		return ErrRepoPathRequired
-	}
-	return nil
-}
-
-// UpdateRepoInput 是 PATCH 仓库的入参；指针区分「未出现」。
+// UpdateRepoInput 是 PATCH 链接的入参；指针区分「未出现」。
 type UpdateRepoInput struct {
-	RepoPath  *string
+	URL       *string
+	Title     *string
 	IsPrimary *bool
 }
 
-// UpdateRepo 修改仓库（api.md 10.6）。
+// UpdateRepo 修改链接（docs/v3/api.md 5.2）。
 func (s *Service) UpdateRepo(ctx context.Context, userID, itemID, repoID string, in UpdateRepoInput) (Repo, error) {
-	// 归属校验与写入必须在同一事务里：先 Get 再开新事务的话，
-	// 两次查询之间作品可能已被删除或转手。
 	var repo Repo
-	var platform string
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, platform, repo_path, is_primary FROM portfolio_repos
+		`SELECT id, url, title, is_primary FROM portfolio_repos
 		 WHERE id = $1 AND portfolio_item_id = $2`, repoID, itemID).
-		Scan(&repo.ID, &platform, &repo.RepoPath, &repo.IsPrimary)
+		Scan(&repo.ID, &repo.URL, &repo.Title, &repo.IsPrimary)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Repo{}, ErrRepoNotFound
 	}
 	if err != nil {
-		return Repo{}, fmt.Errorf("查询仓库失败: %w", err)
+		return Repo{}, fmt.Errorf("查询链接失败: %w", err)
 	}
 
-	// 与 AddRepo 同理：先查后改放在同一事务内，并锁住作品行。
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Repo{}, fmt.Errorf("开启事务失败: %w", err)
@@ -354,19 +373,29 @@ func (s *Service) UpdateRepo(ctx context.Context, userID, itemID, repoID string,
 		return Repo{}, fmt.Errorf("锁定作品失败: %w", err)
 	}
 
-	if in.RepoPath != nil {
-		path := strings.TrimSpace(*in.RepoPath)
-		if path == "" {
-			return Repo{}, ErrRepoPathRequired
+	if in.URL != nil {
+		link, err := ValidateURL(*in.URL)
+		if err != nil {
+			return Repo{}, err
 		}
 		if _, err := tx.ExecContext(ctx,
-			`UPDATE portfolio_repos SET repo_path = $2 WHERE id = $1`, repoID, path); err != nil {
+			`UPDATE portfolio_repos SET url = $2 WHERE id = $1`, repoID, link); err != nil {
 			if isUniqueViolation(err) {
 				return Repo{}, ErrDuplicateRepo
 			}
-			return Repo{}, fmt.Errorf("更新仓库路径失败: %w", err)
+			return Repo{}, fmt.Errorf("更新链接地址失败: %w", err)
 		}
-		repo.RepoPath = path
+		repo.URL = link
+	}
+
+	if in.Title != nil {
+		title := strings.TrimSpace(*in.Title)
+		// 非仓库链接允许留空（公开页会退回显示 URL）；仓库链接忽略标题
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE portfolio_repos SET title = $2 WHERE id = $1`, repoID, title); err != nil {
+			return Repo{}, fmt.Errorf("更新链接标题失败: %w", err)
+		}
+		repo.Title = title
 	}
 
 	if in.IsPrimary != nil && *in.IsPrimary {
@@ -400,8 +429,7 @@ func (s *Service) UpdateRepo(ctx context.Context, userID, itemID, repoID string,
 		return Repo{}, fmt.Errorf("提交事务失败: %w", err)
 	}
 
-	repo.Platform = platform
-	repo.URL = s.buildURL(platform, repo.RepoPath)
+	repo.Kind = s.RepoKind(repo.URL)
 	return repo, nil
 }
 
@@ -434,10 +462,10 @@ func (s *Service) reposFor(ctx context.Context, itemIDs []string) (map[string][]
 	}
 
 	const q = `
-		SELECT portfolio_item_id, id, platform, repo_path, is_primary
+		SELECT portfolio_item_id, id, url, title, is_primary
 		FROM portfolio_repos
 		WHERE portfolio_item_id = ANY($1)
-		ORDER BY is_primary DESC, platform, repo_path`
+		ORDER BY is_primary DESC, url`
 
 	rows, err := s.db.QueryContext(ctx, q, itemIDs)
 	if err != nil {
@@ -448,10 +476,10 @@ func (s *Service) reposFor(ctx context.Context, itemIDs []string) (map[string][]
 	for rows.Next() {
 		var itemID string
 		var r Repo
-		if err := rows.Scan(&itemID, &r.ID, &r.Platform, &r.RepoPath, &r.IsPrimary); err != nil {
-			return nil, fmt.Errorf("扫描作品仓库失败: %w", err)
+		if err := rows.Scan(&itemID, &r.ID, &r.URL, &r.Title, &r.IsPrimary); err != nil {
+			return nil, fmt.Errorf("扫描作品链接失败: %w", err)
 		}
-		r.URL = s.buildURL(r.Platform, r.RepoPath)
+		r.Kind = s.RepoKind(r.URL)
 		out[itemID] = append(out[itemID], r)
 	}
 	if err := rows.Err(); err != nil {
@@ -486,10 +514,8 @@ func fail(c *gin.Context, err error) {
 		httpx.FailConflict(c, err.Error())
 	case errors.Is(err, ErrTitleRequired):
 		httpx.FailValidation(c, map[string]string{"title": err.Error()})
-	case errors.Is(err, ErrRepoPathRequired):
-		httpx.FailValidation(c, map[string]string{"repo_path": err.Error()})
-	case errors.Is(err, ErrInvalidPlatform):
-		httpx.FailValidation(c, map[string]string{"platform": err.Error()})
+	case errors.Is(err, ErrInvalidURL):
+		httpx.FailValidation(c, map[string]string{"url": err.Error()})
 	default:
 		httpx.FailInternal(c, err)
 	}
@@ -508,6 +534,7 @@ func (h *Handler) ListPublic(c *gin.Context) {
 type createRequest struct {
 	Title       string `json:"title"`
 	Description string `json:"description"`
+	Content     string `json:"content"`
 	SortOrder   int    `json:"sort_order"`
 }
 
@@ -519,7 +546,7 @@ func (h *Handler) Create(c *gin.Context) {
 		return
 	}
 
-	item, err := h.svc.Create(c.Request.Context(), auth.UserID(c), req.Title, req.Description, req.SortOrder)
+	item, err := h.svc.Create(c.Request.Context(), auth.UserID(c), req.Title, req.Description, req.Content, req.SortOrder)
 	if err != nil {
 		fail(c, err)
 		return
@@ -530,6 +557,7 @@ func (h *Handler) Create(c *gin.Context) {
 type updateRequest struct {
 	Title       *string `json:"title"`
 	Description *string `json:"description"`
+	Content     *string `json:"content"`
 	SortOrder   *int    `json:"sort_order"`
 }
 
@@ -542,7 +570,7 @@ func (h *Handler) Update(c *gin.Context) {
 	}
 
 	item, err := h.svc.Update(c.Request.Context(), auth.UserID(c), c.Param("id"),
-		UpdateInput{Title: req.Title, Description: req.Description, SortOrder: req.SortOrder})
+		UpdateInput{Title: req.Title, Description: req.Description, Content: req.Content, SortOrder: req.SortOrder})
 	if err != nil {
 		fail(c, err)
 		return
@@ -560,8 +588,8 @@ func (h *Handler) Delete(c *gin.Context) {
 }
 
 type repoRequest struct {
-	Platform  string `json:"platform"`
-	RepoPath  string `json:"repo_path"`
+	URL       string `json:"url"`
+	Title     string `json:"title"`
 	IsPrimary bool   `json:"is_primary"`
 }
 
@@ -574,7 +602,7 @@ func (h *Handler) AddRepo(c *gin.Context) {
 	}
 
 	repo, err := h.svc.AddRepo(c.Request.Context(), auth.UserID(c), c.Param("id"),
-		RepoInput{Platform: req.Platform, RepoPath: req.RepoPath, IsPrimary: req.IsPrimary})
+		RepoInput{URL: req.URL, Title: req.Title, IsPrimary: req.IsPrimary})
 	if err != nil {
 		fail(c, err)
 		return
@@ -583,7 +611,8 @@ func (h *Handler) AddRepo(c *gin.Context) {
 }
 
 type repoUpdateRequest struct {
-	RepoPath  *string `json:"repo_path"`
+	URL       *string `json:"url"`
+	Title     *string `json:"title"`
 	IsPrimary *bool   `json:"is_primary"`
 }
 
@@ -596,7 +625,7 @@ func (h *Handler) UpdateRepo(c *gin.Context) {
 	}
 
 	repo, err := h.svc.UpdateRepo(c.Request.Context(), auth.UserID(c), c.Param("id"), c.Param("repoId"),
-		UpdateRepoInput{RepoPath: req.RepoPath, IsPrimary: req.IsPrimary})
+		UpdateRepoInput{URL: req.URL, Title: req.Title, IsPrimary: req.IsPrimary})
 	if err != nil {
 		fail(c, err)
 		return
@@ -614,8 +643,34 @@ func (h *Handler) DeleteRepo(c *gin.Context) {
 }
 
 // RegisterRoutes 注册作品集路由（api.md 第十节）。
+// Get 实现 GET /api/portfolio/:id（docs/v3/api.md 1.2）：私有域作品详情，含正文。
+//
+// 私有域列表用的是公开列表接口（不返回正文），编辑器打开作品时需要单独取一次详情。
+func (h *Handler) Get(c *gin.Context) {
+	item, err := h.svc.Get(c.Request.Context(), auth.UserID(c), c.Param("id"))
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	c.JSON(200, item)
+}
+
+// GetPublic 实现 GET /api/public/portfolio/:id（docs/v3/api.md 2.2）：公开的作品详情，含正文。
+func (h *Handler) GetPublic(c *gin.Context) {
+	item, err := h.svc.GetPublic(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	c.JSON(200, item)
+}
+
 func RegisterRoutes(r gin.IRouter, h *Handler) {
 	r.GET("/api/public/portfolio", h.ListPublic)
+	r.GET("/api/public/portfolio/:id", h.GetPublic)
+
+	read := r.Group("/api/portfolio", auth.RequireLogin())
+	read.GET("/:id", h.Get)
 
 	write := r.Group("/api/portfolio", auth.RequireWrite())
 	write.POST("", h.Create)

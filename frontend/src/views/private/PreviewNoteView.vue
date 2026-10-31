@@ -23,7 +23,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="detail-inner">
+  <div class="detail-inner detail-inner--reading">
     <div v-if="loading">
       <div class="skeleton skeleton--title" style="width: 56%"></div>
       <div class="skeleton skeleton--line" style="width: 92%; margin-top: 16px"></div>

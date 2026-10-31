@@ -1,186 +1,116 @@
 <script setup lang="ts">
 /**
- * 右侧标签详情：新建标签、查看某个标签下的笔记、物理删除标签。
+ * 标签页（docs/v3/frontend/frontend.md 第十节）。
  *
- * 标签随笔记生命周期出现 / 隐藏；只有这里可以做物理删除（docs/backend/data-model.md 第四节）。
+ * 只展示：按引用次数倒序列出全部标签，卡片大小一致、配色按引用次数分档。
+ * 点击标签弹出居中窗口，列出引用它的笔记；窗口内不提供任何写操作。
  */
-import { computed, onMounted, ref, watch } from 'vue'
-import { RouterLink } from 'vue-router'
-import ConfirmDialog from '@/components/ConfirmDialog.vue'
-import { ApiError } from '@/api/client'
-import {
-  createTag,
-  deleteTag,
-  listTagNotes,
-  listTags,
-  type Tag,
-} from '@/api/tags'
-import type { NoteSummary } from '@/api/notes'
-import { useUiStore } from '@/stores/ui'
-import { formatRelative } from '@/utils/format'
+import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import TagNotesDialog from '@/components/TagNotesDialog.vue'
+import { listTags, type Tag } from '@/api/tags'
 
-const ui = useUiStore()
+/**
+ * 色阶按「当前数据里的相对引用数」分档（docs/v3/frontend/frontend.md 8.2）：
+ * 拿最大引用数当基准，按比例切成四档。
+ *
+ * 用相对值而不是固定阈值，是为了在数据量小的时候也能拉开色阶——
+ * 早期所有标签都只有 1~2 次引用，固定阈值会让它们全落在同一档。
+ */
+const TIER_RATIO = [1, 0.5, 0.01] as const
+
+const router = useRouter()
 
 const tags = ref<Tag[]>([])
-const name = ref('')
-const creating = ref(false)
+const loading = ref(true)
 const error = ref('')
+const opened = ref<Tag | null>(null)
 
-const tagNotes = ref<NoteSummary[]>([])
-const notesLoading = ref(false)
+/** 引用多的排前面；次数相同时按名称排，保证顺序稳定。 */
+const sorted = computed(() =>
+  [...tags.value].sort((a, b) => b.note_count - a.note_count || a.name.localeCompare(b.name, 'zh-Hans-CN')),
+)
 
-const pendingTag = ref<Tag | null>(null)
-const deleting = ref(false)
+/** 当前最大引用数，作为分档基准；没有标签时为 0。 */
+const maxCount = computed(() => sorted.value.reduce((max, t) => Math.max(max, t.note_count), 0))
 
-const selected = computed(() => tags.value.find((tag) => tag.id === ui.selectedTagId) ?? null)
+function tier(tag: Tag): 1 | 2 | 3 | 4 {
+  const max = maxCount.value
+  if (max <= 0) return 4
+  const count = tag.note_count
+
+  if (count >= max * TIER_RATIO[0]) return 1
+  if (count >= max * TIER_RATIO[1]) return 2
+  if (count >= max * TIER_RATIO[2]) return 3
+  return 4
+}
 
 async function load(): Promise<void> {
+  loading.value = true
+  error.value = ''
   try {
     tags.value = (await listTags()).items
-    if (ui.selectedTagId && !tags.value.some((tag) => tag.id === ui.selectedTagId)) {
-      ui.selectTag(null)
-    }
   } catch {
     error.value = '标签加载失败，请稍后重试'
-  }
-}
-
-async function loadNotes(id: string | null): Promise<void> {
-  tagNotes.value = []
-  if (!id) return
-
-  notesLoading.value = true
-  try {
-    tagNotes.value = (await listTagNotes(id)).items
-  } catch {
-    // 笔记列表拉取失败不影响标签本身的操作
   } finally {
-    notesLoading.value = false
+    loading.value = false
   }
 }
 
-async function create(): Promise<void> {
-  const value = name.value.trim()
-  if (!value || creating.value) return
-
-  creating.value = true
-  error.value = ''
-  try {
-    const tag = await createTag(value)
-    name.value = ''
-    ui.selectTag(tag.id)
-    ui.tagsChanged()
-    await load()
-  } catch (err) {
-    if (err instanceof ApiError && err.status === 409) {
-      error.value = `标签「${value}」已存在`
-    } else {
-      error.value = err instanceof ApiError ? err.message : '创建失败，请稍后重试'
-    }
-  } finally {
-    creating.value = false
-  }
+/** 点笔记：先关窗口再跳转，避免返回时窗口还开着。 */
+function openNote(id: string): void {
+  opened.value = null
+  void router.push({ name: 'note-detail', params: { id } })
 }
 
-function remove(tag: Tag): void {
-  pendingTag.value = tag
-}
-
-async function confirmRemove(): Promise<void> {
-  const tag = pendingTag.value
-  if (!tag || deleting.value) return
-
-  deleting.value = true
-  error.value = ''
-  try {
-    await deleteTag(tag.id)
-    ui.selectTag(null)
-    ui.tagsChanged()
-    await load()
-    pendingTag.value = null
-  } catch (err) {
-    error.value = err instanceof ApiError ? err.message : '删除失败，请稍后重试'
-    pendingTag.value = null
-  } finally {
-    deleting.value = false
-  }
-}
-
-watch(
-  () => ui.tagsVersion,
-  () => void load(),
-)
-watch(
-  () => ui.selectedTagId,
-  (id) => void loadNotes(id),
-)
-
-onMounted(async () => {
-  await load()
-  await loadNotes(ui.selectedTagId)
-})
+onMounted(() => void load())
 </script>
 
 <template>
   <div class="detail-inner">
     <header class="detail-head">
       <h1 class="detail-title">标签</h1>
-      <p class="detail-sub">标签跟随笔记出现；计数归零后自动从列表隐藏。</p>
+      <p class="detail-sub">按引用次数排列；点开标签查看引用了哪些笔记。</p>
     </header>
 
-    <form class="row" style="gap: 9px" @submit.prevent="create">
-      <input
-        v-model="name"
-        class="input"
-        type="text"
-        placeholder="新标签名"
-        aria-label="新标签名"
-        maxlength="64"
-      />
-      <button class="btn btn--primary" type="submit" :disabled="creating">添加</button>
-    </form>
+    <p v-if="error" class="notice notice--error">
+      {{ error }}
+      <span class="notice__actions">
+        <button class="btn btn--sm" type="button" @click="load">重试</button>
+      </span>
+    </p>
 
-    <p v-if="error" class="notice notice--error" style="margin-top: 16px">{{ error }}</p>
-
-    <section v-if="selected" class="tag-detail">
-      <div class="tag-detail__head">
-        <div>
-          <h2 class="tag-detail__name">{{ selected.name }}</h2>
-          <p class="field__hint">{{ selected.note_count }} 篇笔记</p>
-        </div>
-        <button class="btn btn--danger btn--sm" type="button" @click="remove(selected)">删除标签</button>
+    <div v-else-if="loading && tags.length === 0" class="tag-grid">
+      <div v-for="n in 8" :key="n" class="tag-card tag-card--tier-4">
+        <div class="skeleton skeleton--title" style="width: 60%; margin: 0 auto"></div>
+        <div class="skeleton skeleton--line" style="width: 40%; margin: 10px auto 0"></div>
       </div>
+    </div>
 
-      <div v-if="notesLoading" style="margin-top: 16px">
-        <div class="skeleton skeleton--line" style="width: 60%"></div>
-      </div>
+    <div v-else-if="tags.length === 0" class="detail-empty" style="min-height: 40svh">
+      <p class="detail-empty__title">还没有标签</p>
+      <p class="detail-empty__text">写笔记时在顶部「添加标签」，标签会出现在这里。</p>
+    </div>
 
-      <p v-else-if="tagNotes.length === 0" class="field__hint" style="margin-top: 16px">
-        这个标签下还没有笔记。
-      </p>
+    <div v-else class="tag-grid">
+      <button
+        v-for="tag in sorted"
+        :key="tag.id"
+        class="tag-card"
+        :class="`tag-card--tier-${tier(tag)}`"
+        type="button"
+        @click="opened = tag"
+      >
+        <span class="tag-card__name">{{ tag.name }}</span>
+        <span class="tag-card__count">{{ tag.note_count }} 篇笔记</span>
+      </button>
+    </div>
 
-      <ul v-else class="rows" style="margin-top: 16px; border: 1px solid var(--sep); border-radius: 10px">
-        <li v-for="note in tagNotes" :key="note.id">
-          <RouterLink :to="{ name: 'note-detail', params: { id: note.id } }" class="row-item row-item--tappable">
-            <div class="row-item__main">
-              <div class="row-item__title">{{ note.title }}</div>
-              <div class="row-item__sub">更新于 {{ formatRelative(note.updated_at) }}</div>
-            </div>
-            <span class="row-item__chevron" aria-hidden="true">›</span>
-          </RouterLink>
-        </li>
-      </ul>
-    </section>
-
-    <p v-else class="field__hint" style="margin-top: 24px">在左侧选择一个标签查看详情。</p>
-
-    <ConfirmDialog
-      :open="pendingTag !== null"
-      title="删除标签"
-      :message="`删除标签「${pendingTag?.name ?? ''}」？笔记不会删除，只解除关联。`"
-      :busy="deleting"
-      @confirm="confirmRemove"
-      @cancel="pendingTag = null"
+    <TagNotesDialog
+      :open="opened !== null"
+      :tag="opened"
+      @close="opened = null"
+      @open-note="openNote"
     />
   </div>
 </template>

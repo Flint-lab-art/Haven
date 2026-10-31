@@ -4,10 +4,12 @@ import type { ListResult } from './client'
 
 export interface PortfolioRepo {
   id: string
-  platform: 'gogs' | 'github'
-  repo_path: string
-  /** 后端拼好的完整地址，前端直接使用。 */
+  /** 完整地址，直接保存与展示，不再拼接。 */
   url: string
+  /** 非仓库链接在公开页展示的文字；仓库链接留空，按域名显示图标。 */
+  title: string
+  /** 由后端按域名推断：github / gogs / link。 */
+  kind: 'github' | 'gogs' | 'link'
   is_primary: boolean
 }
 
@@ -15,6 +17,8 @@ export interface PortfolioItem {
   id: string
   title: string
   description: string
+  /** 作品介绍正文（Markdown），仅详情接口返回，列表接口省略。 */
+  content?: string
   sort_order: number
   repos: PortfolioRepo[]
 }
@@ -22,28 +26,42 @@ export interface PortfolioItem {
 export interface CreateItemInput {
   title: string
   description: string
+  content?: string
   sort_order: number
 }
 
 export interface UpdateItemInput {
   title?: string
   description?: string
+  content?: string
   sort_order?: number
 }
 
 export interface CreateRepoInput {
-  platform: 'gogs' | 'github'
-  repo_path: string
+  url: string
+  /** 留空时后端会尝试抓取页面标题。 */
+  title?: string
   is_primary: boolean
 }
 
 export interface UpdateRepoInput {
-  repo_path?: string
+  url?: string
+  title?: string
   is_primary?: boolean
 }
 
 export function listPortfolio(): Promise<ListResult<PortfolioItem>> {
   return request<ListResult<PortfolioItem>>('/api/public/portfolio')
+}
+
+/** 私有域的作品详情，含介绍正文（docs/v3/api.md 1.2）。 */
+export function getPortfolioItem(id: string): Promise<PortfolioItem> {
+  return request<PortfolioItem>(`/api/portfolio/${id}`)
+}
+
+/** 公开的作品详情，含介绍正文（docs/v3/api.md 2.2）。 */
+export function getPublicPortfolioItem(id: string): Promise<PortfolioItem> {
+  return request<PortfolioItem>(`/api/public/portfolio/${id}`)
 }
 
 export function createItem(input: CreateItemInput): Promise<PortfolioItem> {
