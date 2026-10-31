@@ -419,7 +419,8 @@ function removeNote(note: NoteSummary): void {
     kind: 'note',
     id: note.id,
     name: note.title,
-    message: `确定删除「${note.title}」吗？删除后无法恢复。`,
+    // docs/v2/frontend/frontend.md 第四节：删除改为移入回收站，文案同步变更。
+    message: `确定删除「${note.title}」吗？可在回收站中还原。`,
   }
 }
 

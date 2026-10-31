@@ -95,6 +95,32 @@ export function deleteNote(id: string): Promise<void> {
   return request<void>(`/api/notes/${id}`, { method: 'DELETE' })
 }
 
+/** 回收站列表项（docs/v2/api.md 2.1）。 */
+export interface TrashItem {
+  id: string
+  title: string
+  content_preview: string
+  folder_id: string | null
+  folder_path: string
+  deleted_at: string
+}
+
+export function listTrash(limit = 20, offset = 0): Promise<ListResult<TrashItem>> {
+  return request('/api/notes/trash', { query: { limit, offset } })
+}
+
+export function restoreNote(id: string): Promise<Note> {
+  return request<Note>(`/api/notes/${id}/restore`, { method: 'POST' })
+}
+
+export function purgeNote(id: string): Promise<void> {
+  return request<void>(`/api/notes/${id}/purge`, { method: 'DELETE' })
+}
+
+export function emptyTrash(): Promise<void> {
+  return request<void>('/api/notes/trash', { method: 'DELETE' })
+}
+
 export function publishNote(id: string): Promise<Note> {
   return request<Note>(`/api/notes/${id}/publish`, { method: 'POST' })
 }

@@ -133,6 +133,21 @@ const privateRoutes: RouteRecordRaw[] = [
         meta: { title: '作品集', section: 'portfolio' },
       },
       {
+        // 回收站（docs/v2/frontend/frontend.md 第一节）
+        path: 'trash',
+        name: 'trash',
+        components: {
+          default: () => import('@/views/private/TrashView.vue'),
+          list: () => import('@/components/TrashPanel.vue'),
+        },
+        meta: {
+          title: '回收站',
+          section: 'trash',
+          emptyTitle: '回收站是空的',
+          emptyText: '从左侧选一篇被删除的笔记，还原或永久删除。',
+        },
+      },
+      {
         path: 'settings',
         name: 'settings',
         components: {
