@@ -5094,3 +5094,217 @@ select:focus-visible {
   font: var(--text-caption);
   color: var(--label-2);
 }
+
+/* ============ 首页（docs/v5/frontend/frontend.md 第三节） ============ */
+
+/* 四张统计卡片 */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--sp-3);
+}
+
+.stat-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 92px;
+  padding: var(--sp-4);
+  background: var(--fill-3);
+  border: 1px solid var(--sep);
+  border-radius: var(--r-xl);
+}
+
+.stat-card__value {
+  font: 700 26px/1.2 var(--font-ui);
+  letter-spacing: -0.5px;
+  color: var(--label);
+}
+
+.stat-card__label {
+  font: var(--text-footnote);
+  color: var(--label-2);
+}
+
+/* 热力图与最近编辑并排：热力图宽、最近编辑窄 */
+.home-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: var(--sp-4);
+  margin-top: var(--sp-6);
+  align-items: start;
+}
+
+.home-panel {
+  padding: var(--sp-4);
+  background: var(--fill-3);
+  border: 1px solid var(--sep);
+  border-radius: var(--r-lg);
+  min-width: 0;
+}
+
+.home-panel__title {
+  font: 600 16px/1.4 var(--font-ui);
+  color: var(--label);
+  margin-bottom: var(--sp-1);
+}
+
+/* 热力图 */
+.heatmap {
+  min-width: 0;
+}
+
+.heatmap__inner {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.heatmap__inner::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.heatmap__months {
+  display: flex;
+  gap: 3px;
+  width: 100%;
+  margin-bottom: 4px;
+}
+
+.heatmap__month {
+  flex: 1 1 0;
+  min-width: 0;
+  font: var(--text-caption);
+  color: var(--label-3);
+  overflow: visible;
+  white-space: nowrap;
+}
+
+/*
+ * 热力图铺满容器宽度：每列平分，格子用 aspect-ratio 保持正方形。
+ * 之前写死 11px，面板变宽时右侧会留一大片空白。
+ */
+.heatmap__grid {
+  display: flex;
+  gap: 3px;
+  width: 100%;
+}
+
+.heatmap__col {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.heatmap__pad,
+.heatmap__cell {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 2px;
+}
+
+.heatmap__pad {
+  background: transparent;
+}
+
+/* 五档色阶：全是 accent 与底色的混色，浅色/深色主题都成立 */
+.heatmap__cell--0 {
+  background: var(--fill);
+}
+
+.heatmap__cell--1 {
+  background: color-mix(in srgb, var(--accent) 30%, var(--fill));
+}
+
+.heatmap__cell--2 {
+  background: color-mix(in srgb, var(--accent) 55%, var(--fill));
+}
+
+.heatmap__cell--3 {
+  background: color-mix(in srgb, var(--accent) 78%, var(--fill));
+}
+
+.heatmap__cell--4 {
+  background: var(--accent);
+}
+
+.heatmap__legend {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+  margin-top: var(--sp-2);
+  font: var(--text-caption);
+  color: var(--label-3);
+}
+
+/* 图例里的格子固定 11px，不参与铺满 */
+.heatmap__legend .heatmap__cell {
+  width: 11px;
+  height: 11px;
+  flex: none;
+}
+
+.heatmap__legend span:first-child,
+.heatmap__legend span:last-child {
+  padding: 0 4px;
+}
+
+/* 最近编辑 */
+.recent-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.recent-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  color: inherit;
+}
+
+.recent-row:hover {
+  background: var(--fill);
+  text-decoration: none;
+}
+
+.recent-row:hover .recent-row__title {
+  color: var(--accent);
+}
+
+.recent-row__title {
+  font: var(--text-subheadline-med);
+  color: var(--label);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-row__meta {
+  flex: none;
+  font: var(--text-caption);
+  color: var(--label-2);
+}
+
+@media (max-width: 1200px) {
+  .home-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 900px) {
+  .stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
