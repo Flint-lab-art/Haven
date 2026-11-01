@@ -16,11 +16,12 @@
 | 序 | 功能 | 说明 |
 |---|---|---|
 | **C1** | 命令面板 | `Cmd/Ctrl+K` 打开，搜笔记标题、执行常用命令 |
+| **C5** | 文件夹选择器 | 命令面板 `n 标题` 回车后弹出，用 `j/k` 选保存位置 |
 | **C2** | 快捷键 | `Cmd/Ctrl+S` 保存、`Cmd/Ctrl+N` 新建 |
 | **C3** | 搜索 `type` 参数 | `GET /api/search?type=title\|title_content` |
 | **C4** | 标题索引 | `notes.title` 的 trigram 索引，支撑 `type=title` |
 
-开发顺序：**C3 → C4 → C1 → C2**。命令面板依赖标题搜索，先做后端。
+开发顺序：**C3 → C4 → C1 → C5 → C2**。命令面板依赖标题搜索，先做后端。
 
 不纳入六期：Vim 模式、编辑器内快捷键、可配置键位。
 
@@ -41,6 +42,7 @@
 | 3 | `v1/frontend/frontend.md`（无对应节） | 新增 | 命令面板的触发、内容与交互 | `v6/frontend/frontend.md` 第一节 |
 | 4 | `v1/frontend/frontend.md`（无对应节） | 新增 | 全局快捷键清单与冲突处理 | `v6/frontend/frontend.md` 第二节 |
 | 5 | `v1/conventions.md` 第四节「前端」条 | 扩展 | 允许命令面板劫持浏览器默认快捷键 | `v6/conventions.md` 第二节 |
+| 6 | `v1/frontend/ui-design.md`（无对应节） | 新增 | 文件夹选择器：平铺路径、j/k 移动 | `v6/frontend/frontend.md` 第三节 |
 
 ## 四、旧版本表述的时效说明
 
