@@ -5097,52 +5097,128 @@ select:focus-visible {
 
 /* ============ 首页（docs/v5/frontend/frontend.md 第三节） ============ */
 
-/* 四张统计卡片 */
-.stat-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--sp-3);
-}
-
-.stat-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-height: 92px;
-  padding: var(--sp-4);
-  background: var(--fill-3);
-  border: 1px solid var(--sep);
-  border-radius: var(--r-xl);
-}
-
-.stat-card__value {
-  font: 700 26px/1.2 var(--font-ui);
-  letter-spacing: -0.5px;
-  color: var(--label);
-}
-
-.stat-card__label {
-  font: var(--text-footnote);
-  color: var(--label-2);
-}
-
 /* 热力图与最近编辑并排：热力图宽、最近编辑窄 */
+/* 两栏：热力图 / 最近编辑，高度由较高的那块决定 */
 .home-columns {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  /* 三栏等宽：热力图 / 最近编辑 / 预留位 */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--sp-4);
   margin-top: var(--sp-6);
-  align-items: start;
+  align-items: stretch;
 }
 
 .home-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   padding: var(--sp-4);
   background: var(--fill-3);
   border: 1px solid var(--sep);
   border-radius: var(--r-lg);
   min-width: 0;
+}
+
+/* 统计：品字形 —— 上面一个主数字居中，下面两个并排，底部一行补充 */
+.stat-trio {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: auto 1fr;
+  gap: var(--sp-3) var(--sp-2);
+  align-content: center;
+  margin-top: var(--sp-2);
+}
+
+/*
+ * 每个统计单元是一张浅色小卡片，hover 时上浮 + 边框变强调色。
+ * 颜色一律用语义变量与 accent 混色，浅色/深色主题都成立。
+ */
+.stat-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  text-align: center;
+  min-width: 0;
+  padding: var(--sp-3) var(--sp-2);
+  border: 1px solid transparent;
+  border-radius: var(--r-lg);
+  background: var(--fill);
+  transition:
+    transform var(--dur-base) var(--ease-smooth),
+    border-color var(--dur-base) var(--ease-smooth),
+    background-color var(--dur-base) var(--ease-smooth);
+}
+
+.stat-cell:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--sep));
+  background: color-mix(in srgb, var(--accent) 8%, var(--fill));
+}
+
+.stat-cell:hover .stat-cell__value {
+  color: var(--accent);
+}
+
+/* 顶行横跨两列，作为主数字 */
+.stat-cell--hero {
+  grid-column: 1 / -1;
+}
+
+.stat-cell__value {
+  font: 700 22px/1.1 var(--font-ui);
+  letter-spacing: -0.5px;
+  color: var(--label);
+  font-variant-numeric: tabular-nums;
+  transition: color var(--dur-fast) var(--ease-smooth);
+}
+
+.stat-cell--hero .stat-cell__value {
+  font-size: 40px;
+  letter-spacing: -1.5px;
+}
+
+/* 主数字默认就带一点强调色，作为视觉焦点 */
+.stat-cell--hero {
+  background: color-mix(in srgb, var(--accent) 6%, var(--fill));
+}
+
+.stat-cell--hero .stat-cell__value {
+  color: color-mix(in srgb, var(--accent) 75%, var(--label));
+}
+
+.stat-cell__label {
+  font: var(--text-caption);
+  color: var(--label-2);
+  white-space: nowrap;
+}
+
+.stat-foot {
+  margin: var(--sp-3) 0 0;
+  padding: var(--sp-2) 0 0;
+  border-top: 1px solid var(--sep);
+  text-align: center;
+  font: var(--text-footnote);
+  color: var(--label-2);
+  transition: color var(--dur-fast) var(--ease-smooth);
+}
+
+.stat-foot:hover {
+  color: var(--label);
+}
+
+.stat-foot:hover strong {
+  color: var(--accent);
+}
+
+.stat-foot strong {
+  font-weight: 600;
+  color: var(--label);
+  font-variant-numeric: tabular-nums;
+  transition: color var(--dur-fast) var(--ease-smooth);
 }
 
 .home-panel__title {
@@ -5157,7 +5233,8 @@ select:focus-visible {
 }
 
 .heatmap__inner {
-  overflow-x: auto;
+  /* 宽度已铺满面板，不需要横向滚动；overflow: visible 让 hover 描边不被裁 */
+  overflow: visible;
   scrollbar-width: none;
 }
 
@@ -5189,6 +5266,7 @@ select:focus-visible {
 .heatmap__grid {
   display: flex;
   gap: 3px;
+  /* 铺满面板宽度：列数由后端返回的天数决定 */
   width: 100%;
 }
 
@@ -5207,11 +5285,32 @@ select:focus-visible {
   border-radius: 2px;
 }
 
+/* 极窄时兜底，避免格子被压成负尺寸 */
+.heatmap__col,
+.heatmap__month {
+  min-width: 0;
+}
+
 .heatmap__pad {
   background: transparent;
 }
 
 /* 五档色阶：全是 accent 与底色的混色，浅色/深色主题都成立 */
+/* 格子：hover 时放大并描边，便于在密集的图里定位 */
+.heatmap__cell {
+  transition:
+    transform var(--dur-fast) var(--ease-snappy),
+    box-shadow var(--dur-fast) var(--ease-smooth);
+}
+
+/*
+ * 只加描边、不放大：.heatmap__inner 是 overflow-x: auto 的滚动容器，
+ * scale 放大会被边界裁掉，边缘两周看起来像缺了一块。
+ */
+.heatmap__cell:hover {
+  box-shadow: inset 0 0 0 1.5px var(--label-3);
+}
+
 .heatmap__cell--0 {
   background: var(--fill);
 }
@@ -5232,12 +5331,21 @@ select:focus-visible {
   background: var(--accent);
 }
 
+/* hover 时非空格子的描边用强调色，和空格子区分开 */
+.heatmap__cell--1:hover,
+.heatmap__cell--2:hover,
+.heatmap__cell--3:hover,
+.heatmap__cell--4:hover {
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+
 .heatmap__legend {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 3px;
   margin-top: var(--sp-2);
+  flex: 0 0 auto;
   font: var(--text-caption);
   color: var(--label-3);
 }
@@ -5297,15 +5405,9 @@ select:focus-visible {
   color: var(--label-2);
 }
 
-@media (max-width: 1200px) {
+@media (max-width: 900px) {
   .home-columns {
     grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-@media (max-width: 900px) {
-  .stat-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -5623,4 +5725,119 @@ select:focus-visible {
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--label-2);
+}
+
+/* ============ 仪表盘第二排：文件夹概况 + 常用标签 ============ */
+
+.home-bottom {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--sp-4);
+  margin-top: var(--sp-4);
+  align-items: stretch;
+}
+
+/* 文件夹：名称 + 条形 + 数量 */
+.folder-stat-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.folder-stat {
+  display: grid;
+  grid-template-columns: minmax(0, 7rem) minmax(0, 1fr) 2.5rem;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 6px 8px;
+  border-radius: var(--r-sm);
+  transition: background-color var(--dur-fast) var(--ease-smooth);
+}
+
+.folder-stat:hover {
+  background: var(--fill);
+}
+
+.folder-stat__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--text-subheadline);
+  color: var(--label);
+}
+
+.folder-stat__bar {
+  height: 6px;
+  border-radius: var(--r-capsule);
+  background: var(--fill);
+  overflow: hidden;
+}
+
+.folder-stat__bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--accent) 65%, var(--fill));
+  transition: width var(--dur-slow) var(--ease-smooth);
+}
+
+.folder-stat:hover .folder-stat__bar-fill {
+  background: var(--accent);
+}
+
+.folder-stat__count {
+  text-align: right;
+  font: var(--text-footnote-med);
+  color: var(--label-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 标签：胶囊，横向铺开 */
+.tag-chip-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-content: flex-start;
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: var(--r-capsule);
+  background: var(--fill);
+  font: var(--text-footnote);
+  color: var(--label);
+  transition:
+    background-color var(--dur-fast) var(--ease-smooth),
+    color var(--dur-fast) var(--ease-smooth);
+}
+
+.tag-chip:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.tag-chip__count {
+  font-size: 11px;
+  color: var(--label-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.tag-chip:hover .tag-chip__count {
+  color: var(--accent);
+}
+
+@media (max-width: 900px) {
+  .home-bottom {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

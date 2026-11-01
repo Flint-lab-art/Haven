@@ -16,11 +16,12 @@ import (
 	"github.com/kairo/haven/internal/httpx"
 )
 
-// HeatmapDays 是热力图覆盖的天数：近三个月。
+// HeatmapDays 是热力图覆盖的天数：近五个月。
 //
-// 取 91 天而不是半年：早期数据稀疏，半年的格子图大部分是空的。
+// 取 152 天（约 22 周）让格子图铺满仪表盘的三分之一宽度；
+// 早期数据稀疏时大半是空格子，这是接受的代价。
 // 代码常量，不从环境变量读取（docs/v5/conventions.md 第一节第 4 条）。
-const HeatmapDays = 91
+const HeatmapDays = 152
 
 // RecentLimit 是「最近编辑」返回的条数。
 const RecentLimit = 5
@@ -52,12 +53,20 @@ type RecentNote struct {
 	Visibility string    `json:"visibility"`
 }
 
+// FolderStat 是一个文件夹及其笔记数（docs/v6/api.md 第一节）。
+type FolderStat struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Count int    `json:"count"`
+}
+
 // Snapshot 是 GET /api/stats 的响应。
 type Snapshot struct {
 	Totals  Totals        `json:"totals"`
 	Week    Week          `json:"week"`
 	Heatmap []HeatmapCell `json:"heatmap"`
 	Recent  []RecentNote  `json:"recent"`
+	Folders []FolderStat  `json:"folders"`
 }
 
 // Service 承载统计逻辑。
@@ -76,6 +85,7 @@ func (s *Service) Snapshot(ctx context.Context, userID string) (Snapshot, error)
 	out := Snapshot{
 		Heatmap: []HeatmapCell{},
 		Recent:  []RecentNote{},
+		Folders: []FolderStat{},
 	}
 
 	if err := s.loadTotals(ctx, userID, &out); err != nil {
@@ -88,6 +98,9 @@ func (s *Service) Snapshot(ctx context.Context, userID string) (Snapshot, error)
 		return Snapshot{}, err
 	}
 	if err := s.loadRecent(ctx, userID, &out); err != nil {
+		return Snapshot{}, err
+	}
+	if err := s.loadFolders(ctx, userID, &out); err != nil {
 		return Snapshot{}, err
 	}
 	return out, nil
@@ -132,7 +145,7 @@ func (s *Service) loadWeek(ctx context.Context, userID string, out *Snapshot) er
 	return nil
 }
 
-// loadHeatmap 统计近三个月每天的编辑篇数，缺失的日期补 0。
+// loadHeatmap 统计近五个月每天的编辑篇数，缺失的日期补 0。
 func (s *Service) loadHeatmap(ctx context.Context, userID string, out *Snapshot) error {
 	today := startOfDay(s.now())
 	from := today.AddDate(0, 0, -(HeatmapDays - 1))
@@ -199,6 +212,38 @@ func (s *Service) loadRecent(ctx context.Context, userID string, out *Snapshot) 
 	}
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("读取最近编辑失败: %w", err)
+	}
+	return nil
+}
+
+// loadFolders 统计各文件夹的笔记数，按数量倒序。
+//
+// 用 LEFT JOIN 保证空文件夹也出现（count 为 0）；排除回收站里的笔记，
+// 与其它统计口径一致。
+func (s *Service) loadFolders(ctx context.Context, userID string, out *Snapshot) error {
+	const q = `
+		SELECT f.id, f.name, count(n.id)
+		FROM folders f
+		LEFT JOIN notes n ON n.folder_id = f.id AND n.deleted_at IS NULL
+		WHERE f.user_id = $1
+		GROUP BY f.id, f.name, f.is_inbox
+		ORDER BY f.is_inbox DESC, count(n.id) DESC, f.name`
+
+	rows, err := s.db.QueryContext(ctx, q, userID)
+	if err != nil {
+		return fmt.Errorf("统计文件夹失败: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var f FolderStat
+		if err := rows.Scan(&f.ID, &f.Name, &f.Count); err != nil {
+			return fmt.Errorf("扫描文件夹统计失败: %w", err)
+		}
+		out.Folders = append(out.Folders, f)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("读取文件夹统计失败: %w", err)
 	}
 	return nil
 }

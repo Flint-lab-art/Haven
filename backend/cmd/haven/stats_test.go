@@ -30,6 +30,11 @@ type statsBody struct {
 		UpdatedAt  string `json:"updated_at"`
 		Visibility string `json:"visibility"`
 	} `json:"recent"`
+	Folders []struct {
+		ID    string `json:"id"`
+		Name  string `json:"name"`
+		Count int    `json:"count"`
+	} `json:"folders"`
 }
 
 func getStats(t *testing.T, e *testEnv, cookie *http.Cookie) statsBody {
@@ -225,5 +230,71 @@ func TestStatsRequiresLogin(t *testing.T) {
 	e, _ := newUserEnv(t)
 	if w := e.do(http.MethodGet, "/api/stats", nil); w.Code != http.StatusUnauthorized {
 		t.Errorf("匿名访问统计应 401，实际 %d", w.Code)
+	}
+}
+
+// TestStatsFolders 覆盖各文件夹的笔记数统计。
+func TestStatsFolders(t *testing.T) {
+	e, cookie := newUserEnv(t)
+	inboxID := createInboxFolder(t, e)
+
+	// 建一个普通文件夹，各放一篇
+	w := e.do(http.MethodPost, "/api/folders", map[string]any{"name": "技术"}, cookie)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("创建文件夹失败: %d", w.Code)
+	}
+	folderID := jsonBody(t, w.Body.Bytes())["id"].(string)
+
+	for _, payload := range []map[string]any{
+		{"title": "收件箱里的", "folder_id": inboxID},
+		{"title": "技术里的 A", "folder_id": folderID},
+		{"title": "技术里的 B", "folder_id": folderID},
+	} {
+		if w := e.do(http.MethodPost, "/api/notes", payload, cookie); w.Code != http.StatusCreated {
+			t.Fatalf("创建笔记失败: %d", w.Code)
+		}
+	}
+
+	b := getStats(t, e, cookie)
+	if len(b.Folders) != 2 {
+		t.Fatalf("应统计 2 个文件夹，实际 %d", len(b.Folders))
+	}
+
+	// 收件箱固定排第一，技术按数量排第二
+	if b.Folders[0].Name != "收件箱" || b.Folders[0].Count != 1 {
+		t.Errorf("收件箱应在第一位且为 1 篇，实际 %+v", b.Folders[0])
+	}
+	if b.Folders[1].Name != "技术" || b.Folders[1].Count != 2 {
+		t.Errorf("技术应有 2 篇，实际 %+v", b.Folders[1])
+	}
+}
+
+// TestStatsFoldersExcludesTrash 覆盖：回收站里的笔记不计入文件夹统计。
+func TestStatsFoldersExcludesTrash(t *testing.T) {
+	e, cookie := newUserEnv(t)
+	inboxID := createInboxFolder(t, e)
+
+	w := e.do(http.MethodPost, "/api/notes", map[string]any{"title": "会被删", "folder_id": inboxID}, cookie)
+	id := jsonBody(t, w.Body.Bytes())["id"].(string)
+
+	before := getStats(t, e, cookie)
+	if w := e.do(http.MethodDelete, "/api/notes/"+id, nil, cookie); w.Code != http.StatusNoContent {
+		t.Fatalf("删除失败: %d", w.Code)
+	}
+	after := getStats(t, e, cookie)
+
+	var beforeCount, afterCount int
+	for _, f := range before.Folders {
+		if f.ID == inboxID {
+			beforeCount = f.Count
+		}
+	}
+	for _, f := range after.Folders {
+		if f.ID == inboxID {
+			afterCount = f.Count
+		}
+	}
+	if afterCount != beforeCount-1 {
+		t.Errorf("回收站笔记不计入文件夹统计，删除前 %d 删除后 %d", beforeCount, afterCount)
 	}
 }
