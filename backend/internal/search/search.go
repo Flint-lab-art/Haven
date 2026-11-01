@@ -107,10 +107,12 @@ func (s *Service) Private(ctx context.Context, userID string, vis auth.Visibilit
 		return PrivateResult{}, fmt.Errorf("统计搜索笔记失败: %w", err)
 	}
 
+	// 可见性条件必须整体加括号：它自身含 OR（auth.md 6.3），
+	// 不括起来会让 AND 只作用于最后一个分支，把归属过滤绕开。
 	notesQ := `
 		SELECT id, title, content, visibility, published_at, updated_at
 		FROM notes
-		WHERE ` + vis.Condition + ` AND search_text ILIKE $2
+		WHERE (` + vis.Condition + `) AND search_text ILIKE $2
 		ORDER BY updated_at DESC
 		LIMIT $3 OFFSET $4`
 
