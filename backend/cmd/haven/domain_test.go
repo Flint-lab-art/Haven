@@ -769,3 +769,80 @@ func (e *testEnv) currentTotpSecret(t *testing.T) string {
 	}
 	return secret.String
 }
+
+// TestSearchType 覆盖 docs/v6/api.md 第一节：type=title 只搜标题。
+func TestSearchType(t *testing.T) {
+	e, cookie := newUserEnv(t)
+
+	// 标题命中
+	w := e.do(http.MethodPost, "/api/notes", map[string]any{
+		"title":   "Go 并发模型",
+		"content": "无关正文",
+	}, cookie)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("创建笔记失败: %d", w.Code)
+	}
+	titleHit := jsonBody(t, w.Body.Bytes())["id"].(string)
+
+	// 正文命中
+	w = e.do(http.MethodPost, "/api/notes", map[string]any{
+		"title":   "另一篇",
+		"content": "正文里提到了 Go",
+	}, cookie)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("创建笔记失败: %d", w.Code)
+	}
+	contentHit := jsonBody(t, w.Body.Bytes())["id"].(string)
+
+	search := func(typ string) map[string]bool {
+		path := "/api/search?q=Go"
+		if typ != "" {
+			path += "&type=" + typ
+		}
+		w := e.do(http.MethodGet, path, nil, cookie)
+		if w.Code != http.StatusOK {
+			t.Fatalf("搜索 %q 应 200，实际 %d: %s", path, w.Code, w.Body.String())
+		}
+		var body struct {
+			Notes struct {
+				Items []struct {
+					ID string `json:"id"`
+				} `json:"items"`
+			} `json:"notes"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+			t.Fatalf("解析失败: %v", err)
+		}
+		got := make(map[string]bool, len(body.Notes.Items))
+		for _, it := range body.Notes.Items {
+			got[it.ID] = true
+		}
+		return got
+	}
+
+	// 默认（不传 type）：标题 + 正文都命中
+	both := search("")
+	if !both[titleHit] || !both[contentHit] {
+		t.Errorf("默认应同时命中标题与正文，实际 %v", both)
+	}
+
+	// type=title_content：与默认一致
+	explicit := search("title_content")
+	if !explicit[titleHit] || !explicit[contentHit] {
+		t.Errorf("title_content 应同时命中，实际 %v", explicit)
+	}
+
+	// type=title：只命中标题
+	onlyTitle := search("title")
+	if !onlyTitle[titleHit] {
+		t.Errorf("title 应命中标题匹配的笔记")
+	}
+	if onlyTitle[contentHit] {
+		t.Errorf("title 不应命中只出现在正文里的笔记")
+	}
+
+	// 非法 type：422
+	if w := e.do(http.MethodGet, "/api/search?q=Go&type=content", nil, cookie); w.Code != http.StatusUnprocessableEntity {
+		t.Errorf("非法 type 应 422，实际 %d", w.Code)
+	}
+}
