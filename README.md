@@ -83,3 +83,7 @@ cd frontend && pnpm install && pnpm build && cd ..
 ## 技术栈
 
 Go ≥ 1.22 / Gin / PostgreSQL ≥ 15（`pg_trgm`）/ Vue 3 / Vite / TypeScript。详见 `docs/v1/architecture.md`。
+
+## 许可证
+
+[MIT](LICENSE)
