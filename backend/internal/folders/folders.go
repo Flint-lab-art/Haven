@@ -48,8 +48,11 @@ var (
 const MaxNameRunes = 32
 
 // MaxIconRunes 是文件夹图标的最大 rune 数。
-// 实现决策：data-model.md 只规定 icon 可空，未给数值；16 足够容纳家庭、旗帜等多码点 Emoji。
-const MaxIconRunes = 16
+//
+// 取值 256：既容纳家庭、旗帜等多码点 Emoji，也容纳上传图片的相对路径
+// （如 /uploads/2026/11/<32位十六进制>.png，约 32 字符）。
+// 以 / 开头的值按图片路径渲染，其余按 Emoji 渲染（docs/v4/frontend/frontend.md 3.3）。
+const MaxIconRunes = 256
 
 // Folder 是文件夹响应（api.md 6.5.1）。
 type Folder struct {

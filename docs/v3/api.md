@@ -132,9 +132,11 @@
 
 | `kind` | 公开页展示 |
 |---|---|
-| `github` | GitHub 图标 |
-| `gogs` | Gogs 图标 |
+| `github` | `GitHub` |
+| `gogs` | `Vorin Git`（自建 Git 服务的显示名） |
 | `link` | `title`（为空时退回 `url`），**不展示 URL** |
+
+**显示名由前端统一定义**：`frontend/src/utils/portfolio.ts` 的 `GOGS_LABEL` / `GITHUB_LABEL`，改品牌只改这里，不在各页面散落字符串。
 
 ## 四、标签列表顺带清理空标签
 

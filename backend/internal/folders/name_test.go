@@ -7,7 +7,8 @@ func TestMaxNameRunes(t *testing.T) {
 	if MaxNameRunes != 32 {
 		t.Fatalf("MaxNameRunes = %d，文档约定为 32", MaxNameRunes)
 	}
-	if MaxIconRunes != 16 {
-		t.Fatalf("MaxIconRunes = %d，文档约定为 16", MaxIconRunes)
+	// v4 起放宽到 256：icon 可以存上传图片的相对路径（docs/v4/backend/data-model.md 第一节）
+	if MaxIconRunes != 256 {
+		t.Fatalf("MaxIconRunes = %d，文档约定为 256", MaxIconRunes)
 	}
 }

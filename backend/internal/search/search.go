@@ -4,7 +4,7 @@
 //   - 笔记查生成列 notes.search_text，应用层不写该字段；
 //   - 标签查 tags.name；
 //   - 不安装中文分词扩展，1–2 字查询退化为全表扫描，接受该代价。
-//   匹配规则见 docs/backend/search.md。
+//     匹配规则见 docs/backend/search.md。
 package search
 
 import (
@@ -25,7 +25,42 @@ import (
 var (
 	// ErrQueryRequired 缺少或空的 q（422）。
 	ErrQueryRequired = fmt.Errorf("搜索关键词不能为空")
+	// ErrInvalidType type 取值非法（422）。
+	ErrInvalidType = fmt.Errorf("type 只能是 title 或 title_content")
 )
+
+// 搜索范围（docs/v6/api.md 第一节）。
+const (
+	// TypeTitle 只匹配标题，供命令面板使用。
+	TypeTitle = "title"
+	// TypeTitleContent 匹配标题与正文，也是默认值。
+	TypeTitleContent = "title_content"
+)
+
+// normalizeType 校验 type，空值按 title_content 处理。
+//
+// 默认值必须保持 title_content：搜索页不传 type，行为要与 v1 一致。
+func normalizeType(raw string) (string, error) {
+	switch raw {
+	case "":
+		return TypeTitleContent, nil
+	case TypeTitle, TypeTitleContent:
+		return raw, nil
+	default:
+		return "", ErrInvalidType
+	}
+}
+
+// matchColumn 返回 type 对应的匹配列。
+//
+// title_content 用生成列 search_text（已有 trigram 索引）；
+// title 用 title 本身（v6 起也建了 trigram 索引）。
+func matchColumn(typ string) string {
+	if typ == TypeTitle {
+		return "title"
+	}
+	return "search_text"
+}
 
 // escapeLike 转义 ILIKE 的通配符，使关键词按字面匹配（含 % 和 _ 的个人笔记也能搜到）。
 func escapeLike(q string) string {
@@ -89,7 +124,7 @@ func NewService(db *sql.DB) *Service {
 //
 // vis 由授权中间件注入（auth.md 6.3）：登录用户为「自己的 OR 公开」，
 // $1 恒为当前用户 id。分页只作用于笔记结果。
-func (s *Service) Private(ctx context.Context, userID string, vis auth.Visibility, q string, limit, offset int) (PrivateResult, error) {
+func (s *Service) Private(ctx context.Context, userID string, vis auth.Visibility, q string, limit, offset int, typ string) (PrivateResult, error) {
 	if vis.Condition == "" {
 		return PrivateResult{
 			Notes: Section{Items: []NoteHit{}, Total: 0},
@@ -97,20 +132,23 @@ func (s *Service) Private(ctx context.Context, userID string, vis auth.Visibilit
 		}, nil
 	}
 	pattern := escapeLike(strings.TrimSpace(q))
+	col := matchColumn(typ)
 
 	notesCount := `
 		SELECT count(*) FROM notes
-		WHERE (` + vis.Condition + `) AND search_text ILIKE $2`
+		WHERE (` + vis.Condition + `) AND ` + col + ` ILIKE $2`
 
 	var notesTotal int
 	if err := s.db.QueryRowContext(ctx, notesCount, append(append([]any{}, vis.Args...), pattern)...).Scan(&notesTotal); err != nil {
 		return PrivateResult{}, fmt.Errorf("统计搜索笔记失败: %w", err)
 	}
 
+	// 可见性条件必须整体加括号：它自身含 OR（auth.md 6.3），
+	// 不括起来会让 AND 只作用于最后一个分支，把归属过滤绕开。
 	notesQ := `
 		SELECT id, title, content, visibility, published_at, updated_at
 		FROM notes
-		WHERE ` + vis.Condition + ` AND search_text ILIKE $2
+		WHERE (` + vis.Condition + `) AND ` + col + ` ILIKE $2
 		ORDER BY updated_at DESC
 		LIMIT $3 OFFSET $4`
 
@@ -282,7 +320,13 @@ func (h *Handler) Private(c *gin.Context) {
 		return
 	}
 
-	res, err := h.svc.Private(c.Request.Context(), auth.UserID(c), auth.CurrentVisibility(c), q, page.Limit, page.Offset)
+	typ, err := normalizeType(strings.TrimSpace(c.Query("type")))
+	if err != nil {
+		httpx.FailValidation(c, map[string]string{"type": err.Error()})
+		return
+	}
+
+	res, err := h.svc.Private(c.Request.Context(), auth.UserID(c), auth.CurrentVisibility(c), q, page.Limit, page.Offset, typ)
 	if err != nil {
 		httpx.FailInternal(c, err)
 		return

@@ -77,7 +77,7 @@ onBeforeUnmount(() => {
 <template>
   <nav class="sidebar" :class="{ 'sidebar--mini': mini }" aria-label="主导航">
     <div class="sidebar__top">
-      <RouterLink :to="{ name: 'workbench' }" class="sidebar__brand" data-tip="Haven" aria-label="Haven 首页">
+      <RouterLink :to="{ name: 'home' }" class="sidebar__brand" data-tip="Haven" aria-label="Haven 首页">
         <HavenMark
           class="brand-mark"
           :size="mini ? 22 : 28"
@@ -104,6 +104,20 @@ onBeforeUnmount(() => {
         </svg>
       </button>
     </div>
+
+    <RouterLink
+      :to="{ name: 'home' }"
+      class="side-link"
+      :class="{ 'side-link--active': section === 'home' }"
+      data-tip="仪表盘"
+      aria-label="仪表盘"
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 11.5 12 4l8 7.5" />
+        <path d="M6 10.5V20h12v-9.5" />
+      </svg>
+      <span>仪表盘</span>
+    </RouterLink>
 
     <span class="sidebar__label">浏览</span>
 

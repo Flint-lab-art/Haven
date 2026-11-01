@@ -18,9 +18,11 @@ import { cursor } from '@milkdown/plugin-cursor'
 import { trailing } from '@milkdown/plugin-trailing'
 import { $prose, getMarkdown, replaceAll } from '@milkdown/utils'
 import { Plugin, PluginKey, type EditorState, type Transaction } from '@milkdown/prose/state'
-import { Decoration, DecorationSet } from '@milkdown/prose/view'
-import type { Node as ProseNode } from '@milkdown/prose/model'
+import { Decoration, DecorationSet, type EditorView } from '@milkdown/prose/view'
+import { Fragment, type Node as ProseNode } from '@milkdown/prose/model'
 import { highlightCode } from '@/utils/highlight'
+import { ApiError } from '@/api/client'
+import { isUploadableImage, uploadImage, type UploadResult } from '@/api/uploads'
 
 const props = defineProps<{
   modelValue: string
@@ -65,6 +67,8 @@ async function build(): Promise<void> {
     .use(listener)
     .use(highlightPlugin())
     .use(activeBlockPlugin())
+    // 粘贴 / 拖入图片时走上传，正文只留 URL（docs/v4/frontend/frontend.md 第二节）
+    .use(imageUploadPlugin())
     .create()
 
   if (props.autofocus) {
@@ -74,6 +78,77 @@ async function build(): Promise<void> {
   }
 
   emit('ready')
+}
+
+/**
+ * 粘贴 / 拖入图片时上传，并在光标处插入 Markdown 图片语法。
+ *
+ * 不接管文本粘贴：只有剪贴板里确实有 image/* 时才拦截，
+ * 其余情况交给 Milkdown 自带的 clipboard 插件（docs/v4/frontend/frontend.md 2.1）。
+ *
+ * 用 DOM 事件而不是 ProseMirror 的 handlePaste：浏览器把图片放进
+ * clipboardData.files / items 里，直接读原始 File 最省事。
+ */
+function imageUploadPlugin() {
+  const key = new PluginKey('image-upload')
+
+  const plugin = new Plugin({
+    key,
+    props: {
+      handleDOMEvents: {
+        paste(view, event) {
+          const clipboard = (event as ClipboardEvent).clipboardData
+          if (!clipboard) return false
+
+          const files = Array.from(clipboard.files ?? []).filter(isUploadableImage)
+          if (files.length === 0) return false
+
+          // 接管这次粘贴：阻止 Milkdown 把它按 base64 内嵌
+          event.preventDefault()
+          void insertImages(view, files, view.state.selection.from)
+          return true
+        },
+        drop(view, event) {
+          const data = (event as DragEvent).dataTransfer
+          if (!data) return false
+
+          const files = Array.from(data.files ?? []).filter(isUploadableImage)
+          if (files.length === 0) return false
+
+          event.preventDefault()
+          // 拖到文档里的位置优先，否则用当前光标
+          const pos = view.posAtCoords({ left: (event as DragEvent).clientX, top: (event as DragEvent).clientY })
+          void insertImages(view, files, pos?.pos ?? view.state.selection.from)
+          return true
+        },
+      },
+    },
+  })
+
+  return $prose(() => plugin)
+}
+
+/** 逐张上传后按顺序插入；任一失败只提示，不插入半截内容。 */
+async function insertImages(view: EditorView, files: File[], pos: number): Promise<void> {
+  const results: UploadResult[] = []
+  try {
+    for (const file of files) {
+      results.push(await uploadImage(file, 'note'))
+    }
+  } catch (err) {
+    const message = err instanceof ApiError ? err.message : '图片上传失败'
+    window.alert(message)
+    return
+  }
+
+  // 编辑器可能在等待期间被销毁
+  if (view.isDestroyed) return
+
+  const nodes = results.map((res) =>
+    view.state.schema.nodes.image.create({ src: res.url, alt: res.name }),
+  )
+  const tr = view.state.tr.insert(pos, Fragment.fromArray(nodes))
+  view.dispatch(tr.scrollIntoView())
 }
 
 /** highlight.js 输出里的一对标签及其覆盖的文本偏移。 */

@@ -17,7 +17,10 @@ docs/
 
 - **v1 是已完成并已落地的版本。**
 - **v2 已落地**：回收站与历史版本。
-- **v3 是第三期**，只改公开域的首页与新增页面，不动后端。
+- **v3 已落地**：公开站改版、作品详情、标签页。
+- **v4 已落地**：图片上传、品牌图标、emoji 扩充。
+- **v5 已落地**：私有域新增仪表盘。
+- **v6 是第六期**：命令面板与常用快捷键。
 - **后一版不修改前一版。** 各期文档永久保留，作为该期实现时的依据。
 - 各期内部目录结构与 v1 **完全镜像**：文件名相同意味着「对应同一个问题的该期版本」。
 
@@ -43,7 +46,7 @@ docs/
 当前是 v3 阶段，上下文是**v1 全文 + v2 全文 + v3 全文**：
 
 - **后端**：`v1/` 根下项目级文件 + `v1/backend/` + `v1/api.md`，叠加 `v2/api.md`、`v2/conventions.md`、`v2/backend/`；
-- **前端**：`v1/` 根下项目级文件 + `v1/frontend/` + `v1/api.md`，叠加 `v2/api.md`、`v2/conventions.md`、`v2/frontend/`，再叠加 `v3/conventions.md`、`v3/frontend/`；
+- **前端**：`v1/` 根下项目级文件 + `v1/frontend/` + `v1/api.md`，叠加 `v2/api.md`、`v2/conventions.md`、`v2/frontend/`，再叠加 `v3/conventions.md`、`v3/frontend/`，再叠加 `v4/api.md`、`v4/conventions.md`、`v4/frontend/`，再叠加 `v5/api.md`、`v5/conventions.md`、`v5/frontend/`，再叠加 `v6/api.md`、`v6/conventions.md`、`v6/frontend/`；
 - **优先级**：以第二节的覆盖规则为准。
 
 各期代码**都在同一个 `backend/`、`frontend/` 仓库里增量演进**，不新建并列目录。
@@ -72,6 +75,35 @@ docs/
 | `v3/frontend/frontend.md` | `v1/frontend/frontend.md` | 公开域首页改版、新增 `/notes` 与作品详情页、作品集网格与视觉规格 |
 
 **v3 以公开域前端为主**；作品详情需要介绍正文，因此新增了 `portfolio_items.content` 字段与一个公开详情接口。
+
+### v4（进行中）
+
+| 文件 | 对应的 v1 文件 | 改动概述 |
+|---|---|---|
+| `v4/changes.md` | —（新增） | 四期范围与逐条变更清单，v4 的入口 |
+| `v4/conventions.md` | `v1/conventions.md` | 图片存磁盘的约定与部署约束（systemd 写权限） |
+| `v4/api.md` | `v1/api.md` | `HAVEN_UPLOAD_DIR`、`/uploads/*` 静态托管、`POST /api/uploads` |
+| `v4/backend/data-model.md` | `v1/backend/data-model.md` | `folders.icon` 可存图片路径；本期无 migration |
+| `v4/frontend/frontend.md` | `v1/frontend/frontend.md` | 编辑器插图上传播、文件夹图标上传与展示 |
+
+### v5（进行中）
+
+| 文件 | 对应的 v1 文件 | 改动概述 |
+|---|---|---|
+| `v5/changes.md` | —（新增） | 五期范围与逐条变更清单，v5 的入口 |
+| `v5/conventions.md` | `v1/conventions.md` | 五期约定（只读、无缓存、统一口径） |
+| `v5/api.md` | `v1/api.md` | `GET /api/stats` 统计接口 |
+| `v5/frontend/frontend.md` | `v1/frontend/frontend.md` | `/` 改为首页、侧边栏首页入口、三块内容规格 |
+
+### v6（进行中）
+
+| 文件 | 对应的 v1 文件 | 改动概述 |
+|---|---|---|
+| `v6/changes.md` | —（新增） | 六期范围与逐条变更清单，v6 的入口 |
+| `v6/conventions.md` | `v1/conventions.md` | 六期约定（允许劫持浏览器快捷键、命令固定） |
+| `v6/api.md` | `v1/api.md` | `/api/search` 的 `type` 参数 |
+| `v6/backend/data-model.md` | `v1/backend/data-model.md` | `notes.title` 的 trigram 索引 |
+| `v6/frontend/frontend.md` | `v1/frontend/frontend.md` | 命令面板与全局快捷键 |
 
 ## 六、v1 目录导航
 

@@ -235,8 +235,10 @@ async function load(): Promise<void> {
     if (folderResult.status === 'fulfilled') folders.value = folderResult.value.items
 
     if (isNew.value) {
-      // 空白编辑页：标题、正文、标签都从空开始，只沿用目录树传来的 folder_id
-      title.value = ''
+      // 空白编辑页：正文与标签从空开始；
+      // 标题可由命令面板通过 query.title 带入，folder_id 来自目录树或文件夹选择器
+      const rawTitle = route.query.title
+      title.value = typeof rawTitle === 'string' ? rawTitle : ''
       selectedTagIds.value = []
       const rawFolderId = route.query.folder_id
       folderId.value =
@@ -399,6 +401,10 @@ onBeforeUnmount(() => {
               type="text"
               placeholder="标题"
               aria-label="标题"
+              autocomplete="off"
+              autocorrect="off"
+              autocapitalize="off"
+              spellcheck="false"
             />
 
             <div class="editor-actions">

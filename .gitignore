@@ -26,6 +26,12 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# ===== 上传文件 =====
+# 图片存磁盘、数据库只存路径（docs/v4/api.md），属于运行时数据，不进仓库。
+# 生产用 HAVEN_UPLOAD_DIR=/opt/haven/uploads，本地默认 ./uploads（相对后端工作目录）。
+/backend/uploads/
+/uploads/
+
 # ===== 部署产物 =====
 deploy/build/
 deploy/out/

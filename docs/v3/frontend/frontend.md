@@ -138,7 +138,7 @@
 | 返回链接 | 顶部「← 作品集」，指向 `/portfolio`，13px 灰色 |
 | 标题 | 32px / 字重 700 / `var(--label)` |
 | 简介 | 15px / `var(--label-2)`，取自 `description` |
-| 仓库链接 | 沿用首页的胶囊样式，`is_primary` 用强调色 |
+| 仓库链接 | 沿用首页的胶囊样式，`is_primary` 用强调色；自建 Git 服务显示为「Vorin Git」，不显示 Gogs |
 | 正文 | Markdown 渲染，复用 `renderMarkdown`（经 DOMPurify）；外层 `.md-body` |
 | 空正文 | `content` 为空时显示「这个作品还没有写介绍。」 |
 | 加载失败 / 不存在 | 显示空状态「找不到这个作品」 |

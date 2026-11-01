@@ -82,7 +82,16 @@ const privateRoutes: RouteRecordRaw[] = [
     component: () => import('@/components/PrivateLayout.vue'),
     children: [
       {
+        // 仪表盘：概览统计（docs/v5/frontend/frontend.md 第一节）
         path: '',
+        name: 'home',
+        component: () => import('@/views/private/HomeView.vue'),
+        // 仪表盘没有中间列表栏，详情区占满整行（docs/v5/frontend/frontend.md 第一节）
+        meta: { title: '仪表盘', section: 'home', noList: true },
+      },
+      {
+        // 工作台：从 / 迁移到 /notes（docs/v5/frontend/frontend.md 第一节）
+        path: 'notes',
         name: 'workbench',
         components: {
           default: () => import('@/components/EmptyDetail.vue'),
@@ -133,7 +142,7 @@ const privateRoutes: RouteRecordRaw[] = [
         path: 'tags',
         name: 'tags',
         component: () => import('@/views/private/TagsView.vue'),
-        meta: { title: '标签', section: 'tags' },
+        meta: { title: '标签', section: 'tags', noList: true },
       },
       {
         path: 'portfolio',

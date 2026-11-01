@@ -11,6 +11,7 @@ import { RouterLink } from 'vue-router'
 import PublicNoteRow from '@/components/PublicNoteRow.vue'
 import { listPublicNotes, type PublicNoteSummary } from '@/api/notes'
 import { listPortfolio, type PortfolioItem } from '@/api/portfolio'
+import { repoLabel } from '@/utils/portfolio'
 
 /**
  * 首页展示条数上限（docs/v3/conventions.md 第一节第 3 条）。
@@ -94,7 +95,7 @@ onMounted(() => void load())
               class="repo-pill"
               :class="{ 'repo-pill--primary': repo.is_primary }"
             >
-              {{ repo.kind === 'link' ? (repo.title || '链接') : repo.kind === 'gogs' ? 'Gogs' : 'GitHub' }}
+              {{ repoLabel(repo) }}
             </span>
           </div>
         </RouterLink>

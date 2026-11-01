@@ -124,11 +124,14 @@ if ! sudo test -f "$ENV_FILE"; then
 fi
 
 FRONTEND_DIR="$(env_value HAVEN_FRONTEND_DIR)"
+# 上传目录：图片存这里，数据库只存路径（docs/v4/conventions.md 第三节）
+UPLOAD_DIR="$(env_value HAVEN_UPLOAD_DIR)"
 LISTEN_ADDR="$(env_value HAVEN_LISTEN_ADDR)"
 COOKIE_DOMAIN="$(env_value HAVEN_COOKIE_DOMAIN)"
 DB_DSN="${HAVEN_DB_DSN:-$(env_value HAVEN_DB_DSN)}"
 
 [ -n "$FRONTEND_DIR" ] || FRONTEND_DIR="$INSTALL_ROOT/frontend/dist"
+[ -n "$UPLOAD_DIR" ] || UPLOAD_DIR="$INSTALL_ROOT/uploads"
 [ -n "$LISTEN_ADDR" ] || LISTEN_ADDR="127.0.0.1:8080"
 [ -n "$COOKIE_DOMAIN" ] || COOKIE_DOMAIN=""
 
@@ -295,7 +298,15 @@ fi
 
 if [ "$do_reset" -eq 1 ]; then
   echo "==> 清空旧部署目录 $INSTALL_ROOT（数据库与 $ENV_FILE 保留）"
-  sudo rm -rf "$INSTALL_ROOT"
+  # 上传目录若在安装目录内（默认 /opt/haven/uploads），清空时跳过它：
+  # 用户上传的图片不属于部署产物，--reset 只是重装程序，不该删数据。
+  if [[ "$UPLOAD_DIR" == "$INSTALL_ROOT"/* ]]; then
+    echo "==> 保留上传目录 $UPLOAD_DIR"
+    sudo find "$INSTALL_ROOT" -mindepth 1 -maxdepth 1 \
+      ! -path "$UPLOAD_DIR" -exec rm -rf {} +
+  else
+    sudo rm -rf "$INSTALL_ROOT"
+  fi
 fi
 
 # ---------------------------------------------------------------------------
@@ -305,6 +316,11 @@ echo "==> 安装到 $INSTALL_ROOT"
 sudo install -d -o "$RUN_USER" -g "$RUN_GROUP" "$INSTALL_ROOT/bin"
 sudo install -d -o "$RUN_USER" -g "$RUN_GROUP" "$INSTALL_ROOT/frontend"
 sudo install -d -o "$RUN_USER" -g "$RUN_GROUP" "$INSTALL_ROOT/migrations"
+
+# 上传目录单独创建：--reset 会删掉整个安装目录，但用户上传的图片必须保留，
+# 所以这里每次部署都确保它存在并属于运行账号（docs/v4/conventions.md 第三节）。
+echo "==> 上传目录 $UPLOAD_DIR"
+sudo install -d -o "$RUN_USER" -g "$RUN_GROUP" -m 0755 "$UPLOAD_DIR"
 
 sudo install -m 0755 "$REPO_ROOT/deploy/out/bin/haven" "$INSTALL_ROOT/bin/haven"
 sudo install -m 0755 "$REPO_ROOT/deploy/out/bin/haven-init-user" "$INSTALL_ROOT/bin/haven-init-user"

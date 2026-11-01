@@ -56,6 +56,9 @@ const (
 	CodeConflict         = "conflict"
 	CodeValidationFailed = "validation_failed"
 	CodeInternal         = "internal_error"
+	// 上传相关（docs/v4/api.md 3.1）
+	CodePayloadTooLarge      = "payload_too_large"
+	CodeUnsupportedMediaType = "unsupported_media_type"
 )
 
 // 分页默认值（api.md 1.5）。
@@ -183,6 +186,22 @@ func FailConflict(c *gin.Context, message string) {
 func FailUnprocessable(c *gin.Context, message string) {
 	c.AbortWithStatusJSON(http.StatusUnprocessableEntity, ErrorBody{
 		Error:   CodeValidationFailed,
+		Message: message,
+	})
+}
+
+// FailTooLarge 返回 413，用于上传文件超过上限（docs/v4/api.md 3.1）。
+func FailTooLarge(c *gin.Context, message string) {
+	c.AbortWithStatusJSON(http.StatusRequestEntityTooLarge, ErrorBody{
+		Error:   CodePayloadTooLarge,
+		Message: message,
+	})
+}
+
+// FailUnsupportedMedia 返回 415，用于上传类型不在允许列表（docs/v4/api.md 3.1）。
+func FailUnsupportedMedia(c *gin.Context, message string) {
+	c.AbortWithStatusJSON(http.StatusUnsupportedMediaType, ErrorBody{
+		Error:   CodeUnsupportedMediaType,
 		Message: message,
 	})
 }
