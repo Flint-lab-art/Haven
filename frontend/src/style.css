@@ -5308,3 +5308,319 @@ select:focus-visible {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* ============ 命令面板（docs/v6/frontend/frontend.md 第一节） ============ */
+
+.cmdk-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 15vh;
+  background: var(--overlay);
+}
+
+.cmdk {
+  width: min(560px, calc(100vw - 32px));
+  max-height: min(420px, calc(100svh - 160px));
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-elevated);
+  border: 1px solid var(--sep);
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-modal);
+  overflow: hidden;
+}
+
+.cmdk__input-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  height: 48px;
+  padding: 0 var(--sp-4);
+  border-bottom: 1px solid var(--sep);
+}
+
+.cmdk__hint {
+  color: var(--label-3);
+  font: var(--text-callout);
+}
+
+.cmdk__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  background: none;
+  outline: none;
+  color: var(--label);
+  font: var(--text-body-tight);
+}
+
+.cmdk__input::placeholder {
+  color: var(--label-3);
+}
+
+.cmdk__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--sp-2);
+  scrollbar-width: none;
+}
+
+.cmdk__body::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.cmdk__empty {
+  padding: var(--sp-4);
+  text-align: center;
+  font: var(--text-footnote);
+  color: var(--label-2);
+}
+
+.cmdk__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cmdk__item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  height: 40px;
+  padding: 0 var(--sp-2);
+  border: none;
+  border-radius: var(--r-md);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/*
+ * 选中项用强调色描边 + 更深的底色：只靠 --fill 在浅色/深色主题下
+ * 与面板底色差别太小，看不出高亮。
+ */
+.cmdk__item--active {
+  background: var(--accent-soft);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.cmdk__item--active .cmdk__item-title {
+  color: var(--accent);
+}
+
+.cmdk__item-icon {
+  flex: none;
+  width: 16px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--label-2);
+}
+
+.cmdk__item-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--text-subheadline-med);
+  color: var(--label);
+}
+
+.cmdk__foot {
+  display: flex;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-4);
+  border-top: 1px solid var(--sep);
+  font: var(--text-caption);
+  color: var(--label-3);
+}
+
+.cmdk__foot kbd {
+  display: inline-block;
+  margin-right: 3px;
+  padding: 1px 5px;
+  border: 1px solid var(--sep);
+  border-radius: 4px;
+  background: var(--fill);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--label-2);
+}
+
+/* ============ 文件夹选择器（docs/v6/frontend/frontend.md 第三节） ============ */
+
+.folder-pick-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 15vh;
+  background: var(--overlay);
+}
+
+/* 竖排三段：标题 / 树 / 快捷键提示 */
+.folder-pick {
+  width: min(480px, calc(100vw - 32px));
+  max-height: min(420px, calc(100svh - 160px));
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-elevated);
+  border: 1px solid var(--sep);
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-modal);
+  overflow: hidden;
+  outline: none;
+}
+
+.folder-pick__head {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--sep);
+}
+
+.folder-pick__title {
+  margin: 0;
+  font: 600 14px/1.4 var(--font-ui);
+  color: var(--label);
+  flex: none;
+}
+
+/* 面包屑：当前所在目录 */
+.folder-pick__path {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--text-footnote);
+  color: var(--label-2);
+}
+
+/* 两列：左列父级定位，右列当前目录子项 */
+.folder-pick__columns {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  gap: 0;
+  padding: var(--sp-2);
+}
+
+.folder-pick__col {
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.folder-pick__col::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+/* 左列是操作列，占主要宽度 */
+.folder-pick__col--current {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-right: var(--sp-1);
+}
+
+/* 右列只是预览，窄一些 */
+.folder-pick__col--preview {
+  flex: 0 0 38%;
+  border-left: 1px solid var(--sep);
+  padding-left: var(--sp-1);
+}
+
+.folder-pick__hint {
+  padding: 12px 8px;
+  font: var(--text-caption);
+  color: var(--label-3);
+}
+
+/* 左列的项是「参照物」，不抢视觉焦点 */
+.folder-pick__item--dim {
+  color: var(--label-2);
+}
+
+/* 右列预览项：不可点击，视觉上退后一层 */
+.folder-pick__col--preview .folder-pick__item {
+  cursor: default;
+  color: var(--label-2);
+}
+
+
+.folder-pick__item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  height: 36px;
+  padding: 0 var(--sp-2);
+  border: none;
+  border-radius: var(--r-md);
+  background: none;
+  color: var(--label);
+  font: var(--text-subheadline);
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-pick__item--active {
+  background: var(--accent-soft);
+  box-shadow: inset 2px 0 0 var(--accent);
+  color: var(--accent);
+}
+
+.folder-pick__icon {
+  flex: none;
+  font-size: 13px;
+}
+
+.folder-pick__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-pick__foot {
+  flex: none;
+  display: flex;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-4);
+  border-top: 1px solid var(--sep);
+  font: var(--text-caption);
+  color: var(--label-3);
+}
+
+.folder-pick__foot kbd {
+  display: inline-block;
+  margin-right: 3px;
+  padding: 1px 5px;
+  border: 1px solid var(--sep);
+  border-radius: 4px;
+  background: var(--fill);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--label-2);
+}

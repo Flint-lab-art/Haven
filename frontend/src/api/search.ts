@@ -23,12 +23,18 @@ export interface PrivateSearchResult {
   tags: ListResult<SearchTagHit>
 }
 
+/** 搜索范围：只搜标题（命令面板用）或标题 + 正文（搜索页用）。 */
+export type SearchType = 'title' | 'title_content'
+
 export function searchPrivate(
   q: string,
   limit = 20,
   offset = 0,
+  type?: SearchType,
 ): Promise<PrivateSearchResult> {
-  return request<PrivateSearchResult>('/api/search', { query: { q, limit, offset } })
+  return request<PrivateSearchResult>('/api/search', {
+    query: { q, limit, offset, ...(type ? { type } : {}) },
+  })
 }
 
 export function searchPublic(

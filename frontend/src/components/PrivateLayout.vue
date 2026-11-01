@@ -6,10 +6,34 @@
  * 布局本身不随路由重建，所以从列表点开笔记时左、中两栏保持不动。
  */
 import { computed, ref, watch } from 'vue'
-import { RouterView, useRoute } from 'vue-router'
+import { RouterView, useRoute, useRouter } from 'vue-router'
 import PrivateSidebar from './PrivateSidebar.vue'
+import CommandPalette from './CommandPalette.vue'
+import { useGlobalShortcuts } from '@/composables/useGlobalShortcuts'
+import { useUiStore } from '@/stores/ui'
 
 const route = useRoute()
+const router = useRouter()
+const ui = useUiStore()
+
+/** 命令面板开关（docs/v6/frontend/frontend.md 第一节）。 */
+const paletteOpen = ref(false)
+
+useGlobalShortcuts({
+  onTogglePalette: () => {
+    paletteOpen.value = !paletteOpen.value
+  },
+  onNewNote: () => {
+    paletteOpen.value = false
+    void router.push({ name: 'note-create' })
+  },
+  // 只有编辑页处理 Cmd+S：取消自动保存计时器并立即保存
+  onSave: () => {
+    if (route.name !== 'note-detail' && route.name !== 'note-create') return false
+    void ui.flushNote()
+    return true
+  },
+})
 const list = ref<HTMLElement | null>(null)
 const detail = ref<HTMLElement | null>(null)
 
@@ -47,5 +71,7 @@ watch(
         <RouterView />
       </div>
     </main>
+
+    <CommandPalette :open="paletteOpen" @close="paletteOpen = false" />
   </div>
 </template>
