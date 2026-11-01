@@ -127,10 +127,13 @@ pnpm test                       # vitest，纯逻辑单测（路由域判定、A
 
 ## Git 规范
 
-- **两个远程仓库，每次都要同时推送**：`origin`（GitHub `github.com:Flint-lab-art/Haven.git`，主仓库）和 `gogs`（自建 `git.vorin.icu:kairo/Haven.git`，**仅作备份镜像**）。只推 `origin` 视为未完成。
+- **两个远程仓库，每次都要同时推送**：
+  - `origin`（GitHub `github.com:Flint-lab-art/Haven.git`，**主仓库**）
+  - `gitee`（Gitee `https://gitee.com/Flint-lab-art/Haven.git`，**国内镜像**）
 - push 时显式对两个 remote 各推一次，不要依赖单条 `git push`：
-  `git push origin dev && git push gogs dev`（不要写成 `git push --all`，那会连 `main` 一起推）。
-- 两者的分工：**GitHub 是事实上的主仓库，向 Gogs 推送只是镜像备份**。Gogs 上不要新建分支或提交；如两边出现分叉，以 GitHub 为准，先停下来问人类，不要自行 force-push 覆盖。
+  `git push origin dev && git push gitee dev`（不要写成 `git push --all`，那会连 `main` 一起推）。
+- 两者分工：**GitHub 是事实上的主仓库，Gitee 只作国内镜像备份**。Gitee 上不要新建分支或提交；如两边分叉，以 GitHub 为准，先停下来问人类，不要自行 force-push 覆盖。
+- 自建 Gogs（`git.vorin.icu`）**已停用**：国内个人站点备案存在被撤销的风险，不再向它推送。远程 `gogs` 保留但不要使用；如需恢复，由人类决定。
 - **开发分支是 `dev`，`main` 受保护。绝对不要 push、提交或合并到 `main`（两个 remote 都一样）、不要 force-push 任何分支。** 合并到 `main` 只由人类操作。
 - 只在 `dev`（或人类指定的其他分支）上提交；当前分支不是 `dev` 时，先停下确认，不要自行切换。
 - 提交信息沿用现有风格：`feat(backend): ...` / `fix(frontend): ...` / `doc(docs): ...`，**中文描述**，不加 AI 署名或 `Co-Authored-By`。

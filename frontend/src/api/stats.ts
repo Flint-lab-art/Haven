@@ -28,12 +28,20 @@ export interface RecentNote {
   visibility: string
 }
 
+/** 一个文件夹及其笔记数。 */
+export interface FolderStat {
+  id: string
+  name: string
+  count: number
+}
+
 /** GET /api/stats 的响应。 */
 export interface StatsSnapshot {
   totals: StatsTotals
   week: StatsWeek
   heatmap: HeatmapCell[]
   recent: RecentNote[]
+  folders: FolderStat[]
 }
 
 /** 拉取首页统计数据。 */
