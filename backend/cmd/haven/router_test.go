@@ -26,6 +26,7 @@ import (
 	"github.com/kairo/haven/internal/notes"
 	"github.com/kairo/haven/internal/portfolio"
 	"github.com/kairo/haven/internal/search"
+	"github.com/kairo/haven/internal/stats"
 	"github.com/kairo/haven/internal/tags"
 	"github.com/kairo/haven/internal/uploads"
 )
@@ -134,6 +135,7 @@ func newTestEnv(t *testing.T) *testEnv {
 		searchHandler:  search.NewHandler(search.NewService(conn)),
 		portfolio:      portfolio.NewHandler(portfolio.NewService(conn, cfg.GogsBaseURL)),
 		uploadsHandler: uploads.NewHandler(uploadsSvc),
+		statsHandler:   stats.NewHandler(stats.NewService(conn)),
 		uploadDir:      uploadsSvc.Root(),
 		frontendDir:    cfg.FrontendDir,
 	})

@@ -13,6 +13,7 @@ import (
 	"github.com/kairo/haven/internal/notes"
 	"github.com/kairo/haven/internal/portfolio"
 	"github.com/kairo/haven/internal/search"
+	"github.com/kairo/haven/internal/stats"
 	"github.com/kairo/haven/internal/tags"
 	"github.com/kairo/haven/internal/uploads"
 )
@@ -73,6 +74,7 @@ func run() error {
 		searchHandler:  search.NewHandler(searchSvc),
 		portfolio:      portfolio.NewHandler(portfolioSvc),
 		uploadsHandler: uploads.NewHandler(uploadsSvc),
+		statsHandler:   stats.NewHandler(stats.NewService(conn)),
 		uploadDir:      uploadsSvc.Root(),
 		usernameByID: func(ctx context.Context, id string) (string, error) {
 			u, err := store.GetUser(ctx, id)

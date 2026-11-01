@@ -14,6 +14,7 @@ import (
 	"github.com/kairo/haven/internal/notes"
 	"github.com/kairo/haven/internal/portfolio"
 	"github.com/kairo/haven/internal/search"
+	"github.com/kairo/haven/internal/stats"
 	"github.com/kairo/haven/internal/tags"
 	"github.com/kairo/haven/internal/uploads"
 )
@@ -35,6 +36,7 @@ type deps struct {
 	searchHandler  *search.Handler
 	portfolio      *portfolio.Handler
 	uploadsHandler *uploads.Handler
+	statsHandler   *stats.Handler
 
 	// uploadDir 是 HAVEN_UPLOAD_DIR 的绝对路径，用于挂载 /uploads/* 静态托管。
 	uploadDir string
@@ -90,6 +92,7 @@ func newRouter(d deps) *gin.Engine {
 	if d.uploadsHandler != nil {
 		uploads.RegisterRoutes(r, d.uploadsHandler)
 	}
+	stats.RegisterRoutes(r, d.statsHandler)
 	mountUploads(r, d.uploadDir)
 
 	mountStatic(r, d.frontendDir)
