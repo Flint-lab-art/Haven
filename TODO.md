@@ -3,7 +3,7 @@
 > 执行清单，不是事实来源。所有实现细节以 `docs/` 为准；本文件与 `docs/` 冲突时以 `docs/` 为准。
 > `docs/` 只读，需求变更请先改文档，再勾选这里的条目。
 
-当前阶段：**二期（v2）开发中**。一期（第 0–7 章）已全部完成并归档在本文下半部分。
+当前阶段：**六期（v6）已完成**。一期至五期已完成并归档在本文下半部分。
 
 图例：`[ ]` 未做 · `[x]` 已完成 · `[~]` 部分完成
 
@@ -104,6 +104,153 @@
 - [x] 版本还原后标题、正文、文件夹、标签与快照一致
 - [x] 跨用户无法查看他人的版本
 - [x] DIFF 行分类（新增 / 删除 / 未变）纯函数单测——`src/__tests__/diff.test.ts`，12 个用例
+
+---
+
+# 三期（v3）已完成
+
+> 文档：`docs/v3/`，入口 `docs/v3/changes.md`。公开站改版、作品详情、标签页。
+
+## 三.1 公开域
+
+- [x] 首页改为「品牌标语 → 作品集卡片网格（双列）→ 近期笔记」，去掉搜索框
+- [x] 内容区宽度放宽到 960px（`.container--wide`）
+- [x] 新增 `/notes` 全部公开笔记页，保留「加载更多」
+- [x] 首页作品卡片与作品集列表都链接到作品详情
+- [x] 新增作品详情页 `/portfolio/:id`，渲染 Markdown 介绍正文
+
+## 三.2 作品集正文
+
+- [x] `0008` migration：`portfolio_items.content`
+- [x] 创建 / 更新接受 `content`，私有详情一并返回
+- [x] 新增 `GET /api/portfolio/:id`（私有）与 `GET /api/public/portfolio/:id`（公开）
+- [x] 公开列表不返回正文
+
+## 三.3 相关链接
+
+- [x] `0009` migration：`portfolio_repos` 改为存完整 `url` + `title`，删 `platform` / `repo_path`
+- [x] URL 必须是 http(s) 完整地址，非法返回 422
+- [x] 标题留空时后端抓取页面 `<title>`（5s 超时、256KiB 上限、截断 120 字）
+- [x] 响应新增只读的 `kind`（github / gogs / link），按域名判断
+- [x] 自建 Git 服务统一显示为「Vorin Git」（`utils/portfolio.ts`）
+
+## 三.4 标签页
+
+- [x] 标签页改为只读卡片网格，按引用次数倒序
+- [x] 色阶改为相对分档（以当前最大引用数为基准），配色用语义变量与 accent 混色
+- [x] 点标签弹出居中窗口展示引用笔记
+- [x] `GET /api/tags` 查询前删除 0 引用的标签（回收站里的笔记不算引用）
+
+## 三.5 布局与样式
+
+- [x] 表单与列表页占满详情区宽度，阅读正文仍守 800px
+- [x] 中间栏改为内部列表滚动，导航栏与标题栏固定
+- [x] 统一隐藏全部滚动条
+
+---
+
+# 四期（v4）
+
+> 文档：`docs/v4/`，入口为 `docs/v4/changes.md`。范围与顺序：**U1 → U2 → U3 → U4**。
+
+## U1 上传基础设施
+
+- [x] `config` 新增 `HAVEN_UPLOAD_DIR`（默认 `./uploads`），目录创建失败拒绝启动
+- [x] 新增 `internal/uploads`：文件名服务端生成、扩展名按 MIME 决定、`.part` + rename 保证原子性
+- [x] 只接受 png / jpeg / gif / webp，**拒绝 SVG**；单文件上限 10 MiB
+- [x] `POST /api/uploads`（登录 + write），返回相对 URL
+- [x] `/uploads/*` 静态托管：匿名可访问、长缓存、拒绝 `..`、未命中 404 不回退 SPA
+- [x] `httpx` 增加 413 / 415 错误响应
+- [x] 部署三件套：`haven.service` 加 `ReadWritePaths`、`deploy.sh` 创建目录并排除 `--reset` 删除、`haven.env.example` 加变量
+- [x] 测试：`internal/uploads` 9 条单测 + `cmd/haven` 端到端 1 条
+
+## U2 笔记插图
+
+- [x] 新增 `api/uploads.ts` 上传客户端（`FormData`，不手动设 `Content-Type`），前端预校验类型与大小
+- [x] 编辑器粘贴图片改为上传后插入 `![](url)`，不再内嵌 base64——`MarkdownEditor.vue` 的 `imageUploadPlugin`
+- [x] 拖拽图片同样走上传
+- [x] 阅读态图片样式：最大宽度 100%、圆角、加载失败显示 alt
+
+## U3 文件夹图标
+
+- [x] `folders.MaxIconRunes` 从 16 放宽到 256（本期无 migration）
+- [x] 图标面板增加「上传图片」入口，面板聚焦时也可直接粘贴图片
+- [x] `icon` 以 `/` 开头时渲染 `<img>`，品牌 key 渲染 SVG，否则按 emoji 渲染（向后兼容）
+- [x] 图片加载失败回退默认图标
+
+## U4 图标库
+
+- [x] 集成 simple-icons，在图标面板提供编程语言 / 工具 logo 的搜索与选择（46 个常用图标）
+- [x] 按需加载：用 `?raw` 逐个引入，只打进入口 chunk；`NoteListPanel` 体积 22K → 88K
+
+
+---
+
+# 五期（v5）已完成
+
+> 文档：`docs/v5/`，入口 `docs/v5/changes.md`。私有域新增概览首页。
+
+## H1 统计接口
+
+- [x] 新增 `internal/stats`：`GET /api/stats` 一次返回全部聚合结果
+- [x] 只统计当前用户、统一排除回收站
+- [x] 字数用 `length(content)`（按字符，不含标题）
+- [x] 热力图近半年，按天聚合、按 `count(distinct id)` 计、后端补零
+- [x] 最近编辑固定 5 条
+- [x] 测试：`cmd/haven/stats_test.go` 8 条
+
+## H2 首页页面
+
+- [x] 四张统计卡片：笔记数、总字数、公开数、本周新建
+- [x] 写作热力图：按周分列、按星期分行、五档 accent 混色
+- [x] 最近编辑：5 条，点击进笔记详情
+- [x] 空账号也显示全部模块（数字为 0），版式不塌
+
+## H3 路由调整
+
+- [x] `/` 改为首页，工作台挪到 `/notes`
+- [x] 侧边栏顶部新增「首页」入口（独立于「浏览」分组）
+- [x] Logo 点击回到首页
+- [x] 所有 `name: 'workbench'` 引用改为新路径后仍正确
+- [x] 测试：`src/__tests__/home-route.test.ts` 5 条
+
+---
+
+# 六期（v6）已完成
+
+> 文档：`docs/v6/`，入口为 `docs/v6/changes.md`。范围与顺序：**C3 → C4 → C1 → C2**。
+
+## C3 搜索 type 参数
+
+- [x] `/api/search` 新增 `type`：`title` / `title_content`（默认）
+- [x] 不传 `type` 等同于 `title_content`，搜索页行为不变
+- [x] 非法 `type` 返回 422
+- [x] 测试：`cmd/haven` 的 `TestSearchType`
+
+## C4 标题索引
+
+- [x] `0010_notes_title_trgm`：`notes.title` 的 GIN trigram 索引
+- [x] 与现有 `idx_notes_search_trgm` 并存
+
+## C1 命令面板
+
+- [x] `Cmd/Ctrl+K` toggle 打开与关闭，输入框自动聚焦、内容清空
+- [x] 前缀命令：`s`+空格 搜笔记、`n`+空格 带标题新建、`d` 回车跳仪表盘、`w` 回车跳工作台
+- [x] 无前缀时按命令名匹配，匹配不到显示「没有匹配的命令」
+- [x] 搜索调 `GET /api/search?type=title&limit=20`，只取 `notes`，忽略 `tags`
+- [x] 防抖 150ms，带请求序号做竞态保护
+- [x] `↑`/`↓` 移动、`Enter` 打开、`Esc` 关闭、点击外部关闭
+- [x] 视觉：居中弹窗，宽度 `min(560px, 视口-32px)`，距顶约 15%
+- [x] 测试：`src/__tests__/command-palette.test.ts`，6 条前缀解析用例
+
+## C2 快捷键
+
+- [x] `Cmd/Ctrl+S`：取消自动保存计时器并立即保存，**仅编辑页**
+- [x] `Cmd/Ctrl+N`：新建笔记，全站
+- [x] 全部 `preventDefault()`，劫持浏览器默认行为
+- [x] 焦点在 `input` / `textarea` / 可编辑区时，不拦截 `Cmd+S` / `Cmd+N`
+- [x] 公开域不启用任何快捷键（快捷键只挂在私有域布局上）
+- [x] 测试：编辑页与非编辑页的行为差异、输入框内不拦截
 
 ---
 
@@ -209,9 +356,9 @@
 - [x] `go vet ./...`、`go test ./...` 全绿；至少覆盖：可见性矩阵、Token scope、跨用户 404、publish 幂等性
 - [x] 全量路由鉴权不变量测试（2026-10-30）：`cmd/haven/route_auth_test.go` 遍历全部 `/api` 路由，白名单外匿名一律要求 401，非 GET 私有路由对 read Token 一律要求 403
 - [x] `pnpm build`（含 `vue-tsc -b`）通过
-- [ ] 手工冒烟：匿名 → 公开列表/详情/搜索/作品集；登录 → TOTP → 笔记 CRUD → publish → 退出
+- [x] 手工冒烟：匿名 → 公开列表/详情/搜索/作品集；登录 → TOTP → 笔记 CRUD → publish → 退出
 - [x] `deploy/`：构建脚本 + systemd unit + migration 执行
-- [ ] 部署形态待定项（`architecture.md` 第八节）：端口、HTTPS/反代、`pg_dump` 备份定时任务
+- [x] 部署形态待定项（`architecture.md` 第八节）：端口、HTTPS/反代、`pg_dump` 备份定时任务
 - [x] 更新根 `README.md` 的「快速开始」占位
 
 ## 8. 明确不做（防止误开工）

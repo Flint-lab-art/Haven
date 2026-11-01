@@ -117,6 +117,9 @@ pnpm test                       # vitest，纯逻辑单测（路由域判定、A
 - 粘贴 Markdown 转成对应块依赖 `@milkdown/plugin-clipboard`；缺了它粘贴只会插纯文本。
 - **代码高亮用 highlight.js（common 语言集）**：阅读态在 `marked` 的 code renderer 里高亮；编辑态用 ProseMirror inline decoration 给 token 套 `hljs-*` class（文档仍是纯文本）。`DOMPurify` 必须保留 `class`（`ADD_ATTR: ['class']`），否则高亮标签会被过滤掉。
 - **`.ProseMirror` 不能用 `flex: 1`**：`.milkdown` 是 flex 容器，`flex-basis: 0` 会把编辑器**宽度**压成 0，症状是「进页面能输入，鼠标点一下就点不中」。高度用 `min-height: 100%` + `width: 100%` 撑，别用 flex 伸缩。
+- **中文输入法的组合期里 `v-model` 不更新**：拼音阶段 `query` 还是旧值。凡是「边输入边搜索」的地方，都要用 `compositionstart` / `compositionend` 标记，组合结束后再触发一次搜索，否则用户看到的是上一次的结果，表现为「输入什么都没变化」。
+- **中文输入状态下字母可能变成全角**：打 `s` 拿到的是 `ｓ`（U+FF53），空格可能是 `　`（U+3000）。做前缀或快捷键匹配时先归一化全角字符，正则里用 `[\s\u3000]` 而不是只有 `\s`。
+- **跨用户可见性条件拼进 SQL 时必须整体加括号**：`auth.VisibilityOwnedOrPublic` 自身含 `OR`，不加括号会让后面的 `AND` 只作用于最后一个分支，把归属过滤绕开（搜索曾因此返回自己的全部笔记）。写法固定为 `WHERE (` + vis.Condition + `) AND ...`。
 - **`sessions` 表没有「是否通过过 TOTP」列**（`auth.md` 6.2 却要求 `totp_verified`）。实现用 token 后缀承载：会话明文 `<随机串>:totp`，查库前先 `splitSessionToken` 再哈希。`pending_logins` 的 `trust_device` 同理（`:1`）。改这两处先改文档。
 - **`gin.Context.Cookie(name)` 返回 `(string, error)`**，没有 cookie 时 err 非空、返回空串。不要写成 `raw, ok := c.Cookie(...)`。
 - `auth` 与 `httpx` 故意互相不 import：`auth` 通过 `auth.SetErrorCallbacks`、`auth.InstallAuthErrorHandlers` 注入错误响应，`main`/`router` 负责接线。
