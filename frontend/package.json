@@ -11,6 +11,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@milkdown/components": "7.23.0",
     "@milkdown/core": "^7.23.0",
     "@milkdown/plugin-clipboard": "^7.23.0",
     "@milkdown/plugin-cursor": "^7.23.0",

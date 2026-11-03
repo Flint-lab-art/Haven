@@ -13,6 +13,7 @@ import { listTrash, purgeNote, restoreNote, type TrashItem } from '@/api/notes'
 import { useUiStore } from '@/stores/ui'
 import { renderMarkdown } from '@/utils/markdown'
 import { formatDateTime } from '@/utils/format'
+import { useCodeCopy } from '@/composables/useCodeCopy'
 
 const ui = useUiStore()
 
@@ -31,6 +32,10 @@ const renderedPreview = computed(() => {
   const item = selected.value
   return item ? renderMarkdown(item.content_preview) : ''
 })
+
+/** 回收站预览里也有代码块，复制按钮同样可用（docs/v6/frontend/frontend.md 第六节）。 */
+const previewRef = ref<HTMLElement | null>(null)
+useCodeCopy(previewRef)
 
 async function load(): Promise<void> {
   if (!ui.selectedTrashId) {
@@ -139,7 +144,7 @@ watch(
     <p v-if="error" class="notice notice--error" style="margin: 0 0 12px">{{ error }}</p>
 
     <!-- eslint-disable-next-line vue/no-v-html -- 已经过 DOMPurify 过滤 -->
-    <div v-if="renderedPreview" class="md-body" v-html="renderedPreview"></div>
+    <div v-if="renderedPreview" ref="previewRef" class="md-body" v-html="renderedPreview"></div>
     <p v-else class="field__hint">这篇笔记没有正文。</p>
   </div>
 

@@ -9,6 +9,7 @@ import { getPublicNote, type PublicNote } from '@/api/notes'
 import { renderMarkdown, decorateLinks } from '@/utils/markdown'
 import { extractHeadings } from '@/utils/markdown-headings'
 import { formatDate } from '@/utils/format'
+import { useCodeCopy } from '@/composables/useCodeCopy'
 
 const route = useRoute()
 const note = ref<PublicNote | null>(null)
@@ -16,6 +17,8 @@ const loading = ref(true)
 const error = ref('')
 const articleRef = ref<HTMLElement | null>(null)
 const activeHeading = ref(-1)
+
+useCodeCopy(articleRef)
 
 const rendered = computed(() => decorateLinks(renderMarkdown(note.value?.content ?? '')))
 const outline = computed(() => extractHeadings(note.value?.content ?? ''))

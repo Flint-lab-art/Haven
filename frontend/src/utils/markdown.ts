@@ -6,7 +6,8 @@
  */
 import { marked, type Tokens } from 'marked'
 import DOMPurify from 'dompurify'
-import { highlightCode, escapeHtml, normalizeLanguage } from './highlight'
+import { highlightCode, escapeHtml, displayLanguage } from './highlight'
+import { renderTaskCheckboxes } from './task-list'
 
 marked.setOptions({
   gfm: true,
@@ -18,12 +19,15 @@ marked.setOptions({
 // 代码块语法高亮：marked 会把 renderer 的 code 交给这里
 const renderer = new marked.Renderer()
 renderer.code = ({ text, lang }: Tokens.Code): string => {
-  const language = normalizeLanguage(lang)
-  const highlighted = highlightCode(text, language)
+  const language = displayLanguage(lang)
+  const highlighted = highlightCode(text, lang)
   const langClass = language ? ` class="language-${escapeHtml(language)}"` : ''
+  // 复制按钮：点击时从同级的 <pre> 读纯文本，不在 DOM 里再存一份代码
+  // （docs/v6/frontend/frontend.md 第六节）
   return (
     '<div class="code-block-wrap">' +
     (language ? `<span class="code-lang">${escapeHtml(language)}</span>` : '') +
+    '<button type="button" class="code-copy" data-state="idle">复制</button>' +
     `<pre><code${langClass}>${highlighted}</code></pre>` +
     '</div>'
   )
@@ -35,7 +39,9 @@ marked.use({ renderer })
 export function renderMarkdown(source: string): string {
   if (!source.trim()) return ''
   const raw = marked.parse(source, { async: false }) as string
-  return DOMPurify.sanitize(raw, {
+  // 任务列表的 <input> 必须在 sanitize 之前换掉：DOMPurify 会把 input 整个删除，
+  // 连 checked 一起丢掉，事后就分不清勾没勾了
+  return DOMPurify.sanitize(renderTaskCheckboxes(raw), {
     // 不允许任何脚本、iframe、表单
     FORBID_TAGS: ['script', 'style', 'iframe', 'form', 'input', 'object', 'embed'],
     FORBID_ATTR: ['style', 'onerror', 'onload', 'onclick'],

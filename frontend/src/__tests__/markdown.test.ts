@@ -59,3 +59,4 @@ describe('decorateLinks', () => {
     expect(out).toBe('<p><a href="/login">x</a></p>')
   })
 })
+

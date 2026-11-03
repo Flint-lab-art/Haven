@@ -17,10 +17,13 @@ import { clipboard } from '@milkdown/plugin-clipboard'
 import { cursor } from '@milkdown/plugin-cursor'
 import { trailing } from '@milkdown/plugin-trailing'
 import { $prose, getMarkdown, replaceAll } from '@milkdown/utils'
+import { listItemBlockComponent, listItemBlockConfig } from '@milkdown/components/list-item-block'
 import { Plugin, PluginKey, type EditorState, type Transaction } from '@milkdown/prose/state'
 import { Decoration, DecorationSet, type EditorView } from '@milkdown/prose/view'
 import { Fragment, type Node as ProseNode } from '@milkdown/prose/model'
-import { highlightCode } from '@/utils/highlight'
+import { highlightCode, normalizeLanguage } from '@/utils/highlight'
+import { copyText, flashCopyState } from '@/utils/clipboard'
+import { checkboxHtml, hitTestCheckbox } from '@/utils/task-list'
 import { ApiError } from '@/api/client'
 import { isUploadableImage, uploadImage, type UploadResult } from '@/api/uploads'
 
@@ -49,6 +52,13 @@ async function build(): Promise<void> {
     .config((ctx) => {
       ctx.set(rootCtx, container.value!)
       ctx.set(defaultValueCtx, props.modelValue)
+      // 任务列表的方框：用项目自己的方块，视觉与阅读态一致（utils/task-list.ts）
+      ctx.set(listItemBlockConfig.key, {
+        renderLabel: ({ label, listType, checked }) => {
+          if (checked == null) return listType === 'ordered' ? label : '•'
+          return checkboxHtml(checked)
+        },
+      })
       ctx.get(listenerCtx).markdownUpdated((_ctx, markdown) => {
         empty.value = !markdown.trim()
         if (applyingExternal) return
@@ -57,6 +67,8 @@ async function build(): Promise<void> {
     })
     .use(commonmark)
     .use(gfm)
+    // 列表项交给组件的 NodeView 渲染，任务列表的方框因此可以直接点
+    .use(listItemBlockComponent)
     .use(history)
     // 粘贴 Markdown 时解析成对应块（否则会把 # 和 ** 当纯文本插进来）
     .use(clipboard)
@@ -66,7 +78,10 @@ async function build(): Promise<void> {
     .use(trailing)
     .use(listener)
     .use(highlightPlugin())
+    .use(codeCopyPlugin())
     .use(activeBlockPlugin())
+    // 任务列表的方框：点一下就切换（GitHub / Notion 的体验），且不移动光标
+    .use(taskCheckboxPlugin())
     // 粘贴 / 拖入图片时走上传，正文只留 URL（docs/v4/frontend/frontend.md 第二节）
     .use(imageUploadPlugin())
     .create()
@@ -78,6 +93,52 @@ async function build(): Promise<void> {
   }
 
   emit('ready')
+}
+
+/**
+ * 任务列表复选框：点方块即勾选 / 取消，一处交互对齐 GitHub / Notion。
+ *
+ * 官方 list-item-block 自带一个 label 点击，但这里单独接管，原因：
+ * 1. 它是 `pointerdown` 触发的，拖选文字时会误勾；
+ * 2. 光标必须留在原处——点方框只是为了勾选，不该把光标拽到列表项里；
+ * 3. 需要显式 `preventDefault`，避免浏览器把 `li` 当成可编辑文本去落光标。
+ *
+ * 判定放在 `mousedown`（不 preventDefault 的那个阶段之后）并阻止冒泡，
+ * 让 NodeView 的监听收不到这次事件。
+ */
+function taskCheckboxPlugin() {
+  const key = new PluginKey('task-checkbox')
+
+  const toggle = (view: EditorView, event: MouseEvent): boolean => {
+    if (event.button !== 0) return false
+    const hit = hitTestCheckbox(
+      event,
+      view.dom as HTMLElement,
+      (node, offset) => view.posAtDOM(node, offset),
+      (pos) => {
+        const node = view.state.doc.nodeAt(pos)
+        return node && node.type.name === 'list_item' ? (node as ProseNode) : null
+      },
+    )
+    if (!hit) return false
+
+    event.preventDefault()
+    event.stopPropagation()
+    // 只改属性，不移动选区、不滚动
+    view.dispatch(view.state.tr.setNodeAttribute(hit.pos, 'checked', !hit.checked))
+    return true
+  }
+
+  const plugin = new Plugin({
+    key,
+    props: {
+      handleDOMEvents: {
+        mousedown: (view, raw) => toggle(view, raw as MouseEvent),
+      },
+    },
+  })
+
+  return $prose(() => plugin)
 }
 
 /**
@@ -208,7 +269,9 @@ function highlightPlugin() {
     doc.descendants((node: ProseNode, pos: number) => {
       if (node.type.name !== 'code_block' && node.type.name !== 'fence') return true
 
-      const language = (node.attrs.language as string | undefined) ?? ''
+      // 必须与阅读态走同一套归一：否则 ```js / ```sh 在阅读时正常、编辑态没颜色
+      // （docs/v6/frontend/frontend.md 8.2）
+      const language = normalizeLanguage((node.attrs.language as string | undefined) ?? '')
       const raw = node.textContent
       if (!raw) return true
 
@@ -236,6 +299,96 @@ function highlightPlugin() {
     props: {
       decorations(state: EditorState) {
         return key.getState(state)
+      },
+    },
+  })
+
+  return $prose(() => plugin)
+}
+
+/** 代码块复制按钮的 class，供样式与点击判定共用。 */
+const COPY_BUTTON_CLASS = 'code-copy'
+
+/**
+ * 代码块右上角的复制按钮（docs/v6/frontend/frontend.md 第六节）。
+ *
+ * 挂在代码块上的 widget decoration：DOM 由装饰生成，不进 Markdown、不影响保存。
+ * 按钮是 `contenteditable=false` 的 `<span>`，不会被当成正文文本。
+ *
+ * 复制内容取代码块本身的纯文本（不含语言名）。
+ * 失败时只把按钮文字改成「复制失败」，不弹 alert、不写笔记错误区。
+ */
+function codeCopyPlugin() {
+  const key = new PluginKey('code-copy')
+
+  const makeButton = (getPos: () => number): HTMLElement => {
+    const box = document.createElement('span')
+    box.className = COPY_BUTTON_CLASS
+    box.setAttribute('contenteditable', 'false')
+    box.setAttribute('role', 'button')
+    box.setAttribute('aria-label', '复制代码')
+    box.dataset.state = 'idle'
+    box.textContent = '复制'
+
+    // 用 data-pos 记录位置，真实 view 在 handleDOMEvents 里拿
+    box.dataset.pos = String(getPos())
+
+    box.addEventListener('mousedown', (event) => {
+      // 不让浏览器把点击转成代码块里的光标 / 选区
+      event.preventDefault()
+      event.stopPropagation()
+    })
+
+    return box
+  }
+
+  const build = (doc: ProseNode): DecorationSet => {
+    const decorations: Decoration[] = []
+    doc.descendants((node, pos) => {
+      if (node.type.name !== 'code_block' && node.type.name !== 'fence') return true
+      decorations.push(
+        Decoration.widget(pos + 1, () => makeButton(() => pos), {
+          side: -1,
+          ignoreSelection: true,
+          key: `code-copy-${pos}`,
+        }),
+      )
+      return false
+    })
+    return DecorationSet.create(doc, decorations)
+  }
+
+  const plugin = new Plugin<DecorationSet>({
+    key,
+    state: {
+      init: (_config, state) => build(state.doc),
+      apply: (tr, old) => (tr.docChanged ? build(tr.doc) : old),
+    },
+    props: {
+      decorations(state: EditorState) {
+        return key.getState(state)
+      },
+      handleDOMEvents: {
+        click: (view, event) => {
+          const target = event.target as HTMLElement | null
+          const button = target?.closest?.(`.${COPY_BUTTON_CLASS}`) as HTMLElement | null
+          if (!button || !view.dom.contains(button)) return false
+
+          event.preventDefault()
+          event.stopPropagation()
+          if (button.dataset.state === 'busy') return true
+
+          const pos = Number(button.dataset.pos)
+          const node = Number.isFinite(pos) ? view.state.doc.nodeAt(pos) : null
+          if (!node) return true
+
+          button.dataset.state = 'busy'
+          void copyText(node.textContent).then((ok) => {
+            if (view.isDestroyed || !button.isConnected) return
+            flashCopyState(button, ok)
+          })
+          return true
+        },
       },
     },
   })

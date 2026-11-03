@@ -10,6 +10,7 @@ import PublicEmpty from '@/components/PublicEmpty.vue'
 import { getPublicPortfolioItem, type PortfolioItem } from '@/api/portfolio'
 import { repoLabel } from '@/utils/portfolio'
 import { renderMarkdown, decorateLinks } from '@/utils/markdown'
+import { useCodeCopy } from '@/composables/useCodeCopy'
 
 const route = useRoute()
 
@@ -18,6 +19,9 @@ const loading = ref(true)
 const error = ref('')
 
 const rendered = computed(() => decorateLinks(renderMarkdown(item.value?.content ?? '')))
+
+const detailRef = ref<HTMLElement | null>(null)
+useCodeCopy(detailRef)
 
 function sortedRepos(value: PortfolioItem) {
   return [...value.repos].sort((a, b) => Number(b.is_primary) - Number(a.is_primary))
@@ -57,7 +61,7 @@ onMounted(() => void load())
       :text="error || '它可能已经下线了。'"
     />
 
-    <article v-else class="portfolio-detail">
+    <article v-else ref="detailRef" class="portfolio-detail">
       <header class="portfolio-detail__head">
         <h1 class="portfolio-detail__title">{{ item.title }}</h1>
         <p v-if="item.description" class="portfolio-detail__sub">{{ item.description }}</p>

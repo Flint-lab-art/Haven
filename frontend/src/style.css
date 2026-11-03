@@ -2066,6 +2066,98 @@ button.tag[aria-pressed='true'] {
   list-style: decimal;
 }
 
+/*
+ * 列表项由 @milkdown/components 的 list-item-block 渲染：
+ *   li > .label-wrapper > .milkdown-icon     ← 项目符号 / 任务方块
+ *      > .children > .content-dom            ← 正文（ProseMirror 可编辑区）
+ * 原生 ::marker 不再产出，这里用 flex 复刻缩进与对齐。
+ */
+.milkdown .ProseMirror li.milkdown-list-item-block,
+.milkdown .ProseMirror .milkdown-list-item-block > li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5em;
+  margin: 2px 0;
+  line-height: 1.75;
+  list-style: none;
+}
+
+/* 项目符号 / 有序序号：用文本撑开固定宽度，保证正文左边缘对齐 */
+.milkdown .ProseMirror .label-wrapper .milkdown-icon {
+  display: inline-flex;
+  justify-content: center;
+  min-width: 1.2em;
+  color: var(--label-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.milkdown .ProseMirror .children,
+.milkdown .ProseMirror .content-dom {
+  flex: 1;
+  min-width: 0;
+}
+
+.milkdown .ProseMirror .content-dom > p {
+  margin: 0;
+}
+
+/* 嵌套列表：子列表在内容列内再缩进一层 */
+.milkdown .ProseMirror .content-dom > ul,
+.milkdown .ProseMirror .content-dom > ol {
+  padding-left: 1.2em;
+  margin: 2px 0 0;
+}
+
+/* 任务列表方块（编辑态与阅读态共用，见 utils/task-list.ts） */
+.task-check {
+  display: inline-block;
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin-right: 0.4em;
+  border: 1.5px solid var(--label-2);
+  border-radius: 4px;
+  vertical-align: -2px;
+  box-sizing: border-box;
+  position: relative;
+  transition:
+    background-color 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.task-check--checked {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+/* 对勾用两条边框画出来，省一个图标依赖 */
+.task-check--checked::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 0.5px;
+  width: 4px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.milkdown .ProseMirror .label-wrapper:hover .task-check:not(.task-check--checked) {
+  border-color: var(--accent);
+}
+
+/* 已勾选的任务项正文降到次要色，和 GitHub / Notion 一致 */
+.milkdown .ProseMirror li:has(> .label-wrapper .task-check--checked) .content-dom {
+  color: var(--label-2);
+}
+
+/* 编辑态里 label 与方块的距离由 flex gap 控制，去掉额外右边距 */
+.milkdown .ProseMirror .label-wrapper .task-check {
+  margin-right: 0;
+}
+
 .milkdown .ProseMirror blockquote {
   margin: 0;
   padding: 2px 0 2px var(--sp-4);
@@ -2218,6 +2310,12 @@ button.tag[aria-pressed='true'] {
 .md-body li {
   margin: 6px 0;
   line-height: 1.72;
+}
+
+/* 阅读态的任务列表：没有原生 marker，靠方块撑起缩进 */
+.md-body li:has(> .task-check) {
+  list-style: none;
+  margin-left: -1em;
 }
 
 .md-body blockquote {
@@ -2449,7 +2547,7 @@ button.tag[aria-pressed='true'] {
   color: var(--danger);
 }
 
-/* 代码块容器：右上角显示语言 */
+/* 代码块容器：右上角显示语言与复制按钮 */
 .code-block-wrap {
   position: relative;
 }
@@ -2457,7 +2555,7 @@ button.tag[aria-pressed='true'] {
 .code-lang {
   position: absolute;
   top: 8px;
-  right: 12px;
+  left: 12px;
   font: var(--text-caption);
   color: var(--label-3);
   text-transform: lowercase;
@@ -2466,9 +2564,63 @@ button.tag[aria-pressed='true'] {
   pointer-events: none;
 }
 
-/* 给右上角的语言标签留出空间，而不是靠加大 padding-top（那会顶出大片空白） */
+/*
+ * 复制按钮（编辑态 widget 与阅读态 <button> 共用，docs/v6/frontend/frontend.md 6.4）。
+ * 默认不抢眼，悬停才明显，避免长笔记里满屏都是按钮。
+ */
+.code-copy {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--label-3);
+  font: var(--text-caption);
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease;
+}
+
+.code-copy:hover {
+  background: var(--fill-2);
+  color: var(--label);
+}
+
+.code-copy[data-state='copied'] {
+  color: var(--accent);
+}
+
+.code-copy[data-state='failed'] {
+  color: var(--danger);
+}
+
+/* 给顶部一行（语言标签在左、复制按钮在右）留出空间 */
 .code-block-wrap pre {
-  padding-right: var(--sp-8);
+  padding-top: var(--sp-6);
+  padding-right: 72px;
+}
+
+/*
+ * 编辑态：ProseMirror 的代码块就是裸 <pre>（没有 .code-block-wrap 包裹），
+ * 复制按钮由 widget 插在 <pre> 的第一个位置，所以直接相对 <pre> 绝对定位。
+ */
+.milkdown .ProseMirror pre {
+  position: relative;
+}
+
+.milkdown .ProseMirror pre > .code-copy {
+  top: 6px;
+  right: 8px;
 }
 
 /* ============ 标签选择器 ============ */
