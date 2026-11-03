@@ -218,7 +218,7 @@
 
 # 六期（v6）已完成
 
-> 文档：`docs/v6/`，入口为 `docs/v6/changes.md`。范围与顺序：**C3 → C4 → C1 → C2**。
+> 文档：`docs/v6/`，入口为 `docs/v6/changes.md`。范围与顺序：**C3 → C4 → C1 → C2**（C6 独立，随时可做）。
 
 ## C3 搜索 type 参数
 
@@ -251,6 +251,50 @@
 - [x] 焦点在 `input` / `textarea` / 可编辑区时，不拦截 `Cmd+S` / `Cmd+N`
 - [x] 公开域不启用任何快捷键（快捷键只挂在私有域布局上）
 - [x] 测试：编辑页与非编辑页的行为差异、输入框内不拦截
+- [x] 修正：编辑器正文（`.ProseMirror`）算 `editor` 而不是 `field`，`Cmd+S` 在写笔记时也能拦截并保存；监听改到**捕获阶段**，抢在编辑器自身处理之前
+- [x] 测试：`src/__tests__/shortcuts.test.ts` 6 条（editor / field / other 三类判定）
+
+## C6 任务列表复选框
+
+> 文档：`docs/v6/frontend/frontend.md` 第五节、`docs/v6/conventions.md` 第一节第 6/7 条。
+
+- [x] 引入 `@milkdown/components@7.23.0`（与现有 Milkdown 版本一致），用 `listItemBlockComponent` 渲染列表项
+- [x] `listItemBlockConfig.renderLabel` 改为自绘方块，不引入 Crepe 主题与图标
+- [x] 编辑态点方块切换 `checked`：`mousedown` 接管、`preventDefault`，光标与滚动不动
+- [x] 点在正文、拖选文字跨过方块时都不勾选
+- [x] 普通无序 / 有序列表的符号与序号显示不变
+- [x] 阅读态（公开笔记、作品集、回收站预览）把 `<input type="checkbox">` 换成只读方块，修复方框原本被 DOMPurify 过滤掉的问题
+- [x] 样式：15px 方块、悬停变 accent、勾选实心 + 白对勾、已勾选正文降为 `var(--label-2)`
+- [x] 测试：`src/__tests__/task-list.test.ts`（8 条：方块生成、input 替换、属性顺序、编辑态命中判定）+ `markdown.test.ts` 3 条阅读态用例
+
+## C7 代码块复制
+
+> 文档：`docs/v6/frontend/frontend.md` 第六节（复制）、第七节（输入法全角陷阱）。
+
+- [x] 新增 `utils/clipboard.ts`：`copyText`（Clipboard API → `execCommand` 回退 → 静默 false）、`flashCopyState`、`installCodeCopyHandler`
+- [x] 编辑态：`codeCopyPlugin` 用 widget decoration 在 `<pre>` 右上角挂按钮，`contenteditable=false`，不进 Markdown
+- [x] 阅读态：`renderMarkdown` 的 code renderer 输出 `.code-copy` 按钮；三个阅读视图（公开笔记 / 作品集详情 / 回收站预览）通过 `useCodeCopy` 委托接线
+- [x] 复制内容只取 `<pre>` / 代码节点的纯文本，不含语言名
+- [x] 失败静默降级：按钮显示「复制失败」，不弹 alert、不写笔记错误区
+- [x] 反馈 1.5 秒后复原，连点只重置计时
+- [x] 样式：按钮右上角、悬停变 `var(--fill-2)`；语言标签移到左上
+- [x] `v6/conventions.md` 第一节第 7 条同步放行「代码块复制按钮」
+- [x] 测试：`src/__tests__/code-copy.test.ts` 13 条
+
+## C8 代码高亮语言
+
+> 文档：`docs/v6/frontend/frontend.md` 第八节。
+
+- [x] 修编辑态漏掉 `normalizeLanguage`：此前 ```` ```js ```` / ```` ```sh ```` 在阅读态有颜色、编辑态没有
+- [x] 补齐别名表：`jsx` `mjs` `cjs` `tsx` `mts` `zsh` `ksh` `py3` `rs` `cc` `cxx` `cs` `objc` `objective-c` `yml` `conf` `cfg` `properties` `html`/`htm`/`xhtml`/`svg`→`xml` `md` `text`/`txt`
+- [x] 全角字母归一并忽略大小写（`ｇｏ` → `go`）
+- [x] **未知语言改为纯文本**，删掉 `highlightAuto` 回退——此前 ```` ```dockerfile ```` 会被猜成别的语言，表现为「有的语言能高亮、有的不能」
+- [x] 新增 `displayLanguage`：`html` 的标签仍显示 `html`，不显示成 `xml`
+- [x] 支持范围写入文档第八节 8.1：主力 / Shell / C 系 / Web / 配置 / 其他，含 YAML、INI（`conf`/`cfg`/`properties`）、TOML
+- [x] 额外注册 26 种常见语言（不换 full 构建）：`dockerfile` `nginx` `powershell` `haskell` `elixir` `erlang` `scala` `dart` `protobuf` `latex` `julia` `groovy` `vim` `cmake` `gradle` `clojure` `ocaml` `elm` `lisp` `scheme` `matlab` `fortran` `verilog` `nim` `crystal` `fsharp`，合计 62 种
+- [x] 对应别名：`docker` `docker-compose`/`compose` `ps1`/`pwsh` `hs` `ex`/`exs` `erl` `clj`/`cljs` `ml` `fs`/`fsx` `jl` `tex` `proto` `gql` `sv`/`vh`/`svh` `cr`
+- [x] 本地实现 Caddyfile 语法（highlight.js 无此语言包）：`utils/languages/caddyfile.ts`，识别注释 / 花括号 / 指令与站点地址 / 多地址行 / `{$ENV}` / `{placeholder}` / 字符串 / 字面量 / 端口
+- [x] 测试：`src/__tests__/highlight.test.ts` 扩充为 22 条
 
 ---
 

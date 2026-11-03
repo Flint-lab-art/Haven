@@ -87,7 +87,18 @@
 1. **全部 `preventDefault()`**，劫持浏览器默认行为（保存网页、新建窗口）；
 2. **`Cmd+S` 在编辑页**：取消正在等待的自动保存计时器，立即执行一次保存，并显示保存状态；
 3. **`Cmd+S` 在非编辑页**：不拦截，也不做事（避免在搜索页按 Cmd+S 也弹保存提示）；
-4. **输入框内不拦截 `Cmd+S` / `Cmd+N`**：焦点在 `input` / `textarea` / 内容可编辑区时，交给浏览器或编辑器处理——只有 `Cmd+K` 在任何状态下都拦截；
+4. **`Cmd+S` / `Cmd+N` 的分流按元素类型**：
+
+   | 焦点位置 | `Cmd+S` | `Cmd+N` |
+   |---|---|---|
+   | 笔记编辑器正文（`.ProseMirror`） | **拦截并保存** | 不拦截 |
+   | `input` / `textarea` / `select`（搜索框、标题框、标签输入框等） | 不拦截 | 不拦截 |
+   | 其它位置（页面空白、列表、按钮） | 编辑页拦截并保存 | 拦截并新建 |
+
+   「内容可编辑区」**不等于**「输入框」：编辑器正文是 contenteditable，但它就是笔记本身，`Cmd+S` 必须保存。只有真正的一次性输入控件才交给浏览器。
+
+   快捷键在**捕获阶段**监听，确保在编辑器自己的键盘处理之前拿到事件；编辑器内部若已处理（如代码块内），由编辑器自行 `stopPropagation`。
+
 5. **公开域不启用任何快捷键**。
 
 ## 三、文件夹选择器
@@ -144,11 +155,207 @@
 | 路径文字 | 14px，`var(--label)`；选中时 `var(--accent)` |
 | 底部提示 | 12px，`var(--label-3)` |
 
-## 四、不做的事
+## 五、任务列表复选框
+
+> 本节整节新增，扩展 `v1/frontend/ui-design.md` 7.1 对 Milkdown 列表的约束（该节其余要求继续有效），以本文件为准。
+
+### 5.1 目标
+
+`- [ ]` / `- [x]` 任务列表在编辑态**点一下方块就能勾选 / 取消**，体验对齐 GitHub、Notion：不打字、不选文字、不移动光标。
+
+### 5.2 存储格式不变
+
+选中状态存在 `list_item.attrs.checked`，序列化回 Markdown 仍是 `- [ ]` / `- [x]`。**不改 `notes.content` 的格式、不加字段、不改接口。**
+
+### 5.3 实现约束
+
+- 列表项由 **`@milkdown/components` 的 `listItemBlockComponent`** 渲染（`v6/conventions.md` 第一节第 6 条）。这是唯一的允许引入的编辑器组件；不使用 Crepe 的整套主题与其它组件。
+- 点击判定在 **`mousedown`** 阶段接管，且只对「任务项第一段所在的方块」生效：
+  - 点在正文里不勾选；
+  - 拖选文字跨过方块时不勾选（因此不能用 `pointerdown`）；
+  - 勾选后**光标留在原处**，不跳进列表项、不滚动。
+- 勾选后只发一次 `setNodeAttribute(checked)` 事务；自动保存仍按 v1 7.1 第 4 条的 1s 防抖，不额外发请求。
+- 普通无序 / 有序列表的项目符号与序号继续显示，视觉与改动前一致。
+
+### 5.4 阅读态
+
+公开笔记详情、作品集详情、回收站预览里的任务列表**只显示方块，不可点击**。
+
+- 原因：阅读态没有保存通道，能点不能存会误导；
+- 方块与编辑态同一套样式（`utils/task-list.ts`），只是没有交互；
+- 此前 `renderMarkdown` 会把 `<input type="checkbox">` 过滤掉、方块完全不可见，本期一并修正。
+
+### 5.5 视觉规格
+
+| 状态 | 规格 |
+|---|---|
+| 未勾选 | 15×15px，1.5px `var(--label-2)` 描边，圆角 4px |
+| 悬停 | 描边变 `var(--accent)` |
+| 已勾选 | 底与描边都是 `var(--accent)`，白色对勾 |
+| 已勾选的任务项正文 | 文字降为 `var(--label-2)` |
+| 方块与正文间距 | 0.4em |
+
+### 5.6 不做的事
+
+- 不做「勾选后自动移到末尾 / 归档」；
+- 不做进度统计（如「3/5 完成」）；
+- 不做阅读态的勾选（见 5.4）；
+- 不做键盘切换勾选（不在本期快捷键清单里，见第二节）。
+
+## 六、代码块复制
+
+> 本节整节新增，扩展 `v1/frontend/ui-design.md` 7.1 对代码块的约束（该节其余要求继续有效），以本文件为准。
+
+### 6.1 目标
+
+代码块右上角有一个复制按钮，**编辑态与阅读态都有**：写笔记时要贴代码出去，读笔记时更要复制，不能只做一边。
+
+### 6.2 实现约束
+
+- **不引入 CodeMirror、不使用 `@milkdown/components` 的 `code-block` 组件**。现有 highlight.js 高亮已经够用，本期只补复制这一个动作。
+- **存储格式不变**：代码块仍是 ```` ```lang ````，复制按钮是纯展示层，不进 Markdown。
+- 复制内容只取代码文本（不含语言名、不含行号），用 `navigator.clipboard.writeText`。
+- 复制失败（浏览器不支持、非安全上下文、用户拒绝）时**静默降级**：不弹 `alert`、不写入笔记错误区，只在按钮上短暂显示「复制失败」。
+- 按钮不得抢走编辑器焦点；编辑器里的按钮不能触发 ProseMirror 的光标落点。
+
+### 6.3 交互
+
+| 状态 | 表现 |
+|---|---|
+| 默认 | 右上角显示「复制」图标（两个叠放的方框） |
+| 悬停 | 按钮背景变 `var(--fill-2)`，文字 / 图标变 `var(--label)` |
+| 点击成功 | 图标换成对勾，文字变「已复制」，**1.5 秒**后恢复 |
+| 点击失败 | 文字变「复制失败」，1.5 秒后恢复 |
+
+- 1.5 秒是代码常量；
+- 连点不叠加计时，只重置计时器。
+
+### 6.4 视觉规格
+
+| 部位 | 规格 |
+|---|---|
+| 位置 | 代码块容器右上角，距边 8px |
+| 尺寸 | 高 24px，圆角 6px，内边距 0 8px |
+| 默认态 | 文字 12px `var(--label-3)`，无背景 |
+| 代码块容器 | 保持现有 `.code-block-wrap`（编辑态）与 `.md-body pre`（阅读态） |
+| 语言标签 | 保留在左上角，与复制按钮同一行高度 |
+
+## 七、输入法全角符号
+
+> 本节整节新增。
+
+中文输入法会把部分符号打成**全角**，Markdown 语法不认，表现为「语法写了但没渲染」。这不是编辑器的 bug，文档里明确记为已知陷阱，并在代码里做归一化。
+
+| 用户想打 | 全角（常见误输） | 半角（Markdown 只认这个） |
+|---|---|---|
+| 竖线 | `｜` U+FF5C | `\|` U+007C |
+| 方括号 | `［` `］` | `[` `]` |
+| 空格 | `　` U+3000 | 空格 |
+| 字母 x（表格语法） | `ｘ` U+FF58 | `x` |
+
+**处理原则**：
+
+- 编辑器**不自动替换**正文里的全角符号——用户可能就要写全角（如中文标点）；
+- 只在**语法识别**的位置做归一化：表格快捷语法 `|3x3|` 的行列数字与 `x` 允许全角；
+- 其余情况（表格手写、任务列表）由用户自行切换半角，文档说明即可。
+
+## 八、代码块语言与高亮
+
+> 本节整节新增，扩展 `v1/frontend/ui-design.md` 7.1 的代码块约束（该节其余要求继续有效），以本文件为准。
+
+### 8.1 支持范围
+
+用 highlight.js 的 **common 语言集 + 额外注册的 26 种常见语言**，不引入 full 构建（full 会多带近 900KB）。
+
+**common 集自带（36 种）**：
+
+| 类别 | 语言（```` ``` ```` 里可写的名称） |
+|---|---|
+| 主力 | `java` `python` `go` `golang` `rust` `rs` |
+| Shell | `bash` `sh` `zsh` `shell` |
+| C 系 | `c` `cpp` `c++` `csharp` `c#` `objc` `objective-c` |
+| Web | `html` `htm` `xml` `svg` `css` `scss` `less` `javascript` `js` `typescript` `ts` `jsx` `tsx` |
+| 配置 / 数据 | `yaml` `yml` `ini` `conf` `cfg` `toml` `json` `properties` |
+| 其他 | `sql` `markdown` `md` `diff` `graphql` `lua` `perl` `php` `ruby` `kotlin` `swift` `r` `makefile` `plaintext` `text` `txt` |
+
+**额外注册（26 种）**：
+
+| 类别 | 语言 |
+|---|---|
+| 运维 / 构建 | `dockerfile`（含 `docker`） `nginx` `cmake` `gradle` `vim` |
+| 脚本 / 终端 | `powershell`（含 `ps1` `pwsh`） |
+| 语言 | `haskell` `elixir` `erlang` `scala` `dart` `julia` `groovy` `clojure` `ocaml` `elm` `lisp` `scheme` `matlab` `fortran` `nim` `crystal` `fsharp` |
+| 协议 / 文档 | `protobuf`（含 `proto`） `latex`（含 `tex`） `verilog`（含 `sv` `vh`） |
+
+**本地自定义（1 种）**：
+
+| 语言 | 说明 |
+|---|---|
+| `caddyfile`（含 `caddy`） | highlight.js **不提供** Caddyfile 语言包，由本项目实现最小语法（`utils/languages/caddyfile.ts`）：注释、花括号块、每行首词（站点地址 / 指令）、多地址行、`{$ENV:默认}` 环境变量、`{placeholder}` 运行时占位符、引号 / 反引号字符串、`true/false/on/off`、端口与状态码 |
+
+合计 **63 种**。仍不支持的语言（如 `vue`、`zig`、`solidity`）按 8.3 处理为纯文本。
+
+**HTML 按 XML 高亮**：highlight.js 里 HTML 与 XML 共用同一个语法（`xml`），标签上仍显示用户写的 `html`。
+
+### 8.2 名称归一（编辑态与阅读态必须一致）
+
+**编辑态与阅读态都必须先调 `normalizeLanguage()`，再交给 highlight.js。** 两处走不同的语言名处理，会出现「阅读时正常、编辑时没颜色」的不一致。
+
+别名表见 `utils/highlight.ts` 的 `normalizeLanguage`，至少包含：
+
+| 写法 | 归一为 |
+|---|---|
+| `js` / `jsx` / `mjs` / `cjs` | `javascript` |
+| `ts` / `tsx` | `typescript` |
+| `sh` / `zsh` / `ksh` / `shell` | `bash` |
+| `py` / `py3` | `python` |
+| `golang` | `go` |
+| `rs` | `rust` |
+| `yml` | `yaml` |
+| `conf` / `cfg` / `properties` | `ini` |
+| `c++` / `cc` / `cxx` | `cpp` |
+| `c#` / `cs` | `csharp` |
+| `objc` / `objective-c` | `objectivec` |
+| `html` / `htm` / `xhtml` / `svg` | `xml` |
+| `md` | `markdown` |
+| `text` / `txt` | `plaintext` |
+| `docker` | `dockerfile` |
+| `docker-compose` / `compose` | `yaml` |
+| `ps1` / `pwsh` | `powershell` |
+| `hs` | `haskell` |
+| `ex` / `exs` | `elixir` |
+| `erl` | `erlang` |
+| `clj` / `cljs` | `clojure` |
+| `ml` | `ocaml` |
+| `fs` / `fsx` | `fsharp` |
+| `jl` | `julia` |
+| `tex` | `latex` |
+| `proto` | `protobuf` |
+| `gql` | `graphql` |
+| `sv` / `vh` / `svh` | `verilog` |
+| `cr` | `crystal` |
+| `caddy` / `caddy-file` | `caddyfile` |
+
+语言名的大小写忽略（```` ```Go ```` 等价于 ```` ```go ````），**全角字母也会归一**（`ｇｏ` → `go`）。
+
+### 8.3 不支持的语言：纯文本，不自动猜测
+
+- highlight.js **不认识的语言名，一律按纯文本渲染**，**不得回退到 `highlightAuto`**；
+- 理由：自动猜测会让短片段被标成无关语言的配色，表现为「有些语言能高亮、有些不能」且无法预期；
+- 语言名为空（```` ``` ```` 不带名字）时同样按纯文本，不猜测。
+
+### 8.4 视觉
+
+配色沿用 `style.css` 里按 HIG 语义色重写的 `.hljs-*` 规则，不引入 highlight.js 自带主题。
+
+## 九、不做的事
 
 - 不做可配置键位；
 - 不做 `Cmd+P`（与浏览器打印冲突）；
 - 不做编辑器内的 Vim / Emacs 键位；
 - 不做命令历史、最近使用排序；
 - 文件夹选择器不做折叠、搜索、新建文件夹；
-- 不做模糊匹配打分。
+- 不做模糊匹配打分；
+- 编辑器内除任务列表方块与代码块复制按钮外不加任何可点控件（`v6/conventions.md` 第一节第 7 条）；
+- 不做表格拖拽列宽 / 增删行列（`table-block` 组件）；
+- 不做代码块的语言选择器与折叠。 

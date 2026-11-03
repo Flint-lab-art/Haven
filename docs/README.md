@@ -103,7 +103,7 @@ docs/
 | `v6/conventions.md` | `v1/conventions.md` | 六期约定（允许劫持浏览器快捷键、命令固定） |
 | `v6/api.md` | `v1/api.md` | `/api/search` 的 `type` 参数 |
 | `v6/backend/data-model.md` | `v1/backend/data-model.md` | `notes.title` 的 trigram 索引 |
-| `v6/frontend/frontend.md` | `v1/frontend/frontend.md` | 命令面板与全局快捷键 |
+| `v6/frontend/frontend.md` | `v1/frontend/frontend.md` | 命令面板与全局快捷键；任务列表复选框；代码块复制；输入法全角陷阱 |
 
 ## 六、v1 目录导航
 
