@@ -8,6 +8,9 @@
  *   - 在面板顶部输入字符时实时匹配（含 0 计数的标签，标注「未使用」）；
  *   - 回车可新建；空输入退格关闭面板；Esc / 点外部关闭。
  *
+ * 新建的标签只属于当前这篇笔记：创建成功后通过 `created` 交给父组件立即挂载，
+ * 本组件不重新拉取列表（GET /api/tags 会删掉 0 引用的标签，见 docs/v3/api.md）。
+ *
  * 标签语义跟随笔记生命周期（类思源）：不在这里做物理删除。
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
@@ -21,7 +24,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:selected': [value: string[]]
-  changed: []
+  created: [tag: Tag]
 }>()
 
 const open = ref(false)
@@ -29,13 +32,25 @@ const input = ref('')
 const creating = ref(false)
 const error = ref('')
 
+/** 刚在本组件里创建、父组件列表还没反映出来的标签，用于让胶囊立刻可见。 */
+const optimistic = ref<Tag[]>([])
+
 const root = ref<HTMLElement | null>(null)
 const inputRef = ref<HTMLInputElement | null>(null)
 const buttonRef = ref<HTMLButtonElement | null>(null)
 
+/** 父组件列表 + 本地待确认的新标签（同 id 以父组件为准）。 */
+const allTags = computed<Tag[]>(() => {
+  const merged = [...props.tags]
+  for (const tag of optimistic.value) {
+    if (!merged.some((item) => item.id === tag.id)) merged.push(tag)
+  }
+  return merged
+})
+
 const selectedTags = computed(() =>
   props.selected
-    .map((id) => props.tags.find((tag) => tag.id === id))
+    .map((id) => allTags.value.find((tag) => tag.id === id))
     .filter((tag): tag is Tag => Boolean(tag)),
 )
 
@@ -43,7 +58,7 @@ const selectedTags = computed(() =>
 const matches = computed(() => {
   const keyword = input.value.trim().toLowerCase()
   const chosen = new Set(props.selected)
-  const pool = props.tags.filter((tag) => !chosen.has(tag.id))
+  const pool = allTags.value.filter((tag) => !chosen.has(tag.id))
   if (!keyword) return pool.filter((tag) => tag.note_count > 0)
   return pool.filter((tag) => tag.name.toLowerCase().includes(keyword)).slice(0, 12)
 })
@@ -51,7 +66,7 @@ const matches = computed(() => {
 const exactMatch = computed(() => {
   const keyword = input.value.trim().toLowerCase()
   if (!keyword) return undefined
-  return props.tags.find((tag) => tag.name.toLowerCase() === keyword)
+  return allTags.value.find((tag) => tag.name.toLowerCase() === keyword)
 })
 
 const canCreate = computed(
@@ -99,7 +114,6 @@ async function submit(): Promise<void> {
   }
   if (matches.value.length) {
     pick(matches.value[0].id)
-    input.value = name
     return
   }
 
@@ -107,13 +121,20 @@ async function submit(): Promise<void> {
   error.value = ''
   try {
     const created = await createTag(name)
+    // 先本地兜住，父组件列表里还没有它时胶囊也能立刻显示
+    if (!optimistic.value.some((tag) => tag.id === created.id)) {
+      optimistic.value = [...optimistic.value, created]
+    }
+    // 先落选，再通知父组件挂载；父组件异常也不会把选中的标签丢掉
     emit('update:selected', [...props.selected, created.id])
-    emit('changed')
+    // 只把新标签交给父组件挂到当前笔记上；不要在这里重新拉列表：
+    // GET /api/tags 会先删掉 0 引用的标签，此刻还没关联，拉回来会把刚建的删掉。
+    emit('created', created)
     input.value = ''
     void nextTick(() => inputRef.value?.focus())
   } catch (err) {
     if (err instanceof ApiError && err.status === 409) {
-      const existing = props.tags.find((tag) => tag.name.toLowerCase() === name.toLowerCase())
+      const existing = allTags.value.find((tag) => tag.name.toLowerCase() === name.toLowerCase())
       if (existing) {
         pick(existing.id)
         return

@@ -271,12 +271,84 @@ async function load(): Promise<void> {
   }
 }
 
+/** 标签列表请求序号：并发请求时只接受最后一次发出的结果，避免旧响应覆盖新状态。 */
+let tagRequestSeq = 0
+
 /** 标签被新建或删除后重新拉取（删除会影响其它笔记，需要最新列表）。 */
 async function reloadTags(): Promise<void> {
+  const seq = ++tagRequestSeq
   try {
-    tags.value = (await listTags()).items
+    const items = (await listTags()).items
+    if (seq === tagRequestSeq) tags.value = items
   } catch {
     // 拉取失败不阻塞编辑
+  }
+}
+
+/**
+ * 编辑页新建标签（TagDropdown 的 created 事件）。
+ *
+ * 标签只在本篇关联后才有意义：GET /api/tags 会删掉 0 引用的标签，
+ * 所以先把它并入本地列表（避免立刻重拉时被清掉），再落到当前笔记上。
+ * 已保存过的笔记立刻 PATCH tag_ids；空白笔记等首次保存时随 createNote 一起提交。
+ */
+async function onTagCreated(tag: Tag): Promise<void> {
+  if (!tags.value.some((item) => item.id === tag.id)) {
+    tags.value = [...tags.value, tag]
+  }
+  if (isNew.value || hydrating.value) {
+    // 新笔记：selectedTagIds 已由子组件更新，首次保存会带上；
+    // 同步基线，避免「刚建标签」被当成未保存的改动
+    lastSavedTags = JSON.stringify(selectedTagIds.value)
+    if (lastSaved.value) {
+      try {
+        const saved = JSON.parse(lastSaved.value) as Record<string, unknown>
+        saved.tags = selectedTagIds.value
+        lastSaved.value = JSON.stringify(saved)
+      } catch {
+        // 快照格式异常时忽略，下一次保存会以当前标签为准
+      }
+    }
+    return
+  }
+
+  const pending = snapshot()
+  const tagKey = JSON.stringify(selectedTagIds.value)
+  const newTagId = tag.id
+  const revertTag = (): void => {
+    // 关联失败：把刚建的标签从本篇撤掉，它仍是 0 引用，重拉时也会被后端清掉
+    selectedTagIds.value = selectedTagIds.value.filter((id) => id !== newTagId)
+    tags.value = tags.value.filter((item) => item.id !== newTagId)
+    lastSaved.value = snapshot()
+  }
+
+  saving.value = true
+  saveState.value = 'saving'
+  error.value = ''
+  try {
+    const updated = await updateNote(noteId.value, { tag_ids: selectedTagIds.value })
+    note.value = updated
+    lastSaved.value = pending
+    lastSavedTags = tagKey
+    saveState.value = 'saved'
+    ui.notesChanged()
+    await reloadTags()
+  } catch (err) {
+    if (err instanceof ApiError && err.isNotFound) {
+      lastSaved.value = snapshot()
+      saveState.value = 'idle'
+      return
+    }
+    revertTag()
+    handleError(err)
+    saveState.value = 'error'
+    await reloadTags()
+  } finally {
+    saving.value = false
+    if (savePending) {
+      savePending = false
+      if (snapshot() !== lastSaved.value) scheduleSave()
+    }
   }
 }
 
@@ -434,7 +506,11 @@ onBeforeUnmount(() => {
                 <option v-for="option in folderOptions" :key="option.id" :value="option.id">{{ option.label }}</option>
               </select>
 
-              <TagDropdown v-model:selected="selectedTagIds" :tags="tags" @changed="reloadTags" />
+              <TagDropdown
+                v-model:selected="selectedTagIds"
+                :tags="tags"
+                @created="onTagCreated"
+              />
             </div>
           </header>
 
