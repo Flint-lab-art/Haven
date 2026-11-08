@@ -73,6 +73,8 @@ public class ApiTokenServiceImpl implements ApiTokenService {
         result.put("token_prefix", prefix);
         result.put("scope", entity.getScope());
         result.put("expires_at", entity.getExpiresAt());
+        result.put("last_used_at", null);
+        result.put("revoked_at", null);
         result.put("created_at", entity.getCreatedAt());
         // 明文只在这里返回一次
         result.put("token", token);
@@ -82,9 +84,15 @@ public class ApiTokenServiceImpl implements ApiTokenService {
     @Override
     @Transactional
     public void revokeToken(String userId, String tokenId) {
+        UUID id;
+        try {
+            id = UUID.fromString(tokenId);
+        } catch (IllegalArgumentException e) {
+            throw BizException.notFound("Token 不存在");
+        }
         Tokens token = tokensMapper.selectOne(
                 new LambdaQueryWrapper<Tokens>()
-                        .eq(Tokens::getId, UUID.fromString(tokenId))
+                        .eq(Tokens::getId, id)
                         .eq(Tokens::getUserId, UUID.fromString(userId)));
         if (token == null) {
             throw BizException.notFound("Token 不存在");

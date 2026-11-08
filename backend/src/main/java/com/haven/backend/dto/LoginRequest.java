@@ -14,4 +14,7 @@ public class LoginRequest {
 
     @NotBlank(message = "密码不能为空")
     private String password;
+
+    /** 是否勾选「信任这台设备，30 天内免动态码」。 */
+    private Boolean trustDevice;
 }

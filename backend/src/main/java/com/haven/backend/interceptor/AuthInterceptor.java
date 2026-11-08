@@ -1,8 +1,10 @@
 package com.haven.backend.interceptor;
 
+import cn.dev33.satoken.session.SaTerminalInfo;
 import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.haven.backend.entity.Tokens;
+import com.haven.backend.exception.BizException;
 import com.haven.backend.mapper.TokensMapper;
 import com.haven.backend.util.ApiTokenUtil;
 import jakarta.servlet.http.HttpServletRequest;
@@ -30,6 +32,13 @@ public class AuthInterceptor implements HandlerInterceptor {
     public static final String ATTR_USER_ID = "auth_userId";
     public static final String ATTR_SCOPE = "auth_scope";
     public static final String ATTR_AUTH_TYPE = "auth_type";
+    public static final String ATTR_TOTP_VERIFIED = "auth_totpVerified";
+
+    /** Sa-Token 终端扩展数据：登录时的 User-Agent。 */
+    public static final String EXTRA_USER_AGENT = "user_agent";
+    /** Sa-Token 终端扩展数据：本次会话是否通过动态码（或授信设备）验证。 */
+    public static final String EXTRA_TOTP_VERIFIED = "totp_verified";
+
     private static final String BEARER_PREFIX = "Bearer ";
 
     @Override
@@ -48,6 +57,9 @@ public class AuthInterceptor implements HandlerInterceptor {
         request.setAttribute(ATTR_USER_ID, userId);
         request.setAttribute(ATTR_SCOPE, "read_write");
         request.setAttribute(ATTR_AUTH_TYPE, "session");
+        SaTerminalInfo terminal = StpUtil.getTerminalInfo();
+        request.setAttribute(ATTR_TOTP_VERIFIED, terminal != null
+                && Boolean.TRUE.equals(terminal.getExtra(EXTRA_TOTP_VERIFIED)));
         return true;
     }
 
@@ -77,6 +89,7 @@ public class AuthInterceptor implements HandlerInterceptor {
         request.setAttribute(ATTR_USER_ID, token.getUserId());
         request.setAttribute(ATTR_SCOPE, token.getScope());
         request.setAttribute(ATTR_AUTH_TYPE, "token");
+        request.setAttribute(ATTR_TOTP_VERIFIED, false);
         return true;
     }
 
@@ -110,5 +123,30 @@ public class AuthInterceptor implements HandlerInterceptor {
     /** 校验当前请求是否具有写权限（scope = read_write）。 */
     public static boolean requireWrite(HttpServletRequest request) {
         return "read_write".equals(getScope(request));
+    }
+
+    /** 当前请求是否来自浏览器会话（而不是 API Token）。 */
+    public static boolean isSession(HttpServletRequest request) {
+        return "session".equals(getAuthType(request));
+    }
+
+    /** 当前会话是否已通过动态码（或授信设备）验证。 */
+    public static boolean isTotpVerified(HttpServletRequest request) {
+        return Boolean.TRUE.equals(request.getAttribute(ATTR_TOTP_VERIFIED));
+    }
+
+    /** 仅允许浏览器会话访问；API Token 一律 403。 */
+    public static void requireSession(HttpServletRequest request) {
+        if (!isSession(request)) {
+            throw BizException.forbidden("该操作仅支持浏览器会话，API Token 不可用");
+        }
+    }
+
+    /** 仅允许已通过动态码验证的浏览器会话访问。 */
+    public static void requireSessionTotp(HttpServletRequest request) {
+        requireSession(request);
+        if (!isTotpVerified(request)) {
+            throw BizException.forbidden("请先完成动态码验证后再管理 API Token");
+        }
     }
 }

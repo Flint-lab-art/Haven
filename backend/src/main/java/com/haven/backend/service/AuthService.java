@@ -10,10 +10,10 @@ import java.util.Map;
 public interface AuthService {
 
     /** 第一步登录：校验账密，按是否启用 TOTP 走不同分支。 */
-    Map<String, Object> login(LoginRequest req, String ip, String ua);
+    LoginOutcome login(LoginRequest req, String ip, String ua, String trustedDeviceToken);
 
     /** 第二步登录：校验临时令牌 + TOTP 动态码。 */
-    Map<String, Object> loginTotp(LoginTotpRequest req, String ip, String ua);
+    LoginOutcome loginTotp(LoginTotpRequest req, String ip, String ua);
 
     /** 获取当前身份信息（GET /api/me）。 */
     Map<String, Object> me(String userId);

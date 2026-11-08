@@ -43,6 +43,10 @@ public class PendingTotp implements Serializable {
     @TableField("user_agent")
     private String userAgent;
 
+    /** 本次两步验证是否勾选了「信任这台设备」。 */
+    @TableField("trust_device")
+    private Boolean trustDevice;
+
     @TableField("expires_at")
     private OffsetDateTime expiresAt;
 

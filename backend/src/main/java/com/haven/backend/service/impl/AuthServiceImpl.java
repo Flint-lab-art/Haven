@@ -2,14 +2,17 @@ package com.haven.backend.service.impl;
 
 import at.favre.lib.crypto.bcrypt.BCrypt;
 import cn.dev33.satoken.stp.StpUtil;
+import cn.dev33.satoken.stp.parameter.SaLoginParameter;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.haven.backend.dto.*;
 import com.haven.backend.entity.PendingTotp;
 import com.haven.backend.entity.Users;
 import com.haven.backend.exception.BizException;
+import com.haven.backend.interceptor.AuthInterceptor;
 import com.haven.backend.mapper.PendingTotpMapper;
 import com.haven.backend.mapper.UsersMapper;
 import com.haven.backend.service.AuthService;
+import com.haven.backend.service.TrustedDeviceService;
 import com.haven.backend.util.ApiTokenUtil;
 import com.haven.backend.util.TotpUtil;
 import lombok.RequiredArgsConstructor;
@@ -36,6 +39,7 @@ public class AuthServiceImpl implements AuthService {
 
     private final UsersMapper usersMapper;
     private final PendingTotpMapper pendingTotpMapper;
+    private final TrustedDeviceService trustedDeviceService;
 
     @Value("${haven.totp.issuer:Haven}")
     private String totpIssuer;
@@ -50,7 +54,7 @@ public class AuthServiceImpl implements AuthService {
     // -----------------------------------------------------------------------
 
     @Override
-    public Map<String, Object> login(LoginRequest req, String ip, String ua) {
+    public LoginOutcome login(LoginRequest req, String ip, String ua, String trustedDeviceToken) {
         Users user = findUserByUsername(req.getUsername());
         if (user == null) {
             throw BizException.unauthorized("用户名或密码错误");
@@ -59,12 +63,16 @@ public class AuthServiceImpl implements AuthService {
             throw BizException.unauthorized("用户名或密码错误");
         }
 
+        String userId = user.getId().toString();
+        boolean totpEnabled = Boolean.TRUE.equals(user.getTotpEnabled());
+        boolean trustedDevice = totpEnabled && trustedDeviceService.isTrusted(userId, trustedDeviceToken);
+
         Map<String, Object> result = new HashMap<>();
         result.put("user", userBrief(user));
 
-        if (Boolean.TRUE.equals(user.getTotpEnabled())) {
-            // 启用 TOTP → 生成临时令牌，等第二步校验
-            String rawToken = UUID.randomUUID().toString().replace("-", "") + ":" + user.getId().toString();
+        if (totpEnabled && !trustedDevice) {
+            // 启用 TOTP 且当前设备未授信 → 生成临时令牌，等第二步校验
+            String rawToken = UUID.randomUUID().toString().replace("-", "") + ":" + userId;
             String tokenHash = ApiTokenUtil.hash(rawToken);
 
             PendingTotp pending = new PendingTotp();
@@ -73,6 +81,7 @@ public class AuthServiceImpl implements AuthService {
             pending.setToken(tokenHash);
             pending.setIp(ip);
             pending.setUserAgent(ua);
+            pending.setTrustDevice(Boolean.TRUE.equals(req.getTrustDevice()));
             pending.setExpiresAt(OffsetDateTime.now().plusMinutes(PENDING_TOTP_MINUTES));
             pending.setCreatedAt(OffsetDateTime.now());
             pendingTotpMapper.insert(pending);
@@ -84,16 +93,17 @@ public class AuthServiceImpl implements AuthService {
 
             result.put("totp_required", true);
             result.put("temp_token", rawToken);
-        } else {
-            // 未启用 TOTP → 直接建立 Sa-Token 会话
-            StpUtil.login(user.getId().toString());
-            result.put("totp_required", false);
+            return new LoginOutcome(result, null);
         }
-        return result;
+
+        // 未启用 TOTP，或当前设备已授信 → 直接建立 Sa-Token 会话
+        StpUtil.login(userId, loginParameter(ua, trustedDevice));
+        result.put("totp_required", false);
+        return new LoginOutcome(result, null);
     }
 
     @Override
-    public Map<String, Object> loginTotp(LoginTotpRequest req, String ip, String ua) {
+    public LoginOutcome loginTotp(LoginTotpRequest req, String ip, String ua) {
         String tokenHash = ApiTokenUtil.hash(req.getTempToken());
 
         PendingTotp pending = pendingTotpMapper.selectOne(
@@ -114,12 +124,18 @@ public class AuthServiceImpl implements AuthService {
 
         // 校验通过：删除待验证记录，建立 Sa-Token 会话
         pendingTotpMapper.deleteById(pending.getId());
-        StpUtil.login(user.getId().toString());
+        String effectiveUa = ua != null && !ua.isBlank() ? ua : pending.getUserAgent();
+        StpUtil.login(user.getId().toString(), loginParameter(effectiveUa, true));
+
+        String rawDeviceToken = null;
+        if (Boolean.TRUE.equals(pending.getTrustDevice())) {
+            rawDeviceToken = trustedDeviceService.create(user.getId().toString(), effectiveUa);
+        }
 
         Map<String, Object> result = new HashMap<>();
         result.put("user", userBrief(user));
         result.put("totp_required", false);
-        return result;
+        return new LoginOutcome(result, rawDeviceToken);
     }
 
     @Override
@@ -201,6 +217,9 @@ public class AuthServiceImpl implements AuthService {
         user.setTotpEnabled(false);
         user.setUpdatedAt(OffsetDateTime.now());
         usersMapper.updateById(user);
+
+        // TOTP 关闭后，基于 TOTP 的授信设备全部失效
+        trustedDeviceService.revokeAll(userId);
     }
 
     // -----------------------------------------------------------------------
@@ -236,6 +255,9 @@ public class AuthServiceImpl implements AuthService {
         user.setUpdatedAt(OffsetDateTime.now());
         usersMapper.updateById(user);
 
+        // 密码变更后，所有授信设备失效
+        trustedDeviceService.revokeAll(userId);
+
         // 撤销当前用户的全部 Sa-Token 会话（强制重新登录）
         StpUtil.logout(userId);
         StpUtil.kickout(userId);
@@ -253,5 +275,12 @@ public class AuthServiceImpl implements AuthService {
 
     private Map<String, String> userBrief(Users user) {
         return Map.of("id", user.getId().toString(), "username", user.getUsername());
+    }
+
+    /** 登录时把 UA 与「是否已通过动态码」写进 Sa-Token 终端扩展数据。 */
+    private SaLoginParameter loginParameter(String ua, boolean totpVerified) {
+        return new SaLoginParameter()
+                .setTerminalExtra(AuthInterceptor.EXTRA_USER_AGENT, ua != null ? ua : "")
+                .setTerminalExtra(AuthInterceptor.EXTRA_TOTP_VERIFIED, totpVerified);
     }
 }

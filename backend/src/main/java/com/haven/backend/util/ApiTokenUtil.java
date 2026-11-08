@@ -41,6 +41,15 @@ public final class ApiTokenUtil {
     }
 
     /**
+     * 生成 32 字节随机十六进制串，用于授信设备令牌等不透明凭证。
+     */
+    public static String randomToken() {
+        byte[] bytes = new byte[TOKEN_BYTES];
+        SECURE_RANDOM.nextBytes(bytes);
+        return HexFormat.of().formatHex(bytes);
+    }
+
+    /**
      * 计算 token 的 SHA-256 哈希（小写十六进制），用于落库与按 token_hash 查询。
      */
     public static String hash(String token) {
