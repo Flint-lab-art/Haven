@@ -1,0 +1,30 @@
+name: Tag Build SpringBoot JDK21
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch: # 支持手动触发
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set JDK21 Temurin
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Maven package
+        run: mvn clean package -s ./settings.xml -DskipTests
+
+      - name: Upload jar artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.ref_name }}-jar
+          path: target/*.jar
+          retention-days: 60
