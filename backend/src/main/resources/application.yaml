@@ -1,0 +1,8 @@
+spring:
+  application:
+    name: Haven
+  profiles:
+    active:
+      - dev
+  jackson:
+    property-naming-strategy: SNAKE_CASE

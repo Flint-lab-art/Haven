@@ -1,0 +1,49 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://127.0.0.1:5432/dev_db
+    username: dev
+    password: 123456
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 3
+      connection-timeout: 20000
+      idle-timeout: 300000
+      max-lifetime: 1200000
+      pool-name: HavenHikariPool
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 11MB
+
+management:
+  endpoints:
+    web:
+      # 只暴露健康、info，安全优先；不要写 *
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      # always：所有人都能看到详情（开发、内网监控用）
+      # 生产公网改成 when-authorized
+      show-details: always
+      show-components: ALWAYS
+  info:
+    env:
+      enabled: true
+
+# ---- Sa-Token 会话配置 ----
+sa-token:
+  token-name: havenToken
+  timeout: 604800          # 会话有效期 7 天（秒）
+  active-timeout: 86400      # 不做滑动续期
+  is-concurrent: true      # 允许多端登录
+  is-share: false          # 每次登录生成新 token
+  token-style: uuid
+  is-log: true
+
+# ---- 业务配置 ----
+haven:
+  totp:
+    issuer: Haven
+  upload-dir: uploads

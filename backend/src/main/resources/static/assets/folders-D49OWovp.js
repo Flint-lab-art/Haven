@@ -1,0 +1,1 @@
+import{i as e}from"./index-B76VAcQV.js";function t(){return e(`/api/folders`)}function n(t){return e(`/api/folders`,{method:`POST`,body:t})}function r(t,n){return e(`/api/folders/${t}`,{method:`PATCH`,body:n})}function i(t){return e(`/api/folders/${t}`,{method:`DELETE`})}export{r as i,i as n,t as r,n as t};

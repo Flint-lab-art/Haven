@@ -1,0 +1,1 @@
+import{i as e}from"./index-B76VAcQV.js";function t(){return e(`/api/tags`)}function n(t){return e(`/api/tags`,{method:`POST`,body:{name:t}})}function r(t,n=20,r=0){return e(`/api/tags/${t}/notes`,{query:{limit:n,offset:r}})}export{r as n,t as r,n as t};

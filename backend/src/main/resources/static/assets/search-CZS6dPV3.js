@@ -1,0 +1,1 @@
+import{i as e}from"./index-B76VAcQV.js";function t(t,n=20,r=0,i){return e(`/api/search`,{query:{q:t,limit:n,offset:r,...i?{type:i}:{}}})}function n(t,n=20,r=0){return e(`/api/public/search`,{query:{q:t,limit:n,offset:r}})}export{n,t};

@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration scan="true" scanPeriod="60 seconds" debug="false">
+    <!-- 读取Spring配置属性 -->
+    <springProperty scope="context" name="appName" source="spring.application.name" defaultValue="haven-backend"/>
+    <springProperty scope="context" name="logPath" source="logging.file.path" defaultValue="./logs"/>
+    <conversionRule conversionWord="clr" class="org.springframework.boot.logging.logback.ColorConverter"/>
+    <conversionRule conversionWord="wex" class="org.springframework.boot.logging.logback.WhitespaceThrowableProxyConverter"/>
+    <conversionRule conversionWord="wEx" class="org.springframework.boot.logging.logback.ExtendedWhitespaceThrowableProxyConverter"/>
+
+    <!-- 日志格式模板 -->
+    <property name="CONSOLE_PATTERN" value="%clr(%d{yyyy-MM-dd HH:mm:ss.SSS}){faint} %clr(%5p) %clr(${PID:- }){magenta} %clr(---){faint} %clr([%15.15t]){faint} %clr(%-40.40logger{39}){cyan} %clr(:){faint} %m%n%wEx"/>
+    <property name="FILE_PATTERN" value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{50} - %msg%n"/>
+
+    <!-- 控制台输出：所有环境都启用 -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+            <pattern>${CONSOLE_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- 开发环境：仅控制台输出，不加载文件appender，消除未引用警告 -->
+    <springProfile name="dev">
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+    </springProfile>
+
+    <!-- 生产环境：控制台 + 普通日志文件 + error独立日志文件 -->
+    <springProfile name="prod">
+        <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <file>${logPath}/${appName}.log</file>
+            <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                <fileNamePattern>${logPath}/${appName}-%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+                <timeBasedFileNamingAndTriggeringPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
+                    <maxFileSize>10MB</maxFileSize>
+                </timeBasedFileNamingAndTriggeringPolicy>
+                <maxHistory>30</maxHistory>
+                <totalSizeCap>500MB</totalSizeCap>
+            </rollingPolicy>
+            <encoder>
+                <pattern>${FILE_PATTERN}</pattern>
+                <charset>UTF-8</charset>
+            </encoder>
+        </appender>
+
+        <appender name="ERROR_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <file>${logPath}/${appName}-error.log</file>
+            <filter class="ch.qos.logback.classic.filter.LevelFilter">
+                <level>ERROR</level>
+                <onMatch>ACCEPT</onMatch>
+                <onMismatch>DENY</onMismatch>
+            </filter>
+            <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                <fileNamePattern>${logPath}/${appName}-error-%d{yyyy-MM-dd}.log</fileNamePattern>
+                <maxHistory>30</maxHistory>
+            </rollingPolicy>
+            <encoder>
+                <pattern>${FILE_PATTERN}</pattern>
+                <charset>UTF-8</charset>
+            </encoder>
+        </appender>
+
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="FILE"/>
+            <appender-ref ref="ERROR_FILE"/>
+        </root>
+    </springProfile>
+</configuration>

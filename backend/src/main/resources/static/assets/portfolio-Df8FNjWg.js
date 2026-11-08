@@ -1,0 +1,1 @@
+function e(e){return e.kind===`link`?e.title||e.url:e.kind===`github`?`GitHub`:e.kind===`gitee`?`Gitee`:`Git`}export{e as t};
