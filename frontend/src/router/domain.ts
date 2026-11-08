@@ -6,27 +6,38 @@
  * - 私有域：工作台 + 设置，除 /login 外全部需要登录。
  */
 
+import { getRuntimeConfig, normalizeHosts } from '@/config'
+
 /** 设置当前域名是否为私有域。 */
 export type DomainKind = 'public' | 'private'
 
 /**
  * 判断当前域名属于哪一侧。
  *
- * 生产上由 HAVEN_COOKIE_DOMAIN（如 app.example.com）决定；本地开发没有
- * 两个域名，这里按「本机地址 + 环境变量」兜底，全部当作私有域，
- * 方便本地测管理功能。
+ * 私有域名单优先取后端下发的运行时配置（`GET /api/app-config`），
+ * 取不到时退回构建期的 `VITE_PRIVATE_HOST`（支持逗号分隔的多个域名）。
+ * 都没有配置时：本机地址当私有域方便开发，其余按公开域处理。
  */
-export function detectDomain(hostname: string, configured = import.meta.env.VITE_PRIVATE_HOST): DomainKind {
-  if (configured) {
-    return hostname === configured ? 'private' : 'public'
+export function detectDomain(
+  hostname: string,
+  configured?: string | readonly string[],
+): DomainKind {
+  const runtimeHosts = getRuntimeConfig().privateHosts
+  const buildHosts = normalizeHosts(configured ?? import.meta.env.VITE_PRIVATE_HOST)
+  const privateHosts = runtimeHosts.length > 0 ? runtimeHosts : buildHosts
+  const host = hostname.trim().toLowerCase()
+
+  if (privateHosts.length > 0) {
+    return privateHosts.includes(host) ? 'private' : 'public'
   }
+
   // 本地开发：localhost / 127.0.0.1 / 局域网 IP 一律视为私有域
-  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.endsWith('.localhost')) {
+  if (host === 'localhost' || host === '127.0.0.1' || host.endsWith('.localhost')) {
     return 'private'
   }
-  if (/^\d+\.\d+\.\d+\.\d+$/.test(hostname)) {
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(host)) {
     return 'private'
   }
-  // 生产环境：默认当公开域，私有域必须显式配置 VITE_PRIVATE_HOST
+  // 生产环境：默认当公开域，私有域必须显式配置
   return 'public'
 }

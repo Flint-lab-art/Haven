@@ -35,6 +35,7 @@ jobs:
 
       - name: Copy frontend dist to backend static
         run: |
+          rm -rf backend/src/main/resources/static
           mkdir -p backend/src/main/resources/static
           cp -r frontend/dist/* backend/src/main/resources/static/
 

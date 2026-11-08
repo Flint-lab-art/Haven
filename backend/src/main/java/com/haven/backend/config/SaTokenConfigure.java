@@ -30,6 +30,8 @@ public class SaTokenConfigure implements WebMvcConfigurer {
                         "/api/auth/login/totp",
                         // 当前身份（匿名也返回结果）
                         "/api/me",
+                        // 运行时前端配置（决定当前域名是公开域还是私有域）
+                        "/api/app-config",
                         // 公开侧接口
                         "/api/public/**"
                 );

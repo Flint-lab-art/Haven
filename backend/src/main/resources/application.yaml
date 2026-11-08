@@ -6,3 +6,10 @@ spring:
       - dev
   jackson:
     property-naming-strategy: SNAKE_CASE
+
+# ---- 业务配置 ----
+haven:
+  # 私有域主机名，逗号分隔（如 note.vorin.icu）。
+  # 前端启动时通过 GET /api/app-config 读取，决定当前域名加载公开路由还是私有路由。
+  # 生产环境用 HAVEN_PRIVATE_HOSTS 覆盖，改域名不需要重新打包前端。
+  private-hosts: ${HAVEN_PRIVATE_HOSTS:note.vorin.icu}
