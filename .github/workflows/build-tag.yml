@@ -15,7 +15,12 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Setup Node.js + pnpm
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9 # 换成你本地对应的pnpm版本，比如 8 / 9
+
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
