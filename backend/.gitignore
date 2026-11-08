@@ -36,3 +36,5 @@ CodeGenerator.java
 
 backend-go/
 uploads
+
+/src/main/resources/static/
