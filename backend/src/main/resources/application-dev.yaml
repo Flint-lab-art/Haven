@@ -47,3 +47,4 @@ haven:
   totp:
     issuer: Haven
   upload-dir: uploads
+  private-hosts: ${HAVEN_PRIVATE_HOSTS:localhost}

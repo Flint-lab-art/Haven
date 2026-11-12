@@ -46,8 +46,7 @@ public class IssuesController {
         String type = (String) body.get("type");
         String status = (String) body.get("status");
         String priority = (String) body.get("priority");
-        UUID parentId = body.get("parent_id") != null ? UUID.fromString(body.get("parent_id").toString()) : null;
-        return issuesService.createIssue(userId, title, description, type, status, priority, parentId);
+        return issuesService.createIssue(userId, title, description, type, status, priority);
     }
 
     @PatchMapping("/{id}")
@@ -61,11 +60,8 @@ public class IssuesController {
         String type = body.containsKey("type") ? (String) body.get("type") : null;
         String status = body.containsKey("status") ? (String) body.get("status") : null;
         String priority = body.containsKey("priority") ? (String) body.get("priority") : null;
-        UUID parentId = null;
-        if (body.containsKey("parent_id")) {
-            parentId = body.get("parent_id") != null ? UUID.fromString(body.get("parent_id").toString()) : null;
-        }
-        return issuesService.updateIssue(userId, issueId, title, description, type, status, priority, parentId);
+
+        return issuesService.updateIssue(userId, issueId, title, description, type, status, priority);
     }
 
     @DeleteMapping("/{id}")

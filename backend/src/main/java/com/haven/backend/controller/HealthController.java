@@ -9,7 +9,7 @@ import java.util.Map;
 @RestController
 public class HealthController {
 
-    @Value("${haven.version:0.1.0-java}")
+    @Value("${app.version:unknown}")
     private String version;
 
     @GetMapping("/api/health")

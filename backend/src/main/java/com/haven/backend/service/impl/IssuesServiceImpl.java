@@ -43,7 +43,7 @@ public class IssuesServiceImpl implements IssuesService {
         listWrapper.orderByDesc(Issues::getUpdatedAt).last("LIMIT " + lim + " OFFSET " + offset);
         List<Issues> issues = issuesMapper.selectList(listWrapper);
         
-        List<Map<String, Object>> items = issues.stream().map(this::toIssueMap).collect(Collectors.toList());
+        List<Map<String, Object>> items = issues.stream().map(this::toIssueMap).toList();
         return Map.of("items", items, "total", total);
     }
 
@@ -52,15 +52,7 @@ public class IssuesServiceImpl implements IssuesService {
         UUID uid = UUID.fromString(userId);
         Issues issue = getOwned(uid, issueId);
         Map<String, Object> m = toIssueMap(issue);
-        // parent
-        if (issue.getParentId() != null) {
-            Issues parent = issuesMapper.selectById(issue.getParentId());
-            m.put("parent", parent != null ? toBriefMap(parent) : null);
-        } else m.put("parent", null);
-        // children
-        List<Issues> children = issuesMapper.selectList(
-                new LambdaQueryWrapper<Issues>().eq(Issues::getParentId, issueId).eq(Issues::getUserId, uid));
-        m.put("children", children.stream().map(this::toBriefMap).collect(Collectors.toList()));
+
         // status events
         List<IssueStatusEvents> events = eventsMapper.selectList(
                 new LambdaQueryWrapper<IssueStatusEvents>()
@@ -79,17 +71,12 @@ public class IssuesServiceImpl implements IssuesService {
     @Override
     @Transactional
     public Map<String, Object> createIssue(String userId, String title, String description,
-                                           String type, String status, String priority, UUID parentId) {
+                                           String type, String status, String priority) {
         UUID uid = UUID.fromString(userId);
         if (title == null || title.trim().isEmpty()) throw BizException.validation("标题不能为空");
         String t = type != null ? type : "feature";
         String s = status != null ? status : "todo";
         String p = priority != null ? priority : "medium";
-
-        if (parentId != null) {
-            Issues parent = getOwned(uid, parentId);
-            if (!"feature".equals(parent.getType())) throw BizException.validation("只有 feature 可以有子需求");
-        }
 
         Issues issue = new Issues();
         issue.setId(UUID.randomUUID());
@@ -99,7 +86,6 @@ public class IssuesServiceImpl implements IssuesService {
         issue.setType(t);
         issue.setStatus(s);
         issue.setPriority(p);
-        issue.setParentId(parentId);
         issue.setCreatedAt(OffsetDateTime.now());
         issue.setUpdatedAt(OffsetDateTime.now());
         issuesMapper.insert(issue);
@@ -120,7 +106,7 @@ public class IssuesServiceImpl implements IssuesService {
     @Override
     @Transactional
     public Map<String, Object> updateIssue(String userId, UUID issueId, String title, String description,
-                                           String type, String status, String priority, UUID parentId) {
+                                           String type, String status, String priority) {
         UUID uid = UUID.fromString(userId);
         Issues issue = getOwned(uid, issueId);
         String oldStatus = issue.getStatus();
@@ -129,12 +115,7 @@ public class IssuesServiceImpl implements IssuesService {
         if (description != null) issue.setDescription(description);
         if (type != null) issue.setType(type);
         if (priority != null) issue.setPriority(priority);
-        if (parentId != null) {
-            if (parentId.equals(issueId)) throw BizException.validation("不能将需求设为自身的子需求");
-            Issues parent = getOwned(uid, parentId);
-            if (!"feature".equals(parent.getType())) throw BizException.validation("只有 feature 可以有子需求");
-            issue.setParentId(parentId);
-        }
+
         if (status != null && !status.equals(oldStatus)) {
             issue.setStatus(status);
             IssueStatusEvents event = new IssueStatusEvents();
@@ -156,11 +137,6 @@ public class IssuesServiceImpl implements IssuesService {
     public void deleteIssue(String userId, UUID issueId) {
         UUID uid = UUID.fromString(userId);
         getOwned(uid, issueId);
-        // 子需求的 parent_id 置空
-        Issues childUpdate = new Issues();
-        childUpdate.setParentId(null);
-        issuesMapper.update(childUpdate,
-                new LambdaQueryWrapper<Issues>().eq(Issues::getParentId, issueId));
         eventsMapper.delete(new LambdaQueryWrapper<IssueStatusEvents>().eq(IssueStatusEvents::getIssueId, issueId));
         issuesMapper.deleteById(issueId);
     }
@@ -176,24 +152,12 @@ public class IssuesServiceImpl implements IssuesService {
     private Map<String, Object> toIssueMap(Issues i) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", i.getId().toString());
-        m.put("parent_id", i.getParentId() != null ? i.getParentId().toString() : null);
         m.put("title", i.getTitle());
         m.put("description", i.getDescription());
         m.put("type", i.getType());
         m.put("status", i.getStatus());
         m.put("priority", i.getPriority());
         m.put("created_at", i.getCreatedAt());
-        m.put("updated_at", i.getUpdatedAt());
-        return m;
-    }
-
-    private Map<String, Object> toBriefMap(Issues i) {
-        Map<String, Object> m = new LinkedHashMap<>();
-        m.put("id", i.getId().toString());
-        m.put("title", i.getTitle());
-        m.put("type", i.getType());
-        m.put("status", i.getStatus());
-        m.put("priority", i.getPriority());
         m.put("updated_at", i.getUpdatedAt());
         return m;
     }

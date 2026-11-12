@@ -7,7 +7,9 @@ import com.haven.backend.typehandler.UuidTypeHandler;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.ToString;
+import lombok.experimental.Accessors;
 
+import java.io.Serial;
 import java.io.Serializable;
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -16,8 +18,10 @@ import java.util.UUID;
 @Setter
 @ToString
 @TableName("folders")
+@Accessors(chain = true)
 public class Folders implements Serializable {
 
+    @Serial
     private static final long serialVersionUID = 1L;
 
     @TableId("id")

@@ -2,10 +2,11 @@
 /** 设置概览。 */
 import { computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { getRuntimeConfig } from '@/config'
 
 const auth = useAuthStore()
 
-const appVersion = __APP_VERSION__
+const appVersion = computed(() => getRuntimeConfig().version)
 const authLabel = computed(() => (auth.authType === 'token' ? 'API Token' : '浏览器会话'))
 </script>
 
@@ -21,7 +22,7 @@ const authLabel = computed(() => (auth.authType === 'token' ? 'API Token' : '浏
         <dt>用户名</dt>
         <dd>{{ auth.username }}</dd>
         <dt>版本</dt>
-        <dd>Haven v{{ appVersion }}</dd>
+        <dd>Haven{{ appVersion ? ` v${appVersion}` : '（版本未知）' }}</dd>
         <dt>登录方式</dt>
         <dd>{{ authLabel }}</dd>
         <dt>双重验证</dt>
