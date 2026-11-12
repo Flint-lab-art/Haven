@@ -16,6 +16,3 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv
 }
-
-/** 由 vite.config.ts 从 package.json 注入的发布版本。 */
-declare const __APP_VERSION__: string

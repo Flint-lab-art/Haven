@@ -2,8 +2,7 @@
 /**
  * Issue 详情页（docs-ai/v9/frontend/frontend.md 第六节）。
  *
- * Bug 与 Feature 共用；Feature 额外显示父需求与子需求。
- * 状态变化直接在这里完成，并刷新状态流转时间线。
+ * Bug 与 Feature 共用；状态变化直接在这里完成，并刷新状态流转时间线。
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
@@ -13,9 +12,7 @@ import { ApiError } from '@/api/client'
 import {
   deleteIssue,
   getIssue,
-  listIssues,
   updateIssue,
-  type Issue,
   type IssueDetail,
   type IssueStatus,
 } from '@/api/issues'
@@ -24,7 +21,6 @@ import {
   ISSUE_PRIORITY_LABEL,
   ISSUE_STATUS_LABEL,
   ISSUE_TYPE_LABEL,
-  parentFeatureOptions,
   priorityTone,
 } from '@/utils/issues'
 
@@ -37,7 +33,6 @@ const loading = ref(true)
 const error = ref('')
 const saving = ref(false)
 const formOpen = ref(false)
-const parentOptions = ref<Issue[]>([])
 const confirmDelete = ref(false)
 
 const steps: { value: IssueStatus; label: string }[] = [
@@ -51,11 +46,9 @@ const currentIndex = computed(() => {
   return status ? steps.findIndex((step) => step.value === status) : -1
 })
 
-const deleteMessage = computed(() => {
-  const childCount = detail.value?.children.length ?? 0
-  if (childCount > 0) return '删除父需求会同时删除它的全部子需求，且无法恢复。'
-  return `永久删除「${detail.value?.title ?? ''}」后无法恢复。`
-})
+const deleteMessage = computed(
+    () => `永久删除「${detail.value?.title ?? ''}」后无法恢复。`,
+)
 
 function stepState(step: IssueStatus): 'current' | 'reached' | 'pending' {
   const index = steps.findIndex((item) => item.value === step)
@@ -90,18 +83,8 @@ async function load(): Promise<void> {
   }
 }
 
-async function loadParentOptions(): Promise<void> {
-  try {
-    const result = await listIssues({ limit: 100, offset: 0 })
-    parentOptions.value = parentFeatureOptions(result.items, detail.value?.id)
-  } catch {
-    parentOptions.value = []
-  }
-}
-
-async function openEdit(): Promise<void> {
+function openEdit(): void {
   if (!detail.value) return
-  await loadParentOptions()
   formOpen.value = true
 }
 
@@ -189,42 +172,17 @@ onMounted(() => void load())
         <p v-else class="field__hint">没有填写描述。</p>
       </section>
 
-      <section v-if="detail.parent" class="issue-detail__section">
-        <h2 class="issue-detail__section-title">父需求</h2>
-        <RouterLink :to="{ name: 'issue-detail', params: { id: detail.parent.id } }" class="issue-detail__link">
-          {{ detail.parent.title }} →
-        </RouterLink>
-      </section>
-
-      <section v-if="detail.children.length > 0" class="issue-detail__section">
-        <h2 class="issue-detail__section-title">子需求</h2>
-        <ul class="issue-detail__children">
-          <li v-for="child in detail.children" :key="child.id">
-            <RouterLink :to="{ name: 'issue-detail', params: { id: child.id } }" class="issue-detail__link">
-              <span class="issue-status" :class="`issue-status--${child.status}`" aria-hidden="true">
-                <svg v-if="child.status === 'done'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="m5 12.5 4.2 4.2L19 7" />
-                </svg>
-                <span v-else-if="child.status === 'in_progress'" class="issue-status__dot"></span>
-              </span>
-              <span>{{ child.title }}</span>
-              <span class="issue-detail__child-status">{{ ISSUE_STATUS_LABEL[child.status] }}</span>
-            </RouterLink>
-          </li>
-        </ul>
-      </section>
-
       <section class="issue-detail__section">
         <h2 class="issue-detail__section-title">状态</h2>
         <div class="issue-stepper">
           <button
-            v-for="(step, index) in steps"
-            :key="step.value"
-            type="button"
-            class="issue-step"
-            :class="`issue-step--${stepState(step.value)}`"
-            :disabled="saving || step.value === detail.status"
-            @click="changeStatus(step.value)"
+              v-for="(step, index) in steps"
+              :key="step.value"
+              type="button"
+              class="issue-step"
+              :class="`issue-step--${stepState(step.value)}`"
+              :disabled="saving || step.value === detail.status"
+              @click="changeStatus(step.value)"
           >
             <span class="issue-step__dot" aria-hidden="true"></span>
             <span class="issue-step__label">{{ step.label }}</span>
@@ -249,21 +207,19 @@ onMounted(() => void load())
     </template>
 
     <IssueFormDialog
-      :open="formOpen"
-      :issue="detail"
-      :parent-options="parentOptions"
-      :child-count="detail?.children.length ?? 0"
-      @close="formOpen = false"
-      @saved="onSaved"
+        :open="formOpen"
+        :issue="detail"
+        @close="formOpen = false"
+        @saved="onSaved"
     />
 
     <ConfirmDialog
-      :open="confirmDelete"
-      title="删除 Issue"
-      :message="deleteMessage"
-      :busy="saving"
-      @confirm="remove"
-      @cancel="confirmDelete = false"
+        :open="confirmDelete"
+        title="删除 Issue"
+        :message="deleteMessage"
+        :busy="saving"
+        @confirm="remove"
+        @cancel="confirmDelete = false"
     />
   </div>
 </template>

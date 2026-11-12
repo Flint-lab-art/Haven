@@ -19,6 +19,9 @@ public class AppConfigController {
 
     private final List<String> privateHosts;
 
+    @Value("${app.version:unknown}")
+    private String appVersion;
+
     public AppConfigController(@Value("${haven.private-hosts:}") String privateHosts) {
         this.privateHosts = Arrays.stream(privateHosts.split(","))
                 .map(String::trim)
@@ -34,6 +37,7 @@ public class AppConfigController {
      */
     @GetMapping("/api/app-config")
     public Map<String, Object> appConfig() {
-        return Map.of("private_hosts", privateHosts);
+        return Map.of(
+                "private_hosts", privateHosts, "version", appVersion);
     }
 }

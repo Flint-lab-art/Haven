@@ -8,6 +8,7 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.ToString;
 
+import java.io.Serial;
 import java.io.Serializable;
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -18,6 +19,7 @@ import java.util.UUID;
 @TableName("issues")
 public class Issues implements Serializable {
 
+    @Serial
     private static final long serialVersionUID = 1L;
 
     @TableId("id")
@@ -46,7 +48,4 @@ public class Issues implements Serializable {
 
     @TableField("updated_at")
     private OffsetDateTime updatedAt;
-
-    @TableField(value = "parent_id", typeHandler = UuidTypeHandler.class)
-    private UUID parentId;
 }

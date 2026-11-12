@@ -119,10 +119,9 @@ public class StatsServiceImpl implements StatsService {
             m.put("status", i.getStatus());
             m.put("priority", i.getPriority());
             m.put("updated_at", i.getUpdatedAt());
-            m.put("parent_id", i.getParentId() != null ? i.getParentId().toString() : null);
             m.put("parent_title", null); // 简化：不查 parent title
             return m;
-        }).collect(Collectors.toList());
+        }).toList();
         Map<String, Object> issuesStat = Map.of(
                 "total", issueTotal, "todo", todoCount, "in_progress", inProgressCount, "done", doneCount,
                 "recent", recentIssueList);

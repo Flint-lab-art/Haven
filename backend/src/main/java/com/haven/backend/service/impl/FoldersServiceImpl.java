@@ -1,6 +1,7 @@
 package com.haven.backend.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.spring.service.impl.ServiceImpl;
 import com.haven.backend.entity.Folders;
 import com.haven.backend.entity.Notes;
 import com.haven.backend.exception.BizException;
@@ -19,18 +20,19 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
-public class FoldersServiceImpl implements FoldersService {
+public class FoldersServiceImpl extends ServiceImpl<FoldersMapper, Folders> implements FoldersService {
 
     private final FoldersMapper foldersMapper;
     private final NotesMapper notesMapper;
 
+
+
     @Override
     public List<Folders> listFolders(String userId) {
         UUID uid = UUID.fromString(userId);
-        return foldersMapper.selectList(
-                new LambdaQueryWrapper<Folders>()
-                        .eq(Folders::getUserId, uid)
-                        .orderByAsc(Folders::getSortOrder));
+        return list(new LambdaQueryWrapper<Folders>()
+                .eq(Folders::getUserId, uid)
+                .orderByAsc(Folders::getSortOrder));
     }
 
     @Override
@@ -41,16 +43,16 @@ public class FoldersServiceImpl implements FoldersService {
 
         int maxOrder = getMaxSortOrder(uid, parentId);
         Folders folder = new Folders();
-        folder.setId(UUID.randomUUID());
-        folder.setUserId(uid);
-        folder.setParentId(parentId);
-        folder.setName(name.trim());
-        folder.setIcon(icon);
-        folder.setIsInbox(false);
-        folder.setSortOrder(maxOrder + 1);
-        folder.setCreatedAt(OffsetDateTime.now());
-        folder.setUpdatedAt(OffsetDateTime.now());
-        foldersMapper.insert(folder);
+        folder.setId(UUID.randomUUID())
+                .setUserId(uid)
+                .setParentId(parentId)
+                .setName(name.trim())
+                .setIcon(icon)
+                .setIsInbox(false)
+                .setSortOrder(maxOrder + 1)
+                .setCreatedAt(OffsetDateTime.now())
+                .setUpdatedAt(OffsetDateTime.now());
+        save(folder);
         return folder;
     }
 
@@ -76,7 +78,7 @@ public class FoldersServiceImpl implements FoldersService {
         if (icon != null) folder.setIcon(icon);
         if (sortOrder != null) folder.setSortOrder(sortOrder);
         folder.setUpdatedAt(OffsetDateTime.now());
-        foldersMapper.updateById(folder);
+        updateById(folder);
         return folder;
     }
 
@@ -130,11 +132,20 @@ public class FoldersServiceImpl implements FoldersService {
     }
 
     private void checkDuplicateName(UUID userId, UUID parentId, String name, UUID excludeId) {
-        var wrapper = new LambdaQueryWrapper<Folders>()
+        LambdaQueryWrapper<Folders> wrapper = new LambdaQueryWrapper<Folders>()
                 .eq(Folders::getUserId, userId)
-                .eq(Folders::getName, name.trim())
-                .apply(parentId == null ? "parent_id IS NULL" : "parent_id = {0}", parentId);
-        if (excludeId != null) wrapper.ne(Folders::getId, excludeId);
+                .eq(Folders::getName, name.trim());
+
+        if (parentId == null) {
+            wrapper.isNull(Folders::getParentId);
+        } else {
+            wrapper.eq(Folders::getParentId, parentId);
+        }
+
+        if (excludeId != null) {
+            wrapper.ne(Folders::getId, excludeId);
+        }
+
         if (foldersMapper.selectCount(wrapper) > 0) {
             throw BizException.conflict("同名文件夹已存在");
         }

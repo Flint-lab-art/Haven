@@ -8,7 +8,6 @@ export type IssuePriority = 'low' | 'medium' | 'high'
 
 export interface Issue {
   id: string
-  parent_id: string | null
   title: string
   description: string
   type: IssueType
@@ -35,8 +34,6 @@ export interface IssueStatusEvent {
 }
 
 export interface IssueDetail extends Issue {
-  parent: IssueBrief | null
-  children: IssueBrief[]
   status_events: IssueStatusEvent[]
 }
 
@@ -52,7 +49,6 @@ export interface CreateIssueInput {
   type: IssueType
   status?: IssueStatus
   priority?: IssuePriority
-  parent_id?: string | null
 }
 
 export interface UpdateIssueInput {
@@ -61,7 +57,6 @@ export interface UpdateIssueInput {
   type?: IssueType
   status?: IssueStatus
   priority?: IssuePriority
-  parent_id?: string | null
 }
 
 export function listIssues(query: ListIssuesQuery = {}): Promise<ListResult<Issue>> {

@@ -6677,21 +6677,6 @@ select:focus-visible {
   color: var(--accent);
 }
 
-.issue-detail__children {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.issue-detail__child-status {
-  margin-left: auto;
-  font: var(--text-caption);
-  color: var(--label-3);
-}
-
 .issue-detail__skeleton {
   display: flex;
   flex-direction: column;
