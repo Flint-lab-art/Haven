@@ -8,7 +8,12 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @Slf4j
 @SpringBootApplication
-@MapperScan("com.haven.backend.mapper")
+@MapperScan({
+        "com.haven.backend.auth.mapper",
+        "com.haven.backend.issue.mapper",
+        "com.haven.backend.note.mapper",
+        "com.haven.backend.portfolio.mapper"
+})
 public class BackendApplication {
 
     public static void main(String[] args) {

@@ -25,26 +25,40 @@ Haven 的后端：Spring Boot REST API、PostgreSQL 持久化、Flyway 数据库
 
 ```text
 src/main/java/com/haven/backend/
-├── BackendApplication.java   # 启动类
-├── config/                   # Web / MyBatis-Plus / Sa-Token 配置
-├── controller/               # REST 入口
-├── service/                  # 业务接口
-│   └── impl/                 # 业务实现
-├── mapper/                   # MyBatis-Plus Mapper
-│   └── xml/                  # 自定义 SQL
-├── entity/                   # 数据库实体
-├── dto/                      # 请求 / 响应对象
-├── interceptor/              # Session + API Token 双通道认证
+├── BackendApplication.java   # 启动类（统一注册各领域 mapper）
+├── auth/                     # 认证与授权
+│   ├── config/               # Sa-Token 拦截器注册
+│   ├── controller/           # 登录、TOTP、会话、API Token、授信设备
+│   ├── dto/                  # 认证相关请求 / 响应对象
+│   ├── entity/               # 用户、会话、Token、授信设备、审计事件
+│   ├── interceptor/          # Session + API Token 双通道认证
+│   ├── mapper/               # 认证相关 Mapper
+│   ├── service/ + impl/      # 认证业务
+│   └── util/                 # TOTP、Token 哈希等工具
+├── note/                     # 笔记领域
+│   ├── controller/           # 笔记、版本、文件夹、标签、上传、搜索
+│   ├── entity/               # 笔记、版本、文件夹、标签
+│   ├── mapper/               # 笔记相关 Mapper
+│   └── service/ + impl/      # 笔记业务
+├── issue/                    # Issue 领域
+│   ├── controller/
+│   ├── entity/
+│   ├── mapper/
+│   └── service/ + impl/
+├── portfolio/                # 作品集领域
+│   ├── controller/
+│   ├── entity/
+│   ├── mapper/
+│   └── service/ + impl/
+├── stats/                    # 统计概览
+│   ├── controller/
+│   └── service/ + impl/
+├── system/                   # 健康检查、运行时配置
+│   └── controller/
+├── config/                   # Web / MyBatis-Plus 等全局配置
+├── dto/                      # 跨领域通用响应对象
 ├── exception/                # 业务异常与全局错误处理
-├── typehandler/              # PostgreSQL uuid / uuid[] 映射
-└── util/                     # TOTP、Token 哈希等工具
-
-src/main/resources/
-├── application.yaml          # 公共配置（默认激活 dev）
-├── application-dev.yaml      # 开发配置：数据源、Sa-Token、上传、Actuator
-├── db/migration/             # V1__init.sql、V2__trusted_devices.sql
-├── logback-spring.xml        # dev 仅控制台；prod 控制台 + 文件
-└── static/                   # 前端构建产物（不随仓库提交）
+└── typehandler/              # PostgreSQL uuid / uuid[] 映射
 ```
 
 ## 快速开始
@@ -154,7 +168,9 @@ HAVEN_TOTP_ISSUER=Haven
 1. 请求带 `Authorization: Bearer <token>` 时，按 API Token 认证，校验哈希、撤销状态与过期时间，并刷新 `last_used_at`
 2. 否则回退到 Sa-Token 会话（Cookie `havenToken`）
 
-认证通过后，用户 ID、scope、认证类型会写入 request attribute，控制器通过 `AuthInterceptor` 的静态方法读取。
+认证通过后，用户 ID、scope、认证类型会写入 request attribute，控制器通过 `AuthInterceptor.requireUserId(request)` 读取当前用户。该方法同时适用于会话与 API Token，避免控制器直接依赖 Sa-Token 的 `StpUtil.checkLogin()`。
+
+只读 Token（`scope=read`）只能执行 `GET` / `HEAD` / `OPTIONS`，其他方法会直接返回 403；需要写入时请创建 `read_write` Token。
 
 ### 登录流程
 

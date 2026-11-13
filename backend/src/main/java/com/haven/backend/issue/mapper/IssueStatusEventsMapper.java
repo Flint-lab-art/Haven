@@ -1,0 +1,16 @@
+package com.haven.backend.issue.mapper;
+
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.haven.backend.issue.entity.IssueStatusEvents;
+
+/**
+ * <p>
+ *  Mapper 接口
+ * </p>
+ *
+ * @author Kairo
+ * @since 2026-11-08
+ */
+public interface IssueStatusEventsMapper extends BaseMapper<IssueStatusEvents> {
+
+}

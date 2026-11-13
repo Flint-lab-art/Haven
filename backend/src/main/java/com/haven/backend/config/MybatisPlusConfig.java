@@ -3,7 +3,6 @@ package com.haven.backend.config;
 import com.haven.backend.typehandler.UuidTypeHandler;
 import jakarta.annotation.PostConstruct;
 import org.apache.ibatis.session.SqlSessionFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
 
 import java.util.UUID;
@@ -17,8 +16,11 @@ import java.util.UUID;
 @Configuration
 public class MybatisPlusConfig {
 
-    @Autowired
-    private SqlSessionFactory sqlSessionFactory;
+    private final SqlSessionFactory sqlSessionFactory;
+
+    MybatisPlusConfig(SqlSessionFactory sqlSessionFactory) {
+        this.sqlSessionFactory = sqlSessionFactory;
+    }
 
     @PostConstruct
     public void registerTypeHandlers() {
