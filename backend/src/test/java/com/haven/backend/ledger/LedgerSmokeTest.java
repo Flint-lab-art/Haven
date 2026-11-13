@@ -3,6 +3,7 @@ package com.haven.backend.ledger;
 import com.haven.backend.ledger.dto.CreateLedgerBatchRequest;
 import com.haven.backend.ledger.dto.CreateLedgerEntryRequest;
 import com.haven.backend.ledger.dto.ParsedLedgerItem;
+import com.haven.backend.ledger.dto.QuickCommitRequest;
 import com.haven.backend.ledger.dto.QuickParseResult;
 import com.haven.backend.ledger.dto.UpdateLedgerEntryRequest;
 import com.haven.backend.ledger.dto.UpsertLedgerAliasRequest;
@@ -190,6 +191,42 @@ class LedgerSmokeTest {
 
                 ledgerService.deleteEntry(userId, UUID.fromString((String) uncategorized.get("id")));
                 assertEquals(4L, ledgerService.listEntries(userId, null, null, null, null, 20, 0).get("total"));
+        }
+
+        @Test
+        void quickCommitParsesAndWritesInOneCall() {
+                String userId = UUID.randomUUID().toString();
+                seedAliases(userId);
+
+                Map<String, Object> result = ledgerService.quickCommit(userId,
+                                new QuickCommitRequest("""
+                                                午饭12
+                                                工资 8000
+                                                没有金额
+                                                """, null));
+
+                assertEquals(true, result.get("created"));
+                assertEquals(2, result.get("total"));
+                assertEquals(2, ((List<?>) result.get("items")).size());
+                assertEquals(1, ((List<?>) result.get("errors")).size());
+
+                // 同一个 batch_id 重试不会重复写入
+                String batchId = (String) result.get("batch_id");
+                Map<String, Object> replay = ledgerService.quickCommit(userId,
+                                new QuickCommitRequest("""
+                                                午饭12
+                                                工资 8000
+                                                没有金额
+                                                """, batchId));
+                assertEquals(false, replay.get("created"));
+                assertEquals(2, replay.get("total"));
+
+                // 全部解析失败时不写空批次
+                Map<String, Object> empty = ledgerService.quickCommit(userId,
+                                new QuickCommitRequest("随便写点", null));
+                assertEquals(false, empty.get("created"));
+                assertEquals(0, empty.get("total"));
+                assertEquals(2L, ledgerService.listEntries(userId, null, null, null, null, 20, 0).get("total"));
         }
 
         private void seedAliases(String userId) {

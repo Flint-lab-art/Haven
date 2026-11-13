@@ -1,6 +1,7 @@
 package com.haven.backend.ledger.service;
 
 import com.haven.backend.ledger.dto.CreateLedgerBatchRequest;
+import com.haven.backend.ledger.dto.QuickCommitRequest;
 import com.haven.backend.ledger.dto.QuickParseResult;
 import com.haven.backend.ledger.dto.UpdateLedgerEntryRequest;
 import com.haven.backend.ledger.dto.UpsertLedgerAliasRequest;
@@ -14,6 +15,12 @@ public interface LedgerService {
 
     /** 解析手机端输入，不落库。 */
     QuickParseResult quickParse(String userId, String text);
+
+    /**
+     * 快捷指令一步记账：解析并直接写入。
+     * 没有解析出条目时不写库，返回逐行 errors。
+     */
+    Map<String, Object> quickCommit(String userId, QuickCommitRequest req);
 
     /** 幂等写入一个记账批次。 */
     Map<String, Object> createBatch(String userId, CreateLedgerBatchRequest req);

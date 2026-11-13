@@ -2,6 +2,7 @@ package com.haven.backend.ledger.controller;
 
 import com.haven.backend.auth.interceptor.AuthInterceptor;
 import com.haven.backend.ledger.dto.CreateLedgerBatchRequest;
+import com.haven.backend.ledger.dto.QuickCommitRequest;
 import com.haven.backend.ledger.dto.QuickParseRequest;
 import com.haven.backend.ledger.dto.QuickParseResult;
 import com.haven.backend.ledger.dto.UpdateLedgerEntryRequest;
@@ -42,6 +43,22 @@ public class LedgerController {
             HttpServletRequest request) {
         String userId = AuthInterceptor.requireUserId(request);
         return ledgerService.quickParse(userId, req.text());
+    }
+
+    /**
+     * 快捷指令一步记账：解析并直接写入。
+     * <p>
+     * 与「先 quick 预览、再 batch 确认」等价；没有解析出内容时返回 200，
+     * 并在 {@code errors} 里给出逐行原因。
+     */
+    @PostMapping("/entries/quick")
+    public ResponseEntity<Map<String, Object>> quickCommit(
+            @Valid @RequestBody QuickCommitRequest req,
+            HttpServletRequest request) {
+        String userId = AuthInterceptor.requireUserId(request);
+        Map<String, Object> result = ledgerService.quickCommit(userId, req);
+        boolean created = Boolean.TRUE.equals(result.get("created"));
+        return ResponseEntity.status(created ? HttpStatus.CREATED : HttpStatus.OK).body(result);
     }
 
     /**

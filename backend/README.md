@@ -312,6 +312,7 @@ Flyway 脚本：
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | POST | `/api/ledger/quick` | 只解析不落库，返回 `items` 与逐行 `errors` |
+| POST | `/api/ledger/entries/quick` | 一步记账：解析并直接写入（快捷指令用），支持 `batch_id` 幂等 |
 | POST | `/api/ledger/entries/batch` | 确认写入，`batch_id` 相同只写一次（`/batches` 为兼容别名） |
 | GET | `/api/ledger/batches/{batchId}` | 查看批次及条目 |
 | GET | `/api/ledger/entries` | 条目列表，支持 `from` / `to` / `category` / `type` / 分页 |
@@ -353,6 +354,31 @@ Flyway 脚本：
   "text": "午饭12\n网购 零食 100"
 }
 ```
+
+快捷指令一步记账：
+
+```http
+POST /api/ledger/entries/quick
+Authorization: Bearer <API Token>
+Content-Type: application/json
+
+{ "text": "午饭12\n工资 8000" }
+```
+
+解析成功返回 `201`，`items` 是本次写入的条目；`batch_id` 不传时由服务端生成，传入相同值可安全重试：
+
+```json
+{
+  "created": true,
+  "batch_id": "0f7c…",
+  "raw_text": "午饭12\n工资 8000",
+  "items": [ { "id": "…", "type": "expense", "amount_cents": 1200, "category": "餐饮" } ],
+  "total": 2,
+  "errors": []
+}
+```
+
+一行都没解析出来时返回 `200`、`created: false`、`total: 0`，原因在 `errors` 里，不会写入空批次。
 
 `summary` 返回：
 

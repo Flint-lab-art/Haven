@@ -6,6 +6,7 @@ import com.haven.backend.ledger.dto.CreateLedgerBatchRequest;
 import com.haven.backend.ledger.dto.CreateLedgerEntryRequest;
 import com.haven.backend.ledger.dto.LedgerParseError;
 import com.haven.backend.ledger.dto.ParsedLedgerItem;
+import com.haven.backend.ledger.dto.QuickCommitRequest;
 import com.haven.backend.ledger.dto.QuickParseResult;
 import com.haven.backend.ledger.dto.UpdateLedgerEntryRequest;
 import com.haven.backend.ledger.dto.UpsertLedgerAliasRequest;
@@ -307,6 +308,37 @@ public class LedgerServiceImpl implements LedgerService {
         }
 
         return buildBatchResult(uid, batchId, true);
+    }
+
+    @Override
+    @Transactional
+    public Map<String, Object> quickCommit(String userId, QuickCommitRequest req) {
+        QuickParseResult parsed = quickParse(userId, req.text());
+        String batchId = hasText(req.batchId())
+                ? req.batchId().trim()
+                : UUID.randomUUID().toString();
+
+        // 一行也没解析出来时不写空批次，只回传错误，方便快捷指令直接展示。
+        if (parsed.items().isEmpty()) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("created", false);
+            result.put("batch_id", batchId);
+            result.put("raw_text", req.text());
+            result.put("items", List.of());
+            result.put("total", 0);
+            result.put("errors", parsed.errors());
+            return result;
+        }
+
+        List<CreateLedgerEntryRequest> items = parsed.items().stream()
+                .map(p -> new CreateLedgerEntryRequest(
+                        p.type(), p.amountCents(), p.category(), p.note(), p.occurredAt()))
+                .toList();
+
+        Map<String, Object> result = createBatch(userId,
+                new CreateLedgerBatchRequest(batchId, req.text(), items));
+        result.put("errors", parsed.errors());
+        return result;
     }
 
     @Override

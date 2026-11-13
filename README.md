@@ -221,6 +221,36 @@ java -jar target/backend-1.0.2.jar
 
 完整接口分组见 [backend/README.md](backend/README.md#api-一览)。
 
+## iOS 快捷指令记账
+
+记账的主力入口是 iOS 快捷指令：说一句「午饭 12」，一次请求直接落库。
+
+1. 在私有域打开 `/settings/tokens`，创建一个 `read_write` Token（明文只显示一次）。
+2. 在快捷指令 App 新建快捷指令：
+   - **听写文本**（语言选中文）
+   - **获取 URL 内容**
+     - URL：`https://<私有域>/api/ledger/entries/quick`
+     - 方法：`POST`
+     - 请求头：
+       - `Authorization`：`Bearer <Token>`
+       - `Content-Type`：`application/json`
+     - 请求体：`JSON`，字段 `text` 选「听写文本」
+   - **获取词典值**：键 `total`、`errors`
+   - **显示通知**：例如「已记 1 笔」，有错误时展示 `errors`
+3. 把这个快捷指令加进 Siri，说「嘿 Siri，记一笔」即可。
+
+输入格式是一行一条 `分类 [备注…] 金额`：
+
+```text
+午饭12
+网购 零食 100
+工资 8000
+```
+
+金额支持 `12`、`12.5`、`32元`、`¥32`、`二十五块`；工资、奖金、报销、退款、红包等会自动判为收入。解析失败的行走 `errors` 返回，不会写入空批次。
+
+生产环境请用 HTTPS 域名；iOS 对明文 HTTP 限制较多。想避免网络抖动导致重复记账时，可以在请求体里加一个 `batch_id`（用快捷指令的「UUID」动作生成），服务端会按相同 `batch_id` 幂等处理。
+
 ## 相关文档
 
 - [backend/README.md](backend/README.md)：数据库、配置、接口、部署
