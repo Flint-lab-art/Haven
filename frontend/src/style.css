@@ -6584,6 +6584,8 @@ select:focus-visible {
 
 .issue-detail {
   width: 100%;
+  max-width: 860px;
+  align-self: center;
   padding: var(--sp-8);
 }
 
@@ -6659,10 +6661,6 @@ select:focus-visible {
 
 .issue-detail__description {
   margin: 0;
-  font: var(--text-body);
-  line-height: 1.75;
-  color: var(--label);
-  white-space: pre-wrap;
 }
 
 .issue-detail__link {
@@ -6823,5 +6821,934 @@ select:focus-visible {
 
   .issue-row--child {
     margin-left: 20px;
+  }
+}
+
+/* ============ 记账（V4 / V5） ============ */
+
+.ledger-page {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  padding: var(--sp-8);
+}
+
+.detail-pane > .ledger-page {
+  max-width: none;
+}
+
+.ledger-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-4);
+}
+
+.ledger-title {
+  margin: 0;
+  font: 700 28px/1.2 var(--font-ui);
+  letter-spacing: -0.4px;
+  color: var(--label);
+}
+
+.ledger-sub {
+  margin: 6px 0 0;
+  font: var(--text-footnote);
+  color: var(--label-2);
+}
+
+.ledger-month {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ledger-month__input {
+  width: 148px;
+  min-height: 32px;
+  font: var(--text-footnote);
+  text-align: center;
+}
+
+.ledger-notice {
+  margin: 0;
+}
+
+.ledger-summary {
+  display: grid;
+  grid-template-columns: minmax(200px, 0.85fr) minmax(0, 1.6fr);
+  gap: var(--sp-6);
+  padding: var(--sp-5);
+  border: 1px solid var(--sep);
+  border-radius: var(--r-lg);
+  background: var(--bg-elevated);
+}
+
+.ledger-total {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ledger-total__label {
+  font: var(--text-footnote);
+  color: var(--label-2);
+}
+
+.ledger-total__value {
+  font: 700 40px/1.05 var(--font-ui);
+  letter-spacing: -1.2px;
+  color: var(--label);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.ledger-total__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: var(--text-caption);
+  color: var(--label-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger-total__skeleton {
+  display: block;
+  width: 160px;
+  height: 42px;
+  margin: 2px 0;
+}
+
+.ledger-ranking {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-width: 0;
+}
+
+.ledger-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.ledger-card__title {
+  margin: 0;
+  font: 600 15px/1.35 var(--font-ui);
+  color: var(--label);
+}
+
+.ledger-kbd {
+  flex: none;
+  font: var(--text-caption);
+  color: var(--label-3);
+}
+
+.ledger-rank {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr) 88px;
+  align-items: center;
+  gap: 10px;
+  font: var(--text-caption);
+}
+
+.ledger-rank__name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--label-2);
+  white-space: nowrap;
+}
+
+.ledger-rank__track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--fill);
+  overflow: hidden;
+}
+
+.ledger-rank__bar {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width var(--dur-base) var(--ease-smooth);
+}
+
+.ledger-rank__amount {
+  text-align: right;
+  color: var(--label);
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.ledger-cat {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font: var(--text-caption);
+  white-space: nowrap;
+  --tone: var(--label-2);
+  color: var(--tone);
+  background: color-mix(in srgb, var(--tone) 14%, transparent);
+}
+
+/* 分类色阶：排行圆点、进度条、明细里的分类标签共用 */
+.ledger-dot--food,
+.ledger-cat--food {
+  --tone: var(--warning);
+  background-color: var(--warning);
+}
+
+.ledger-dot--shop,
+.ledger-cat--shop {
+  --tone: var(--accent);
+  background-color: var(--accent);
+}
+
+.ledger-dot--transit,
+.ledger-cat--transit {
+  --tone: #32ade6;
+  background-color: #32ade6;
+}
+
+.ledger-dot--home,
+.ledger-cat--home {
+  --tone: var(--success);
+  background-color: var(--success);
+}
+
+.ledger-dot--fun,
+.ledger-cat--fun {
+  --tone: #af52de;
+  background-color: #af52de;
+}
+
+.ledger-dot--health,
+.ledger-cat--health {
+  --tone: var(--danger);
+  background-color: var(--danger);
+}
+
+.ledger-dot--other,
+.ledger-cat--other {
+  --tone: var(--label-3);
+  background-color: var(--label-3);
+}
+
+/* 标签需要的是浅底 + 同色文字，覆盖上面的实色背景 */
+.ledger-cat--food,
+.ledger-cat--shop,
+.ledger-cat--transit,
+.ledger-cat--home,
+.ledger-cat--fun,
+.ledger-cat--health,
+.ledger-cat--other {
+  background: color-mix(in srgb, var(--tone) 14%, transparent);
+}
+
+.ledger-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  align-items: start;
+  gap: var(--sp-5);
+}
+
+.ledger-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--sp-5);
+  border: 1px solid var(--sep);
+  border-radius: var(--r-lg);
+  background: var(--bg-elevated);
+  min-width: 0;
+}
+
+.ledger-quick__input {
+  min-height: 132px;
+  margin-top: var(--sp-2);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.7;
+  resize: vertical;
+}
+
+.ledger-quick__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}
+
+.ledger-parse {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: var(--sp-3);
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--sep);
+}
+
+.ledger-parse__row,
+.ledger-recent__row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 36px;
+  border-bottom: 1px dashed var(--sep);
+}
+
+.ledger-parse__row:last-child,
+.ledger-recent__row:last-child {
+  border-bottom: none;
+}
+
+.ledger-parse__note,
+.ledger-recent__note {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--text-footnote);
+  color: var(--label-2);
+}
+
+.ledger-parse__amount,
+.ledger-recent__amount {
+  flex: none;
+  font: var(--text-footnote-med);
+  color: var(--label);
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger-parse__amount.is-income,
+.ledger-recent__amount.is-income,
+.ledger-entry__amount.is-income {
+  color: var(--success);
+}
+
+.ledger-parse__errors {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font: var(--text-caption);
+  line-height: 1.5;
+  color: var(--danger);
+}
+
+.ledger-recent__time {
+  flex: none;
+  font: var(--text-caption);
+  color: var(--label-3);
+}
+
+.ledger-muted {
+  margin: 4px 0 0;
+  font: var(--text-footnote);
+  color: var(--label-3);
+}
+
+.ledger-entries {
+  display: flex;
+  flex-direction: column;
+  padding: var(--sp-5);
+  border: 1px solid var(--sep);
+  border-radius: var(--r-lg);
+  background: var(--bg-elevated);
+}
+
+.ledger-entries__head {
+  align-items: center;
+}
+
+.ledger-entries__head .field__hint {
+  margin: 4px 0 0;
+}
+
+.ledger-entries__hint {
+  margin: var(--sp-2) 0 0;
+}
+
+.ledger-filter {
+  flex: none;
+}
+
+.ledger-filter__select {
+  width: 132px;
+  min-height: 32px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  font: var(--text-footnote);
+}
+
+.ledger-entry-list {
+  display: flex;
+  flex-direction: column;
+  margin-top: var(--sp-2);
+}
+
+.ledger-entry {
+  display: grid;
+  grid-template-columns: 112px 96px minmax(0, 1fr) 100px 30px 30px;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 48px;
+  margin: 0 calc(var(--sp-2) * -1);
+  padding: 6px var(--sp-2);
+  border-bottom: 1px solid var(--sep);
+  border-radius: 8px;
+}
+
+.ledger-entry:last-child {
+  border-bottom: none;
+}
+
+.ledger-entry:hover {
+  background: var(--fill);
+}
+
+.ledger-entry--skeleton:hover {
+  background: transparent;
+}
+
+.ledger-entry__date {
+  font: var(--text-caption);
+  color: var(--label-3);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger-entry__cat {
+  width: 90px;
+  min-height: 28px;
+  height: 28px;
+  padding: 2px 24px 2px 8px;
+  font: var(--text-caption);
+  background-position: calc(100% - 14px) 50%, calc(100% - 9px) 50%;
+  background-size: 4px 4px, 4px 4px;
+}
+
+.ledger-entry__cat--food {
+  color: var(--warning);
+}
+
+.ledger-entry__cat--shop {
+  color: var(--accent);
+}
+
+.ledger-entry__cat--transit {
+  color: #32ade6;
+}
+
+.ledger-entry__cat--home {
+  color: var(--success);
+}
+
+.ledger-entry__cat--fun {
+  color: #af52de;
+}
+
+.ledger-entry__cat--health {
+  color: var(--danger);
+}
+
+.ledger-entry__cat--other {
+  color: var(--label-2);
+}
+
+.ledger-entry__note {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--text-footnote);
+  color: var(--label-2);
+}
+
+.ledger-entry__amount {
+  text-align: right;
+  font: var(--text-body-tight);
+  color: var(--label);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ledger-entry__action {
+  width: 28px;
+  height: 28px;
+  color: var(--label-3);
+}
+
+.ledger-entry__action:hover {
+  color: var(--label);
+}
+
+.ledger-entry__action--danger:hover {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.ledger-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 56px var(--sp-4);
+  text-align: center;
+}
+
+.ledger-empty__title {
+  margin: 0;
+  font: var(--text-title3);
+  color: var(--label);
+}
+
+.ledger-empty__text {
+  margin: 0;
+  font: var(--text-footnote);
+  color: var(--label-2);
+}
+
+.ledger-edit .field {
+  margin-top: var(--sp-4);
+}
+
+@media (max-width: 980px) {
+  .ledger-summary {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--sp-4);
+  }
+
+  .ledger-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .ledger-page {
+    padding: var(--sp-4);
+    gap: var(--sp-4);
+  }
+
+  .ledger-header {
+    align-items: center;
+  }
+
+  .ledger-total__value {
+    font-size: 34px;
+  }
+
+  .ledger-entry {
+    grid-template-columns: 88px minmax(0, 1fr) auto 28px 28px;
+    gap: 6px;
+  }
+
+  .ledger-entry__date {
+    display: none;
+  }
+
+  .ledger-entry__cat {
+    width: 84px;
+  }
+
+  .ledger-recent__time {
+    display: none;
+  }
+
+  .ledger-kbd {
+    display: none;
+  }
+}
+
+/* 记账：支出 / 收入排行切换 */
+.ledger-rank-toggle {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--fill);
+}
+
+.ledger-rank-toggle__btn {
+  padding: 3px 12px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--label-2);
+  font: var(--text-caption);
+  cursor: pointer;
+}
+
+.ledger-rank-toggle__btn:hover {
+  color: var(--label);
+}
+
+.ledger-rank-toggle__btn.is-active {
+  background: var(--bg-elevated);
+  color: var(--label);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+/* 记账：收入分类色阶 */
+.ledger-dot--salary,
+.ledger-cat--salary {
+  --tone: var(--success);
+  background-color: var(--success);
+}
+
+.ledger-dot--bonus,
+.ledger-cat--bonus {
+  --tone: #ffb020;
+  background-color: #ffb020;
+}
+
+.ledger-dot--reimburse,
+.ledger-cat--reimburse {
+  --tone: var(--accent);
+  background-color: var(--accent);
+}
+
+.ledger-dot--refund,
+.ledger-cat--refund {
+  --tone: #32ade6;
+  background-color: #32ade6;
+}
+
+.ledger-dot--redpacket,
+.ledger-cat--redpacket {
+  --tone: var(--danger);
+  background-color: var(--danger);
+}
+
+.ledger-dot--other-income,
+.ledger-cat--other-income {
+  --tone: var(--label-3);
+  background-color: var(--label-3);
+}
+
+.ledger-cat--salary,
+.ledger-cat--bonus,
+.ledger-cat--reimburse,
+.ledger-cat--refund,
+.ledger-cat--redpacket,
+.ledger-cat--other-income {
+  background: color-mix(in srgb, var(--tone) 14%, transparent);
+}
+
+.ledger-entry__cat--salary {
+  color: var(--success);
+}
+
+.ledger-entry__cat--bonus {
+  color: #c98a00;
+}
+
+.ledger-entry__cat--reimburse {
+  color: var(--accent);
+}
+
+.ledger-entry__cat--refund {
+  color: #32ade6;
+}
+
+.ledger-entry__cat--redpacket {
+  color: var(--danger);
+}
+
+.ledger-entry__cat--other-income {
+  color: var(--label-2);
+}
+
+/* ============ 记账图表（v10） ============ */
+
+.ledger-charts {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: var(--sp-5);
+  align-items: stretch;
+}
+
+.ledger-chart {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: 0;
+  min-width: 0;
+}
+
+.ledger-chart__legend {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  font: var(--text-caption);
+  color: var(--label-2);
+}
+
+.ledger-chart__legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ledger-chart__swatch {
+  width: 10px;
+  height: 3px;
+  border-radius: 999px;
+}
+
+.ledger-chart__swatch--expense {
+  background: var(--accent);
+}
+
+.ledger-chart__swatch--income {
+  background: var(--success);
+}
+
+.ledger-chart__svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+  touch-action: none;
+}
+
+.ledger-chart__grid {
+  stroke: var(--sep);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+}
+
+.ledger-chart__axis {
+  font: 11px var(--font-ui);
+  fill: var(--label-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger-chart__line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ledger-chart__line--expense {
+  stroke: var(--accent);
+}
+
+.ledger-chart__line--income {
+  stroke: var(--success);
+  stroke-width: 1.8;
+  stroke-dasharray: 5 4;
+}
+
+.ledger-chart__dot--expense {
+  fill: var(--accent);
+  stroke: var(--bg-elevated);
+  stroke-width: 1.5;
+}
+
+.ledger-chart__dot--income {
+  fill: var(--success);
+  stroke: var(--bg-elevated);
+  stroke-width: 1.5;
+}
+
+.ledger-chart__guide {
+  stroke: var(--sep-strong);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.ledger-chart__tip {
+  fill: var(--bg-elevated);
+  stroke: var(--sep);
+  stroke-width: 1;
+}
+
+.ledger-chart__tip-date {
+  font: 10px var(--font-ui);
+  fill: var(--label-3);
+}
+
+.ledger-chart__tip-value {
+  font: 11px var(--font-ui);
+  fill: var(--label);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 分类占比 */
+
+.ledger-donut {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+  min-width: 0;
+}
+
+.ledger-donut__svg {
+  flex: none;
+  width: 132px;
+  height: 132px;
+}
+
+.ledger-donut__track {
+  stroke: var(--fill-2);
+}
+
+.ledger-donut__total {
+  font: 600 13px var(--font-ui);
+  fill: var(--label);
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger-donut__label {
+  font: 11px var(--font-ui);
+  fill: var(--label-3);
+}
+
+.ledger-donut__legend {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ledger-donut__row {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  font: var(--text-caption);
+  color: var(--label-2);
+}
+
+.ledger-donut__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--label);
+}
+
+.ledger-donut__percent {
+  color: var(--label-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger-donut__amount {
+  color: var(--label-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger-donut__empty {
+  flex: 1;
+}
+
+@media (max-width: 980px) {
+  .ledger-charts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .ledger-donut {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--sp-3);
+  }
+
+  .ledger-donut__svg {
+    align-self: center;
+  }
+}
+
+/* ============ 仪表盘：最近 7 天记账 ============ */
+
+.home-ledger {
+  display: block;
+  margin-top: var(--sp-4);
+  padding: var(--sp-4);
+  background: var(--fill-3);
+  border: 1px solid var(--sep);
+  border-radius: var(--r-lg);
+}
+
+.home-ledger__hint {
+  margin: var(--sp-3) 0 0;
+}
+
+.home-ledger__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(200px, 0.5fr);
+  gap: var(--sp-5);
+  margin-top: var(--sp-3);
+  align-items: center;
+}
+
+.home-ledger__main {
+  min-width: 0;
+}
+
+.home-ledger__kpis {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-6);
+  margin-bottom: var(--sp-2);
+}
+
+.home-ledger__kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.home-ledger__kpi-label {
+  font: var(--text-caption);
+  color: var(--label-3);
+}
+
+.home-ledger__kpi-value {
+  font: 600 17px/1.3 var(--font-ui);
+  color: var(--label);
+  font-variant-numeric: tabular-nums;
+}
+
+.home-ledger__kpi-value.is-income {
+  color: var(--success);
+}
+
+.home-ledger__kpi-value.is-negative {
+  color: var(--danger);
+}
+
+.home-ledger__side {
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .home-ledger__body {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

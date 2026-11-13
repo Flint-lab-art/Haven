@@ -45,6 +45,12 @@ src/main/java/com/haven/backend/
 │   ├── entity/
 │   ├── mapper/
 │   └── service/ + impl/
+├── ledger/                   # 记账领域
+│   ├── controller/
+│   ├── dto/
+│   ├── entity/
+│   ├── mapper/
+│   └── service/ + impl/
 ├── portfolio/                # 作品集领域
 │   ├── controller/
 │   ├── entity/
@@ -204,6 +210,10 @@ Flyway 脚本：
 
 - `V1__init.sql`：用户、Sa-Token、待验证 TOTP、API Token、审计事件、文件夹、笔记、标签、作品集、历史版本、Issue
 - `V2__trusted_devices.sql`：授信设备，以及登录时是否勾选信任设备的标记
+- `V3__del_issues_parentId.sql`：移除 Issue 的父子层级字段
+- `V4__add_ledger_tables.sql`：记账批次、条目、别名
+- `V5__ledger_default_aliases.sql`：为 `kairo` 初始化默认分类别名
+- `V6__ledger_income_categories.sql`：新增收入分类（工资 / 奖金 / 报销 / 退款 / 红包 / 其他收入）与收入别名
 
 主要表：
 
@@ -218,6 +228,8 @@ Flyway 脚本：
 | `note_versions` | 笔记历史快照 |
 | `portfolio_items` / `portfolio_repos` | 作品集与仓库链接 |
 | `issues` / `issue_status_events` | Issue 与状态变更事件 |
+| `ledger_batches` / `ledger_entries` | 记账批次与记账条目 |
+| `ledger_aliases` | 分类别名，例如“奶茶” -> “餐饮” |
 | `audit_events` | 审计事件表（结构已建，供后续业务写入） |
 
 搜索使用 `pg_trgm` 与 GIN 索引，支持标题 / 正文的模糊匹配。
@@ -294,6 +306,76 @@ Flyway 脚本：
 | PATCH | `/api/issues/{id}` | 更新 Issue（含状态流转） |
 | DELETE | `/api/issues/{id}` | 删除 Issue |
 | GET | `/api/stats` | 仪表盘统计 |
+
+### 记账
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| POST | `/api/ledger/quick` | 只解析不落库，返回 `items` 与逐行 `errors` |
+| POST | `/api/ledger/entries/batch` | 确认写入，`batch_id` 相同只写一次（`/batches` 为兼容别名） |
+| GET | `/api/ledger/batches/{batchId}` | 查看批次及条目 |
+| GET | `/api/ledger/entries` | 条目列表，支持 `from` / `to` / `category` / `type` / 分页 |
+| GET | `/api/ledger/entries/{id}` | 条目详情 |
+| PATCH | `/api/ledger/entries/{id}` | 修改分类 / 金额 / 发生时间 |
+| DELETE | `/api/ledger/entries/{id}` | 删除条目 |
+| GET | `/api/ledger/recent` | 最近录入条目，默认 3 笔（按 `created_at`） |
+| GET | `/api/ledger/summary?month=YYYY-MM` | 月度总额 + 支出 / 收入分类排行 + 按天走势 + 最近 3 笔 |
+| GET | `/api/ledger/trend?days=7` | 最近 N 天（默认 7，最多 90）的总额、分类排行与按天走势 |
+| GET | `/api/ledger/categories` | 支持的分类列表 |
+| GET | `/api/ledger/aliases` | 别名列表 |
+| POST | `/api/ledger/aliases` | 新增或更新别名 |
+| DELETE | `/api/ledger/aliases/{alias}` | 删除别名 |
+
+输入格式为一行一条：`分类 [备注…] 金额`。
+
+```text
+午饭12
+晚饭 20
+网购 零食 100
+房租 水电 2200
+工资 8000
+```
+
+解析规则：
+
+1. 行末抽取金额，支持 `12`、`12.5`、`32元`、`¥32`、`二十五块`
+2. 剩余文本按第一个空格切分，第一段查别名表或大类，其余作为备注
+3. 分类命中收入大类（工资 / 奖金 / 报销 / 退款 / 红包 / 其他收入），或文本含对应关键词时判为收入，否则为支出
+4. 别名命中时取大类并把原词并入备注；都不是则落 `未分类`，原词保留在备注中
+
+支出大类：`餐饮 / 购物 / 交通 / 居家 / 娱乐 / 医疗 / 未分类`；
+收入大类：`工资 / 奖金 / 报销 / 退款 / 红包 / 其他收入`。
+
+`quick` 示例：
+
+```json
+{
+  "text": "午饭12\n网购 零食 100"
+}
+```
+
+`summary` 返回：
+
+```json
+{
+  "month": "2026-11",
+  "total_expense_cents": 128600,
+  "total_income_cents": 0,
+  "total_count": 3,
+  "category_ranking": [
+    { "category": "餐饮", "amount_cents": 3200, "count": 2 }
+  ],
+  "income_category_ranking": [
+    { "category": "工资", "amount_cents": 800000, "count": 1 }
+  ],
+  "daily": [
+    { "date": "2026-11-01", "expense_cents": 1200, "income_cents": 0, "count": 1 }
+  ],
+  "recent": [
+    { "id": "...", "type": "expense", "amount_cents": 1200, "category": "餐饮", "note": "午饭" }
+  ]
+}
+```
 
 ### 公开接口
 

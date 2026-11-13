@@ -11,6 +11,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 @MapperScan({
         "com.haven.backend.auth.mapper",
         "com.haven.backend.issue.mapper",
+        "com.haven.backend.ledger.mapper",
         "com.haven.backend.note.mapper",
         "com.haven.backend.portfolio.mapper"
 })

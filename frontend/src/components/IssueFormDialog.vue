@@ -144,7 +144,8 @@ async function save(): Promise<void> {
 
       <label class="field">
         <span class="field__label">描述</span>
-        <textarea v-model="form.description" class="textarea" rows="4" placeholder="可选，补充复现步骤或验收标准"></textarea>
+        <textarea v-model="form.description" class="textarea" rows="4" placeholder="可选，补充复现步骤或验收标准；支持 Markdown"></textarea>
+        <span class="field__hint">支持 Markdown：标题、列表、代码块、链接、表格等。</span>
       </label>
 
       <div class="field">

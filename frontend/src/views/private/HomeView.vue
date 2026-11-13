@@ -8,16 +8,37 @@
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import HeatmapChart from '@/components/HeatmapChart.vue'
+import LedgerDonutChart from '@/components/LedgerDonutChart.vue'
+import LedgerTrendChart from '@/components/LedgerTrendChart.vue'
+import { getLedgerTrend, type LedgerTrend } from '@/api/ledger'
 import { getStats, type StatsSnapshot } from '@/api/stats'
 import { listTags, type Tag } from '@/api/tags'
 import { formatRelative } from '@/utils/format'
 import { ISSUE_TYPE_LABEL, priorityTone } from '@/utils/issues'
+import { formatYuan } from '@/utils/ledger'
 
 const data = ref<StatsSnapshot | null>(null)
 /** 常用标签：按引用数倒序取前若干个。 */
 const tags = ref<Tag[]>([])
+/** 记账：最近 7 天；单独加载失败不影响仪表盘其余区块。 */
+const ledger = ref<LedgerTrend | null>(null)
 const loading = ref(true)
 const error = ref('')
+
+/** 结余 = 收入 − 支出。 */
+const ledgerBalance = computed(
+  () => (ledger.value?.total_income_cents ?? 0) - (ledger.value?.total_expense_cents ?? 0),
+)
+
+/** 圆环优先展示支出分类；只有收入时退回收入分类。 */
+const ledgerDonut = computed(() => {
+  const trend = ledger.value
+  if (!trend) return { items: [], label: '支出' }
+  if (trend.category_ranking.length > 0) {
+    return { items: trend.category_ranking, label: '支出' }
+  }
+  return { items: trend.income_category_ranking, label: '收入' }
+})
 
 /** 统计字段：主数字用原值，其余用缩写。 */
 const totals = computed(() => ({
@@ -58,6 +79,11 @@ function formatCount(n: number): string {
   return n.toLocaleString('zh-CN')
 }
 
+/** 结余为负时把负号放在 ¥ 前面（¥-5 → -¥5）。 */
+function formatBalance(cents: number): string {
+  return cents < 0 ? `-${formatYuan(-cents)}` : formatYuan(cents)
+}
+
 /** 大字缩写：超过 1 万显示为「4.2 万」。 */
 function formatWords(n: number): string {
   if (n < 10000) return formatCount(n)
@@ -69,9 +95,14 @@ async function load(): Promise<void> {
   loading.value = true
   error.value = ''
   try {
-    const [statsResult, tagResult] = await Promise.allSettled([getStats(), listTags()])
+    const [statsResult, tagResult, ledgerResult] = await Promise.allSettled([
+      getStats(),
+      listTags(),
+      getLedgerTrend(7),
+    ])
     if (statsResult.status === 'fulfilled') data.value = statsResult.value
     if (tagResult.status === 'fulfilled') tags.value = tagResult.value.items
+    if (ledgerResult.status === 'fulfilled') ledger.value = ledgerResult.value
     if (statsResult.status === 'rejected') throw statsResult.reason
   } catch {
     error.value = '统计数据加载失败'
@@ -155,6 +186,46 @@ onMounted(() => void load())
         </ul>
       </section>
     </div>
+
+    <!-- 记账：最近 7 天收支与分类占比 -->
+    <section class="home-ledger" aria-label="最近 7 天记账">
+      <header class="home-issues__head">
+        <div>
+          <h2 class="home-panel__title">记账 · 最近 7 天</h2>
+          <p class="field__hint">每天的花销与收入；悬停折线可看单日明细。</p>
+        </div>
+        <RouterLink class="home-issues__all" :to="{ name: 'ledger' }">查看记账 →</RouterLink>
+      </header>
+
+      <p v-if="loading && !ledger" class="field__hint home-ledger__hint">加载中…</p>
+      <div v-else-if="ledger && ledger.total_count > 0" class="home-ledger__body">
+        <div class="home-ledger__main">
+          <div class="home-ledger__kpis">
+            <div class="home-ledger__kpi">
+              <span class="home-ledger__kpi-label">支出</span>
+              <span class="home-ledger__kpi-value">{{ formatYuan(ledger.total_expense_cents) }}</span>
+            </div>
+            <div class="home-ledger__kpi">
+              <span class="home-ledger__kpi-label">收入</span>
+              <span class="home-ledger__kpi-value is-income">{{ formatYuan(ledger.total_income_cents) }}</span>
+            </div>
+            <div class="home-ledger__kpi">
+              <span class="home-ledger__kpi-label">结余</span>
+              <span class="home-ledger__kpi-value" :class="{ 'is-negative': ledgerBalance < 0 }">
+                {{ formatBalance(ledgerBalance) }}
+              </span>
+            </div>
+          </div>
+          <LedgerTrendChart :points="ledger.daily" compact />
+        </div>
+        <div class="home-ledger__side">
+          <LedgerDonutChart :items="ledgerDonut.items" :label="ledgerDonut.label" />
+        </div>
+      </div>
+      <p v-else class="home-issues__empty home-ledger__hint">
+        最近 7 天还没有记账。
+      </p>
+    </section>
 
     <!-- Issue 概览：整行；计数不变，子 Feature 显示父需求上下文（docs-ai/v9/frontend/frontend.md 第七节） -->
     <section class="home-issues">
