@@ -181,6 +181,21 @@ onBeforeUnmount(() => {
     </RouterLink>
 
     <RouterLink
+      :to="{ name: 'ledger' }"
+      class="side-link"
+      :class="{ 'side-link--active': section === 'ledger' }"
+      data-tip="记账"
+      aria-label="记账"
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 7.5A2.5 2.5 0 0 1 6.5 5h11A2.5 2.5 0 0 1 20 7.5v9A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5z" />
+        <path d="M4 9h16" />
+        <path d="M15 14h2" />
+      </svg>
+      <span>记账</span>
+    </RouterLink>
+
+    <RouterLink
       :to="{ name: 'issues' }"
       class="side-link"
       :class="{ 'side-link--active': section === 'issues' }"

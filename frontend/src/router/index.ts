@@ -154,6 +154,13 @@ const privateRoutes: RouteRecordRaw[] = [
         meta: { title: '作品集', section: 'portfolio' },
       },
       {
+        // 记账页：手机端落库，电脑端看汇总
+        path: 'ledger',
+        name: 'ledger',
+        component: () => import('@/views/private/LedgerView.vue'),
+        meta: { title: '记账', section: 'ledger', noList: true },
+      },
+      {
         // Issue 面板（docs-ai/v8/frontend/frontend.md）
         path: 'issues',
         name: 'issues',

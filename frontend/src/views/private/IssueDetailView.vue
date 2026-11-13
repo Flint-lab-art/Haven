@@ -17,6 +17,7 @@ import {
   type IssueStatus,
 } from '@/api/issues'
 import { formatDateTime } from '@/utils/format'
+import { renderMarkdown } from '@/utils/markdown'
 import {
   ISSUE_PRIORITY_LABEL,
   ISSUE_STATUS_LABEL,
@@ -48,6 +49,11 @@ const currentIndex = computed(() => {
 
 const deleteMessage = computed(
     () => `永久删除「${detail.value?.title ?? ''}」后无法恢复。`,
+)
+
+/** 描述按 Markdown 渲染：复用作品集正文的 marked + DOMPurify 管线，保留单个换行。 */
+const renderedDescription = computed(() =>
+  renderMarkdown(detail.value?.description ?? '', { breaks: true }),
 )
 
 function stepState(step: IssueStatus): 'current' | 'reached' | 'pending' {
@@ -168,7 +174,8 @@ onMounted(() => void load())
 
       <section class="issue-detail__section">
         <h2 class="issue-detail__section-title">描述</h2>
-        <p v-if="detail.description" class="issue-detail__description">{{ detail.description }}</p>
+        <!-- eslint-disable-next-line vue/no-v-html -- 已经过 DOMPurify 过滤 -->
+        <div v-if="detail.description" class="md-body issue-detail__description" v-html="renderedDescription"></div>
         <p v-else class="field__hint">没有填写描述。</p>
       </section>
 

@@ -18,6 +18,7 @@ import java.util.stream.Collectors;
 
 /**
  * 全局异常处理，输出格式对齐 Go 端 API 契约（docs/api.md 1.4）：
+ * 
  * <pre>
  * { "error": "error_code", "message": "人类可读描述", "fields": {...} }
  * </pre>
@@ -88,9 +89,7 @@ public class GlobalExceptionHandler {
             case 403 -> HttpStatus.FORBIDDEN;
             case 404 -> HttpStatus.NOT_FOUND;
             case 409 -> HttpStatus.CONFLICT;
-            case 413 -> HttpStatus.PAYLOAD_TOO_LARGE;
             case 415 -> HttpStatus.UNSUPPORTED_MEDIA_TYPE;
-            case 422 -> HttpStatus.UNPROCESSABLE_ENTITY;
             case 429 -> HttpStatus.TOO_MANY_REQUESTS;
             case 500 -> HttpStatus.INTERNAL_SERVER_ERROR;
             default -> HttpStatus.BAD_REQUEST;

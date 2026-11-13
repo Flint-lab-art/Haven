@@ -81,4 +81,11 @@ describe('renderMarkdown（作品集正文）', () => {
     expect(html).not.toContain('<script')
     expect(html).toContain('正文')
   })
+
+  it('Issue 描述可保留单个换行', () => {
+    const html = renderMarkdown('第一步\n第二步', { breaks: true })
+    expect(html).toContain('<br>')
+    expect(html).toContain('第一步')
+    expect(html).toContain('第二步')
+  })
 })
