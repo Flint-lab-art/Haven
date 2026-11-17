@@ -45,9 +45,10 @@ test('文件夹可以嵌套子文件夹，并在重新加载后保留层级', as
 
   await page.goto('/notes')
   await expect(folderRow(page, '父级')).toBeVisible()
-  // 父级默认展开时子级可见；未展开则点开
+  // 父级默认展开时子级可见；未展开则点开。
+  // 先断言父级行已渲染，再判断子级——count() 不做自动等待，早于渲染会误判为 0。
   const child = folderRow(page, '子级')
-  if ((await child.count()) === 0) {
+  if (!(await child.isVisible().catch(() => false))) {
     await folderRow(page, '父级').getByRole('button', { name: /展开文件夹/ }).click()
   }
   await expect(child).toBeVisible()

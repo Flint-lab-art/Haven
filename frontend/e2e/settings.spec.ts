@@ -20,9 +20,13 @@ test('设置概览显示用户名、版本与双重验证状态', async ({ authe
 test('切换主题后立即生效，刷新后保持', async ({ authedPage: page }) => {
   await page.goto('/settings/appearance')
 
+  // 先等选项渲染出来再计数：count() 不做自动等待，
+  // 页面还没挂载时它直接返回 0，会得到一个与真实情况无关的失败。
   const radios = page.getByRole('radio')
+  await expect(radios.first()).toBeVisible()
+
   const count = await radios.count()
-  expect(count).toBeGreaterThan(1)
+  expect(count, '主题选项应至少有多个').toBeGreaterThan(1)
 
   // 找到一个当前未选中的主题并切换
   let target = -1

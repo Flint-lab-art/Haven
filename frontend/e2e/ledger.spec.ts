@@ -70,6 +70,8 @@ test('可以切换月份查看不同月份', async ({ authedPage: page }) => {
   await page.goto('/ledger')
 
   const monthInput = page.getByLabel('选择月份')
+  // inputValue() 不自动等待；先确认它已有值（月份由页面加载后填入）
+  await expect(monthInput).not.toHaveValue('')
   const current = await monthInput.inputValue()
   const [year, month] = current.split('-').map(Number)
   const prev = month === 1 ? `${year - 1}-12` : `${year}-${String(month - 1).padStart(2, '0')}`

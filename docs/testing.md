@@ -297,6 +297,37 @@ E2E **不连开发库，也不连 Vite dev server**：
 | 找不到笔记树里的笔记 | `POST /api/notes` 不传 `folder_id` 时笔记不属于任何文件夹，界面不展示 |
 | `getByRole('dialog')` 匹配不到确认框 | `ConfirmDialog` 用的是 `alertdialog` |
 | 严格模式报「resolved to 2 elements」 | 页面上有同名按钮（如列表栏「添加」与表单提交「添加」），需收窄到容器 |
+| 单跑通过、整套跑失败 | 用了不会自动等待的取值方法，见下 |
+
+### 不会自动等待的取值方法（重要）
+
+`expect(locator)` 系列会自动等待，但下面这些**立即返回**：
+
+```ts
+await locator.count()        // 元素还没渲染 → 0
+await locator.inputValue()   // 输入框还没填值 → ''
+await locator.boundingBox()  // 元素还没布局 → null
+await locator.evaluate(...)  // 同上
+```
+
+在它们之前必须先插入一个会等待的断言：
+
+```ts
+// ✗ 页面还在挂载，count() 直接返回 0
+const n = await page.getByRole('radio').count()
+expect(n).toBeGreaterThan(1)
+
+// ✓ 先等元素出现
+const radios = page.getByRole('radio')
+await expect(radios.first()).toBeVisible()
+expect(await radios.count()).toBeGreaterThan(1)
+```
+
+这类问题**只跑单个 spec 往往发现不了**：套件里的首个 spec 加载最慢，最容易踩到。验证时用：
+
+```bash
+pnpm --dir frontend exec playwright test --repeat-each=2
+```
 
 ## 6. 测试清单（新增功能时）
 
