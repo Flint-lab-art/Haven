@@ -38,8 +38,22 @@ import {
 } from '@/utils/ledger'
 
 const month = ref(currentMonth())
+/** 收支筛选：空串表示不限方向。 */
+const typeFilter = ref<'' | 'expense' | 'income'>('')
 const categoryFilter = ref<LedgerCategory | ''>('')
 const rankType = ref<'expense' | 'income'>('expense')
+
+/**
+ * 筛选用的分类选项。
+ *
+ * 选了收支方向就只列该方向的分类；不限方向时列出全部，
+ * 否则用户无法在「全部收支」下按收入分类筛。
+ */
+const filterCategories = computed<LedgerCategory[]>(() => {
+  if (typeFilter.value === 'income') return INCOME_CATEGORIES
+  if (typeFilter.value === 'expense') return EXPENSE_CATEGORIES
+  return LEDGER_CATEGORIES
+})
 
 const error = ref('')
 const toast = ref('')
@@ -57,6 +71,7 @@ const {
   applyEntry,
 } = useLedgerData({
   month,
+  typeFilter,
   categoryFilter,
   error,
   messageOf: (err, fallback) => messageOf(err, fallback),
@@ -160,38 +175,6 @@ async function onQuickCommit(items: QuickParseResult['items'], done: (ok: boolea
   }
 }
 
-/**
- * 设置收支方向（分段按钮点选）。
- *
- * 方向变了但分类还停在旧方向的白名单里（例如「餐饮」配 income），
- * 后端会拒绝保存，所以这里同时把分类切到新方向下的第一个可选值。
- */
-async function setEntryType(entry: LedgerEntry, nextType: 'expense' | 'income'): Promise<void> {
-  if (nextType === entry.type) return
-
-  // 注意：不能用 categoriesForType(nextType, entry.category)，它会把当前分类
-  // 当作「历史脏数据」补进列表末尾，导致「餐饮」在收入方向下仍是合法值。
-  // 切换方向时必须是该方向的干净白名单。
-  const allowed: LedgerCategory[] = nextType === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES
-  const nextCategory = allowed.includes(entry.category) ? entry.category : allowed[0]
-  if (!nextCategory) return
-
-  const previousType = entry.type
-  const previousCategory = entry.category
-  entry.type = nextType
-  entry.category = nextCategory
-  try {
-    const updated = await updateLedgerEntry(entry.id, { type: nextType, category: nextCategory })
-    applyEntry(updated)
-    notify(nextType === 'income' ? '已改为收入' : '已改为支出')
-    await loadSummary()
-  } catch (err) {
-    entry.type = previousType
-    entry.category = previousCategory
-    error.value = messageOf(err, '收支方向更新失败')
-  }
-}
-
 async function onCategoryChange(entry: LedgerEntry, event: Event): Promise<void> {
   const select = event.target as HTMLSelectElement
   const next = select.value as LedgerCategory
@@ -250,6 +233,16 @@ function newBatchId(): string {
 }
 
 watch(month, () => void reload())
+
+// 方向变了，原来选中的分类可能已不在新方向的列表里，先清掉再请求，
+// 否则会把「收入 + 餐饮」这种矛盾组合发给后端
+watch(typeFilter, () => {
+  if (categoryFilter.value && !filterCategories.value.includes(categoryFilter.value)) {
+    categoryFilter.value = ''
+  }
+  void loadEntries()
+})
+
 watch(categoryFilter, () => void loadEntries())
 
 onMounted(() => void reload())
@@ -360,15 +353,33 @@ onBeforeUnmount(() => {
           <h2 class="ledger-card__title">明细</h2>
           <p class="field__hint">{{ monthLabel }} · 共 {{ total }} 笔</p>
         </div>
+      <div class="ledger-entries__filters">
+        <!-- 两级筛选：先定收支方向，再选该方向下的分类 -->
         <label class="ledger-filter">
-          <select v-model="categoryFilter" class="select ledger-filter__select" aria-label="按分类筛选">
+          <select
+            v-model="typeFilter"
+            class="select ledger-filter__select"
+            aria-label="按收支筛选"
+          >
+            <option value="">全部收支</option>
+            <option value="expense">支出</option>
+            <option value="income">收入</option>
+          </select>
+        </label>
+        <label class="ledger-filter">
+          <select
+            v-model="categoryFilter"
+            class="select ledger-filter__select"
+            aria-label="按分类筛选"
+          >
             <option value="">全部分类</option>
-            <option v-for="category in LEDGER_CATEGORIES" :key="category" :value="category">
+            <option v-for="category in filterCategories" :key="category" :value="category">
               {{ category }}
             </option>
           </select>
         </label>
       </div>
+    </div>
 
       <div v-if="loadingEntries && entries.length === 0" class="ledger-day-list" aria-busy="true">
         <div v-for="i in 3" :key="i" class="ledger-day">
@@ -410,53 +421,21 @@ onBeforeUnmount(() => {
           <div class="ledger-entry-list">
             <div v-for="entry in group.items" :key="entry.id" class="ledger-entry">
               <span class="ledger-entry__time">{{ timeOf(entry.occurred_at) }}</span>
-              <!--
-                两级选择：先定收支方向（分段按钮），再在该方向下选具体分类。
-                方向做成按钮而不是下拉，是因为「支出/收入」只有两个取值，
-                下拉要多点一次，且和右侧的分类下拉长得一样、看不出主次。
-              -->
-              <span class="ledger-entry__picker">
-                <span
-                  class="ledger-entry__type"
-                  :class="{ 'is-income': entry.type === 'income' }"
-                  role="group"
-                  :aria-label="`收支方向：${entry.note || entry.category}`"
+              <select
+                class="select ledger-entry__cat"
+                :class="`ledger-entry__cat--${categoryTone(entry.category)}`"
+                :value="entry.category"
+                :aria-label="`修改分类：${entry.note || entry.category}`"
+                @change="onCategoryChange(entry, $event)"
+              >
+                <option
+                  v-for="category in categoriesForType(entry.type, entry.category)"
+                  :key="category"
+                  :value="category"
                 >
-                  <button
-                    type="button"
-                    class="ledger-entry__type-btn"
-                    :class="{ 'is-active': entry.type === 'expense' }"
-                    :aria-pressed="entry.type === 'expense'"
-                    @click="setEntryType(entry, 'expense')"
-                  >
-                    支
-                  </button>
-                  <button
-                    type="button"
-                    class="ledger-entry__type-btn"
-                    :class="{ 'is-active': entry.type === 'income' }"
-                    :aria-pressed="entry.type === 'income'"
-                    @click="setEntryType(entry, 'income')"
-                  >
-                    收
-                  </button>
-                </span>
-                <select
-                  class="select ledger-entry__cat"
-                  :class="`ledger-entry__cat--${categoryTone(entry.category)}`"
-                  :value="entry.category"
-                  :aria-label="`修改分类：${entry.note || entry.category}`"
-                  @change="onCategoryChange(entry, $event)"
-                >
-                  <option
-                    v-for="category in categoriesForType(entry.type, entry.category)"
-                    :key="category"
-                    :value="category"
-                  >
-                    {{ category }}
-                  </option>
-                </select>
-              </span>
+                  {{ category }}
+                </option>
+              </select>
               <span class="ledger-entry__note" :title="entry.note">{{ entry.note || '—' }}</span>
               <span class="ledger-entry__amount" :class="{ 'is-income': entry.type === 'income' }">
                 {{ formatSignedYuan(entry.type, entry.amount_cents) }}

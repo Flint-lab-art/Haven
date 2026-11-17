@@ -126,8 +126,6 @@ export interface LedgerBatchResult {
 
 export interface UpdateLedgerEntryInput {
   category?: LedgerCategory
-  /** 收支方向；必须与 category 一致（支出分类配 expense）。 */
-  type?: 'expense' | 'income'
   amount_cents?: number
   occurred_at?: string
 }

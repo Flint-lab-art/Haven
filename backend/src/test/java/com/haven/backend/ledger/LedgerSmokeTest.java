@@ -225,7 +225,7 @@ class LedgerSmokeTest {
                 .findFirst()
                 .orElseThrow();
 
-        ledgerService.updateEntry(userId, uncategorized.id(), new UpdateLedgerEntryRequest("餐饮", null, null, null));
+        ledgerService.updateEntry(userId, uncategorized.id(), new UpdateLedgerEntryRequest("餐饮", null, null));
 
         LedgerAliasPage aliases = ledgerService.listAliases(userId);
         assertTrue(aliases.items().stream().anyMatch(i -> "张三".equals(i.alias()) && "餐饮".equals(i.category())));

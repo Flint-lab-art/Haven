@@ -201,19 +201,6 @@ public class LedgerServiceImpl implements LedgerService {
             // 人工归类时顺便把原词写入别名表，下次输入即可直接命中。
             learnAliasFromNote(uid, entry.getNote(), req.category());
         }
-        if (req.type() != null) {
-            entry.setType(req.type());
-        }
-        // 方向与分类必须一致：支出分类配 income 会让「分类排行」把支出算进收入。
-        // 只在两者之一被修改时校验，避免历史脏数据导致无法保存其他字段。
-        if (req.category() != null || req.type() != null) {
-            String typeForCategory = LedgerCategories.INCOME_SET.contains(entry.getCategory())
-                    ? LedgerTypes.INCOME
-                    : LedgerTypes.EXPENSE;
-            if (!typeForCategory.equals(entry.getType())) {
-                throw BizException.validation("分类「" + entry.getCategory() + "」与收支方向不一致");
-            }
-        }
         if (req.amountCents() != null) {
             if (req.amountCents() <= 0) {
                 throw BizException.validation("amount_cents 必须大于 0");

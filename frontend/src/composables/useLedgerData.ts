@@ -1,7 +1,7 @@
 /**
  * 记账页的月度数据加载。
  *
- * 负责「按月份 + 分类筛选」拉汇总与明细，并处理两个容易出错的点：
+ * 负责「按月份 + 收支方向 + 分类筛选」拉汇总与明细，并处理两个容易出错的点：
  *
  * - **竞态**：快速切月份时，旧请求可能晚于新请求返回，用请求序号丢弃过期响应
  * - **非法月份**：手动输入了 `abc` 这类值时直接跳过，不发请求
@@ -22,6 +22,8 @@ const PAGE_SIZE = 100
 export interface LedgerDataOptions {
   /** 当前月份，格式 `YYYY-MM`。 */
   month: Ref<string>
+  /** 收支筛选；空串表示不限方向。 */
+  typeFilter: Ref<'' | 'expense' | 'income'>
   /** 分类筛选；空串表示不筛。 */
   categoryFilter: Ref<LedgerCategory | ''>
   /** 把异常转成提示文案。 */
@@ -49,7 +51,7 @@ export function isValidMonth(value: string): boolean {
 }
 
 export function useLedgerData(options: LedgerDataOptions): LedgerData {
-  const { month, categoryFilter, error } = options
+  const { month, typeFilter, categoryFilter, error } = options
 
   const summary = ref<LedgerSummary | null>(null)
   const entries = ref<LedgerEntry[]>([])
@@ -81,6 +83,7 @@ export function useLedgerData(options: LedgerDataOptions): LedgerData {
       const result = await listLedgerEntries({
         from,
         to,
+        type: typeFilter.value || undefined,
         category: categoryFilter.value || undefined,
         limit: PAGE_SIZE,
         offset: 0,

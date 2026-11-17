@@ -18,6 +18,7 @@ const { getLedgerSummary, listLedgerEntries } = await import('@/api/ledger')
 
 function setup() {
   const month = ref('2026-01')
+  const typeFilter = ref<'' | 'expense' | 'income'>('')
   const categoryFilter = ref<LedgerCategory | ''>('')
   const error = ref('')
 
@@ -28,6 +29,7 @@ function setup() {
     setup() {
       api = useLedgerData({
         month,
+        typeFilter,
         categoryFilter,
         error,
         messageOf: (_err, fallback) => fallback,
@@ -37,7 +39,7 @@ function setup() {
   })
   scope.run(() => app.mount(document.createElement('div')))
 
-  return { api, month, categoryFilter, error, scope }
+  return { api, month, typeFilter, categoryFilter, error, scope }
 }
 
 describe('isValidMonth', () => {
@@ -91,6 +93,20 @@ describe('useLedgerData', () => {
 
     const query = vi.mocked(listLedgerEntries).mock.calls[0][0] as Record<string, unknown>
     expect(query.category).toBe('餐饮')
+  })
+
+  it('收支方向也会带进查询条件', async () => {
+    const { api, typeFilter } = setup()
+    vi.mocked(getLedgerSummary).mockResolvedValue({} as never)
+    vi.mocked(listLedgerEntries).mockResolvedValue({ items: [], total: 0 } as never)
+
+    typeFilter.value = 'income'
+    await api.reload()
+
+    const query = vi.mocked(listLedgerEntries).mock.calls[0][0] as Record<string, unknown>
+    expect(query.type).toBe('income')
+    // 不限方向时不该带 type，否则后端会按空串过滤
+    expect(query.category).toBeUndefined()
   })
 
   it('快速切月份时丢弃过期响应', async () => {
