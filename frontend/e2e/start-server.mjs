@@ -20,7 +20,13 @@ import path from 'node:path'
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const BACKEND = path.resolve(ROOT, '../backend')
-const JAR = path.join(BACKEND, 'target/haven-2.1.0.jar')
+
+/**
+ * 产物名跟随根目录的 VERSION 文件，不要在脚本里写死版本号：
+ * 升版后写死的路径会让 E2E 报「找不到产物」，看起来像构建失败。
+ */
+const VERSION = readFileSync(path.resolve(ROOT, '../VERSION'), 'utf8').trim()
+const JAR = path.join(BACKEND, `target/haven-${VERSION}.jar`)
 
 const DB_HOST = process.env.E2E_DB_HOST ?? '127.0.0.1'
 const DB_PORT = process.env.E2E_DB_PORT ?? '5432'

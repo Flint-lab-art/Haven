@@ -10,7 +10,7 @@ Haven 的后端：Spring Boot REST API、PostgreSQL 持久化、Flyway 迁移，
 - 生产环境与前端同源部署，非 API 路径回退 `index.html`
 
 > **版本号规则与标准 SemVer 不同**：只有新增"全新功能领域"才升 MAJOR。
-> 见 [`../docs/versioning.md`](../docs/versioning.md)。当前版本 `2.1.0`。
+> 见 [`../docs/versioning.md`](../docs/versioning.md)。版本号以根目录 `VERSION` 文件为准。
 
 ## 技术栈
 
@@ -112,7 +112,7 @@ cd backend
 
 ```bash
 curl http://127.0.0.1:8080/api/health
-# {"status":"ok","version":"2.1.0"}
+# {"status":"ok","version":"<版本>"}
 ```
 
 ### 3. 创建用户

@@ -5,7 +5,7 @@ Haven 的前端：Vue 3 + TypeScript + Vite 单页应用。同一份构建产物
 **设计文档在 [`../docs/`](../docs/README.md)**——本文件只讲怎么跑、有哪些能力、有哪些约定。
 
 > **版本号规则与标准 SemVer 不同**，且需与后端保持一致。
-> 见 [`../docs/versioning.md`](../docs/versioning.md)。当前版本 `2.1.0`，与后端一致。
+> 见 [`../docs/versioning.md`](../docs/versioning.md)。版本号以根目录 `VERSION` 文件为准，与后端一致。
 
 ## 功能
 
@@ -281,10 +281,10 @@ pnpm test:watch   # 监听模式
 ```
 
 脚本会先清空 `static/`（避免旧哈希文件残留），再复制 `dist/` 内容。
-生产部署只需要分发 `backend/target/haven-2.1.0.jar` 一个文件。
+生产部署只需要分发 `backend/target/haven-<版本>.jar` 一个文件。
 
 `vite.config.ts` 会把 `package.json` 的 `version` 注入为 `__APP_VERSION__`，设置页直接显示这个版本号。
-后端版本在 `backend/pom.xml`（当前 `2.1.0`），产物名为 `haven-2.1.0.jar`。
+后端版本在 `backend/pom.xml`，产物名为 `haven-<版本>.jar`（版本号见根目录 `VERSION`）。
 
 构建时开启了路由懒加载，编辑器单独成块；`chunkSizeWarningLimit` 为 600 KB。
 

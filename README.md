@@ -302,7 +302,7 @@ jar 里已包含前端静态资源，部署时只需分发一个文件。
 | MINOR | 不加大领域，但有大动作 / 多个小功能点 / 大修复 | 代码风格重构、API 契约改造 |
 | PATCH | 纯修复，无新增能力 | 修小 bug、改文案 |
 
-> 完整规则与理由见 [docs/versioning.md](docs/versioning.md)。**当前版本 `2.1.0`。**
+> 完整规则与理由见 [docs/versioning.md](docs/versioning.md)。版本号以根目录 `VERSION` 文件为准。
 
 版本号**只有一个来源**：根目录的 [`VERSION`](VERSION) 文件。改版本只改这里：
 
