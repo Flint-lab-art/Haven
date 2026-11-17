@@ -18,12 +18,13 @@ import FolderTreeNode from './FolderTreeNode.vue'
 import IconPicker from './IconPicker.vue'
 import NoteTreeItem from './NoteTreeItem.vue'
 import { ApiError } from '@/api/client'
-import { deleteFolder, updateFolder, type Folder } from '@/api/folders'
-import { deleteNote, publishNote, unpublishNote, updateNote, type NoteSummary } from '@/api/notes'
+import { deleteFolder, type Folder } from '@/api/folders'
+import { deleteNote, publishNote, unpublishNote, type NoteSummary } from '@/api/notes'
 import { useFolderEditing } from '@/composables/useFolderEditing'
 import { useFolderIcon } from '@/composables/useFolderIcon'
 import { useNoteTree } from '@/composables/useNoteTree'
 import { useTreeDrag } from '@/composables/useTreeDrag'
+import { useTreeDragPersist } from '@/composables/useTreeDragPersist'
 import { useUiStore } from '@/stores/ui'
 import { folderIndent, isFolderDescendant } from '@/utils/tree'
 
@@ -73,6 +74,24 @@ const {
 
 const currentNoteId = computed(() => String(route.params.id ?? ''))
 
+const {
+  persistFolderMove,
+  persistNoteMove,
+  siblingFolders,
+  siblingNotes,
+} = useTreeDragPersist({
+  childrenMap,
+  notesMap,
+  currentNoteId,
+  busy,
+  error,
+  expand,
+  refresh,
+  onFoldersChanged: () => ui.foldersChanged(),
+  onNoteMoved: (noteId, folderId) => ui.noteMoved(noteId, folderId),
+  flushCurrentNote: () => ui.flushNote(),
+  toMessage: (err, fallback) => actionError(err, fallback),
+})
 // 文件夹的创建与重命名
 const {
   creatingUnder,
@@ -321,161 +340,6 @@ function onDocumentKeydown(event: KeyboardEvent): void {
     clearDrag()
     if (creatingUnder.value !== undefined) cancelCreate()
     if (renamingId.value) cancelRename()
-  }
-}
-
-/* ---------------- 拖拽 ---------------- */
-
-function siblingFolders(parentId: string | null, excludeId?: string): Folder[] {
-  return (childrenMap.value.get(parentId) ?? []).filter((folder) => folder.id !== excludeId)
-}
-
-function siblingNotes(parentId: string | null, excludeId?: string): NoteSummary[] {
-  return (notesMap.value.get(parentId) ?? []).filter((note) => note.id !== excludeId)
-}
-
-/**
- * 把「目标父节点」翻译成更新请求里的字段。
- *
- * 后端的 PATCH 语义是：字段缺省 = 不修改，`clear_*` = 移到根目录。
- * 拖拽场景里 undefined 表示没换父节点，null 表示移到根。
- */
-function toFolderParent(parentId: string | null | undefined): {
-  clear_parent?: true
-  parent_id?: string
-} {
-  if (parentId === undefined) return {}
-  return parentId === null ? { clear_parent: true } : { parent_id: parentId }
-}
-
-/** 同上，用于笔记的文件夹归属。 */
-function toNoteFolder(folderId: string | null | undefined): {
-  clear_folder?: true
-  folder_id?: string
-} {
-  if (folderId === undefined) return {}
-  return folderId === null ? { clear_folder: true } : { folder_id: folderId }
-}
-
-async function persistFolderMove(
-  moving: Folder,
-  destParent: string | null,
-  insertIndex: number,
-): Promise<void> {
-  const sourceParent = moving.parent_id ?? null
-  const sameParent = sourceParent === destParent
-
-  const siblings = siblingFolders(destParent, moving.id)
-  if (siblings.some((folder) => folder.name === moving.name)) {
-    error.value = '同一目录下已有同名文件夹'
-    return
-  }
-
-  const destList = siblings
-  destList.splice(Math.max(0, Math.min(insertIndex, destList.length)), 0, moving)
-
-  const updates: { id: string; sort_order: number; parent_id?: string | null }[] = []
-  destList.forEach((folder, index) => {
-    const parentChanged = folder.id === moving.id && !sameParent
-    if (!folder.is_inbox && (folder.sort_order !== index || parentChanged)) {
-      updates.push({
-        id: folder.id,
-        sort_order: index,
-        ...(parentChanged ? { parent_id: destParent } : {}),
-      })
-    }
-  })
-
-  if (!sameParent) {
-    siblingFolders(sourceParent, moving.id).forEach((folder, index) => {
-      if (!folder.is_inbox && folder.sort_order !== index) {
-        updates.push({ id: folder.id, sort_order: index })
-      }
-    })
-  }
-
-  if (updates.length === 0) return
-
-  busy.value = true
-  error.value = ''
-  try {
-    await Promise.all(
-      updates.map((update) =>
-        updateFolder(update.id, {
-          sort_order: update.sort_order,
-          ...toFolderParent(update.parent_id),
-        }),
-      ),
-    )
-    if (destParent) expand(destParent)
-    ui.foldersChanged()
-    await refresh()
-  } catch (err) {
-    error.value = actionError(err, '移动文件夹失败')
-    await refresh()
-  } finally {
-    busy.value = false
-  }
-}
-
-async function persistNoteMove(
-  moving: NoteSummary,
-  destParent: string | null,
-  insertIndex: number,
-): Promise<void> {
-  const sourceParent = moving.folder_id ?? null
-  const sameParent = sourceParent === destParent
-
-  const destList = siblingNotes(destParent, moving.id)
-  destList.splice(Math.max(0, Math.min(insertIndex, destList.length)), 0, moving)
-
-  const updates: { id: string; sort_order: number; folder_id?: string | null }[] = []
-  destList.forEach((note, index) => {
-    const parentChanged = note.id === moving.id && !sameParent
-    if (note.sort_order !== index || parentChanged) {
-      updates.push({
-        id: note.id,
-        sort_order: index,
-        ...(parentChanged ? { folder_id: destParent } : {}),
-      })
-    }
-  })
-
-  if (!sameParent) {
-    siblingNotes(sourceParent, moving.id).forEach((note, index) => {
-      if (note.sort_order !== index) updates.push({ id: note.id, sort_order: index })
-    })
-  }
-
-  if (updates.length === 0) return
-
-  // 正在编辑这篇笔记时，先把编辑器草稿落库，避免自动保存与移动互相覆盖。
-  if (moving.id === currentNoteId.value) {
-    const ok = await ui.flushNote()
-    if (!ok) return
-  }
-
-  busy.value = true
-  error.value = ''
-  try {
-    await Promise.all(
-      updates.map((update) =>
-        updateNote(update.id, {
-          sort_order: update.sort_order,
-          ...toNoteFolder(update.folder_id),
-        }),
-      ),
-    )
-    if (destParent) expand(destParent)
-    if (!sameParent && moving.id === currentNoteId.value) {
-      ui.noteMoved(moving.id, destParent)
-    }
-    await refresh()
-  } catch (err) {
-    error.value = actionError(err, '移动笔记失败')
-    await refresh()
-  } finally {
-    busy.value = false
   }
 }
 
