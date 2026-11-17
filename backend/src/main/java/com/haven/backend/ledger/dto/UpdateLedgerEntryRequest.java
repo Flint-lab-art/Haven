@@ -1,7 +1,6 @@
 package com.haven.backend.ledger.dto;
 
 import jakarta.validation.constraints.Positive;
-
 import java.time.OffsetDateTime;
 
 /**
@@ -10,9 +9,6 @@ import java.time.OffsetDateTime;
 public record UpdateLedgerEntryRequest(
         String category,
 
-        @Positive(message = "amount_cents 必须大于 0")
-        Long amountCents,
+        @Positive(message = "amount_cents 必须大于 0") Long amountCents,
 
-        OffsetDateTime occurredAt
-) {
-}
+        OffsetDateTime occurredAt) {}

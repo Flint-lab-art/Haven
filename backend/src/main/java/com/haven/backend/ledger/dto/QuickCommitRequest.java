@@ -11,11 +11,6 @@ import jakarta.validation.constraints.Size;
  * {@code batchId} 可选：不传时服务端生成，传入相同值可保证重试幂等。
  */
 public record QuickCommitRequest(
+        @NotBlank(message = "text 不能为空") String text,
 
-        @NotBlank(message = "text 不能为空")
-        String text,
-
-        @Size(max = 64, message = "batch_id 不能超过 64 个字符")
-        String batchId
-) {
-}
+        @Size(max = 64, message = "batch_id 不能超过 64 个字符") String batchId) {}
