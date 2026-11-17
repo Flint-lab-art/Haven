@@ -38,12 +38,6 @@ const DRAW = {
   grid: new Color('#8E8E93', 0.25),
   label: new Color('#8E8E93'),
 }
-// 面积填充：同色低透明度
-const DRAW_FILL = {
-  expense: new Color('#FF3B30', 0.16),
-  income: new Color('#34C759', 0.16),
-}
-
 const yuan = (cents) =>
   '¥' +
   (cents / 100).toLocaleString('zh-CN', {
@@ -69,10 +63,17 @@ async function getJSON(path) {
 }
 
 /**
- * 画双折线图（支出 / 收入），带半透明面积。
+ * 画上下对称的柱状图：支出向上、收入向下。
  *
- * 用 DrawContext 手绘：Scriptable 没有内置图表库，
- * 加载第三方脚本在小组件里不稳定。
+ * 为什么不用双折线：收入和支出量级差太大（单笔工资三万，日常支出几十），
+ * 共用一个 Y 轴时支出会被压成贴底的直线，看着像「只有一条横轴」。
+ *
+ * 也不做双 Y 轴：两条线交叉处的「高低」会失去意义，容易误读。
+ *
+ * 对称柱状的关键是**各自独立归一化**：
+ * - 支出柱按「支出最大值」缩放，收入柱按「收入最大值」缩放
+ * - 两组互不影响，量级差 100 倍也各自清晰
+ * - 形态上和支付宝/微信账单的每日明细一致，符合直觉
  *
  * @param {ListWidget} widget 承载图片的容器
  * @param {{date:string, expenseCents:number, incomeCents:number}[]} points
@@ -87,91 +88,66 @@ function drawChart(widget, points, height) {
   // 透明背景：让 widget 自身的背景色透出来，深色模式下不会出现白边
   ctx.opaque = false
 
-  const padTop = 6
+  const padTop = 4
   const padBottom = 14 // 日期标签
   const plotH = height - padTop - padBottom
+  // 零线放在正中间：上下各一半，支出向上、收入向下都不会越界
+  const halfH = plotH / 2
+  const zeroY = padTop + halfH
 
-  const values = points.flatMap((p) => [p.expenseCents, p.incomeCents])
-  const maxValue = Math.max(1, ...values)
+  const maxExpense = Math.max(1, ...points.map((p) => p.expenseCents))
+  const maxIncome = Math.max(1, ...points.map((p) => p.incomeCents))
 
-  const stepX = points.length <= 1 ? 0 : width / (points.length - 1)
-  const xAt = (i) => (points.length <= 1 ? width / 2 : i * stepX)
-  const yAt = (v) => padTop + plotH - (v / maxValue) * plotH
+  // 柱子宽度：留 1px 间隙
+  const slotW = width / points.length
+  const barW = Math.max(1, Math.min(6, slotW * 0.62))
 
-  // 横向基准线：底部 / 中线
+  // 零线
   ctx.setStrokeColor(DRAW.grid)
   ctx.setLineWidth(0.5)
-  for (const ratio of [0, 0.5]) {
-    const y = padTop + plotH - ratio * plotH
-    const path = new Path()
-    path.move(new Point(0, y))
-    path.addLine(new Point(width, y))
-    ctx.addPath(path)
-    ctx.strokePath()
-  }
+  const axis = new Path()
+  axis.move(new Point(0, zeroY))
+  axis.addLine(new Point(width, zeroY))
+  ctx.addPath(axis)
+  ctx.strokePath()
 
-  // DrawContext 的 fillPath 只作用在「最后添加的那条路径」上，
-  // 所以必须分步：先两块面积，再两条线，否则后画的会盖住先画的。
-  const buildArea = (key) => {
-    const area = new Path()
-    area.move(new Point(xAt(0), yAt(points[0][key])))
-    for (let i = 1; i < points.length; i++) {
-      const prevX = xAt(i - 1)
-      const prevY = yAt(points[i - 1][key])
-      const curX = xAt(i)
-      const curY = yAt(points[i][key])
-      area.addQuadCurve(new Point(curX, curY), new Point((prevX + curX) / 2, prevY))
+  // 柱状：支出向上、收入向下，各自按自身最大值缩放
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i]
+    const cx = slotW * i + slotW / 2
+
+    if (p.expenseCents > 0) {
+      const h = (p.expenseCents / maxExpense) * halfH
+      ctx.setFillColor(DRAW.expense)
+      const rect = new Rect(cx - barW / 2, zeroY - h, barW, Math.max(1, h))
+      const path = new Path()
+      path.addRect(rect)
+      ctx.addPath(path)
+      ctx.fillPath()
     }
-    area.addLine(new Point(width, padTop + plotH))
-    area.addLine(new Point(0, padTop + plotH))
-    area.closeSubpath()
-    return area
-  }
 
-  const buildLine = (key) => {
-    const line = new Path()
-    line.move(new Point(xAt(0), yAt(points[0][key])))
-    for (let i = 1; i < points.length; i++) {
-      const prevX = xAt(i - 1)
-      const prevY = yAt(points[i - 1][key])
-      const curX = xAt(i)
-      const curY = yAt(points[i][key])
-      line.addQuadCurve(new Point(curX, curY), new Point((prevX + curX) / 2, prevY))
+    if (p.incomeCents > 0) {
+      const h = (p.incomeCents / maxIncome) * halfH
+      ctx.setFillColor(DRAW.income)
+      const rect = new Rect(cx - barW / 2, zeroY, barW, Math.max(1, h))
+      const path = new Path()
+      path.addRect(rect)
+      ctx.addPath(path)
+      ctx.fillPath()
     }
-    return line
   }
 
-  // 1) 两块面积
-  for (const [key, color] of [
-    ['expenseCents', DRAW_FILL.expense],
-    ['incomeCents', DRAW_FILL.income],
-  ]) {
-    ctx.addPath(buildArea(key))
-    ctx.setFillColor(color)
-    ctx.fillPath()
-  }
-
-  // 2) 两条线（收入在上层，避免被支出的面积盖住）
-  for (const [key, color] of [
-    ['expenseCents', DRAW.expense],
-    ['incomeCents', DRAW.income],
-  ]) {
-    ctx.addPath(buildLine(key))
-    ctx.setStrokeColor(color)
-    ctx.setLineWidth(1.8)
-    ctx.strokePath()
-  }
-
-  // 3) 日期标签：首、中、尾
+  // 日期标签：首、中、尾
   ctx.setFont(Font.systemFont(9))
   ctx.setTextColor(DRAW.label)
   ctx.setTextAlignedCenter()
-  const marks = points.length <= 2 ? [0, points.length - 1] : [0, Math.floor((points.length - 1) / 2), points.length - 1]
+  const marks =
+    points.length <= 2 ? [0, points.length - 1] : [0, Math.floor((points.length - 1) / 2), points.length - 1]
   for (const i of [...new Set(marks)]) {
     const d = points[i].date
     const text = `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`
     // 两端的内边距，避免标签被裁掉
-    const left = Math.max(0, Math.min(width - 34, xAt(i) - 17))
+    const left = Math.max(0, Math.min(width - 34, slotW * i + slotW / 2 - 17))
     ctx.drawTextInRect(text, new Rect(left, height - padBottom + 2, 34, 12))
   }
 
@@ -216,8 +192,8 @@ function addLegend(widget) {
     l.textColor = C.sub
   }
   // dynamic 色在这里可用（是 WidgetText，不是 DrawContext）
-  item(C.red, '支出')
-  item(C.green, '收入')
+  item(C.red, '支出 ↑')
+  item(C.green, '收入 ↓')
   row.addSpacer()
 }
 
