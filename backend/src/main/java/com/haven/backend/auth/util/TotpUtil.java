@@ -1,12 +1,15 @@
 package com.haven.backend.auth.util;
 
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
 import java.net.URLEncoder;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
+import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.util.Locale;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 
 /**
  * TOTP（RFC 6238）工具类。
@@ -44,14 +47,37 @@ public final class TotpUtil {
     public static String buildUri(String secret, String username, String issuer) {
         String encodedIssuer = URLEncoder.encode(issuer, java.nio.charset.StandardCharsets.UTF_8);
         String encodedName = URLEncoder.encode(username, java.nio.charset.StandardCharsets.UTF_8);
-        return String.format("otpauth://totp/%s:%s?secret=%s&issuer=%s&digits=%d&period=%d",
+        return String.format(
+                "otpauth://totp/%s:%s?secret=%s&issuer=%s&digits=%d&period=%d",
                 encodedIssuer, encodedName, secret, encodedIssuer, CODE_DIGITS, TIME_STEP_SECONDS);
     }
 
     /**
      * 校验 TOTP 动态码，允许 ±WINDOW 步时间偏移。
      */
-    public static boolean verify(String secret, String code) {
+    /** 使用显式时钟校验动态码；业务代码应注入 {@code Clock}，测试可传固定时钟。 */
+    public static boolean verify(String secret, String code, java.time.Clock clock) {
+        return verify(secret, code, clock.instant().getEpochSecond());
+    }
+
+    /**
+     * 计算指定时间点的动态码，供测试构造确定输入（生产代码不应调用）。
+     *
+     * @param secret Base32 密钥
+     * @param epochSeconds 当前时间（秒）
+     */
+    static String generateCurrentCode(String secret, long epochSeconds) {
+        byte[] decoded = base32Decode(secret.replaceAll("\\s", "").toUpperCase(Locale.ROOT));
+        int generated = generateCode(decoded, epochSeconds / TIME_STEP_SECONDS);
+        return String.format("%0" + CODE_DIGITS + "d", generated);
+    }
+
+    /**
+     * 按指定时间点验证动态码（便于测试固定时钟）。
+     *
+     * @param epochSeconds 当前时间（秒），生产调用方传 {@code Instant.now().getEpochSecond()}
+     */
+    public static boolean verify(String secret, String code, long epochSeconds) {
         if (secret == null || code == null || code.length() != CODE_DIGITS) {
             return false;
         }
@@ -62,12 +88,21 @@ public final class TotpUtil {
             return false;
         }
 
-        long currentTimeStep = System.currentTimeMillis() / 1000 / TIME_STEP_SECONDS;
-        byte[] decodedSecret = base32Decode(secret.toUpperCase());
+        byte[] decodedSecret;
+        try {
+            decodedSecret = base32Decode(secret.replaceAll("\\s", "").toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            // 用户输入非法 Base32：属于校验失败而非服务端错误
+            return false;
+        }
+
+        long currentTimeStep = epochSeconds / TIME_STEP_SECONDS;
 
         for (long i = -WINDOW; i <= WINDOW; i++) {
             int generated = generateCode(decodedSecret, currentTimeStep + i);
-            if (generated == inputCode) {
+            if (MessageDigest.isEqual(
+                    Integer.toString(generated).getBytes(StandardCharsets.US_ASCII),
+                    Integer.toString(inputCode).getBytes(StandardCharsets.US_ASCII))) {
                 return true;
             }
         }
@@ -91,9 +126,9 @@ public final class TotpUtil {
     private static int truncate(byte[] hash) {
         int offset = hash[hash.length - 1] & 0x0F;
         return ((hash[offset] & 0x7F) << 24
-                | (hash[offset + 1] & 0xFF) << 16
-                | (hash[offset + 2] & 0xFF) << 8
-                | (hash[offset + 3] & 0xFF))
+                        | (hash[offset + 1] & 0xFF) << 16
+                        | (hash[offset + 2] & 0xFF) << 8
+                        | (hash[offset + 3] & 0xFF))
                 % (int) Math.pow(10, CODE_DIGITS);
     }
 
@@ -124,7 +159,9 @@ public final class TotpUtil {
         int index = 0;
         for (char c : cleaned.toCharArray()) {
             int val = BASE32_CHARS.indexOf(c);
-            if (val < 0) throw new IllegalArgumentException("非法 Base32 字符: " + c);
+            if (val < 0) {
+                throw new IllegalArgumentException("非法 Base32 字符: " + c);
+            }
             buffer = (buffer << 5) | val;
             bitsLeft += 5;
             if (bitsLeft >= 8) {

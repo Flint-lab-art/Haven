@@ -2,9 +2,8 @@ package com.haven.backend.auth.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
-import lombok.Data;
-
 import java.time.OffsetDateTime;
+import lombok.Data;
 
 /**
  * 创建 API Token 请求（POST /api/tokens）。

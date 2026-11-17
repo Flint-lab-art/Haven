@@ -11,6 +11,4 @@ import com.haven.backend.auth.entity.SaToken;
  * @author Kairo
  * @since 2026-11-08
  */
-public interface SaTokenMapper extends BaseMapper<SaToken> {
-
-}
+public interface SaTokenMapper extends BaseMapper<SaToken> {}

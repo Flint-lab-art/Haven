@@ -11,6 +11,4 @@ import com.haven.backend.auth.entity.Users;
  * @author Kairo
  * @since 2026-11-08
  */
-public interface UsersMapper extends BaseMapper<Users> {
-
-}
+public interface UsersMapper extends BaseMapper<Users> {}

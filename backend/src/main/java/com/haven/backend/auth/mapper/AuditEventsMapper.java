@@ -11,6 +11,4 @@ import com.haven.backend.auth.entity.AuditEvents;
  * @author Kairo
  * @since 2026-11-08
  */
-public interface AuditEventsMapper extends BaseMapper<AuditEvents> {
-
-}
+public interface AuditEventsMapper extends BaseMapper<AuditEvents> {}

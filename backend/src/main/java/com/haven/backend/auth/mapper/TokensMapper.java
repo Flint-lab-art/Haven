@@ -11,6 +11,4 @@ import com.haven.backend.auth.entity.Tokens;
  * @author Kairo
  * @since 2026-11-08
  */
-public interface TokensMapper extends BaseMapper<Tokens> {
-
-}
+public interface TokensMapper extends BaseMapper<Tokens> {}

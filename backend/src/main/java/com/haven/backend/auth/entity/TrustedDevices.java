@@ -4,20 +4,19 @@ import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.haven.backend.typehandler.UuidTypeHandler;
-import lombok.Getter;
-import lombok.Setter;
-import lombok.ToString;
-
 import java.io.Serializable;
 import java.time.OffsetDateTime;
 import java.util.UUID;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.ToString;
 
 /**
  * 授信设备：30 天内同设备登录免动态码。
  */
 @Getter
 @Setter
-@ToString
+@ToString(exclude = {"tokenHash"})
 @TableName("trusted_devices")
 public class TrustedDevices implements Serializable {
 

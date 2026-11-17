@@ -1,11 +1,11 @@
 package com.haven.backend.auth.util;
 
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.HexFormat;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 
 /**
  * API Token 生成与哈希工具。
@@ -37,7 +37,7 @@ public final class ApiTokenUtil {
         String prefix = ("read".equals(scope) ? PREFIX_RO : PREFIX_RW);
         String token = prefix + raw;
         String displayPrefix = token.substring(0, PREFIX_LEN);
-        return new String[]{token, displayPrefix};
+        return new String[] {token, displayPrefix};
     }
 
     /**

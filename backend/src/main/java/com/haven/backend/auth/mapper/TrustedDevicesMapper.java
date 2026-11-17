@@ -6,6 +6,4 @@ import com.haven.backend.auth.entity.TrustedDevices;
 /**
  * 授信设备 Mapper。
  */
-public interface TrustedDevicesMapper extends BaseMapper<TrustedDevices> {
-
-}
+public interface TrustedDevicesMapper extends BaseMapper<TrustedDevices> {}
