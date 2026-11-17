@@ -10,6 +10,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import LedgerEditDialog from '@/components/ledger/LedgerEditDialog.vue'
+import LedgerQuickDialog from '@/components/ledger/LedgerQuickDialog.vue'
 import LedgerDonutChart from '@/components/LedgerDonutChart.vue'
 import LedgerTrendChart from '@/components/LedgerTrendChart.vue'
 import { ApiError } from '@/api/client'
@@ -17,14 +18,13 @@ import { useLedgerData } from '@/composables/useLedgerData'
 import {
   createLedgerBatch,
   deleteLedgerEntry,
-  quickParse,
   updateLedgerEntry,
   type CreateLedgerEntryInput,
   type LedgerCategory,
   type LedgerEntry,
   type QuickParseResult,
 } from '@/api/ledger'
-import { formatDateTime, formatRelative } from '@/utils/format'
+import { groupByDay, relativeDayLabel } from '@/utils/ledger-group'
 import {
   LEDGER_CATEGORIES,
   categoriesForType,
@@ -60,10 +60,18 @@ const {
   messageOf: (err, fallback) => messageOf(err, fallback),
 })
 
-const quickText = ref('')
-const parsing = ref(false)
-const saving = ref(false)
-const parseResult = ref<QuickParseResult | null>(null)
+/** 明细按天分组；同一天内按时间倒序，带当日小计。 */
+const dayGroups = computed(() => groupByDay(entries.value))
+
+/** 明细行只显示时刻，日期已在分组标题里。 */
+function timeOf(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
+/** 快速记账弹窗开关。 */
+const quickOpen = ref(false)
 
 const editTarget = ref<LedgerEntry | null>(null)
 /** 编辑弹窗是否打开；与 editTarget 分开，关闭时保留 target 避免退场动画期间内容闪空。 */
@@ -74,14 +82,11 @@ const deletingBusy = ref(false)
 
 let toastTimer: number | undefined
 
-const parsedItems = computed(() => parseResult.value?.items ?? [])
-const parseErrors = computed(() => parseResult.value?.errors ?? [])
 const ranking = computed(() =>
   rankType.value === 'income'
     ? (summary.value?.income_category_ranking ?? [])
     : (summary.value?.category_ranking ?? []),
 )
-const recent = computed(() => summary.value?.recent ?? [])
 /** 当月每日走势；后端已按天补零。 */
 const dailyPoints = computed(() => summary.value?.daily ?? [])
 const donutLabel = computed(() => (rankType.value === 'income' ? '收入' : '支出'))
@@ -99,12 +104,6 @@ const deleteMessage = computed(() => {
   return `删除「${note}」这笔 ${formatYuan(entry.amount_cents)} 的记录？删除后无法恢复。`
 })
 
-/** 解析预览里的发生日期，如「11月16日」。 */
-function shortDate(value: string): string {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
-  return `${date.getMonth() + 1}月${date.getDate()}日`
-}
 
 function notify(message: string): void {
   toast.value = message
@@ -127,32 +126,15 @@ function changeMonth(delta: number): void {
   month.value = shiftMonth(month.value, delta)
 }
 
-async function doParse(): Promise<void> {
-  const text = quickText.value.trim()
-  if (!text || parsing.value) return
-
-  parsing.value = true
-  error.value = ''
+/**
+ * 弹窗确认写入。
+ *
+ * 写库留在页面里而不是弹窗内：只有页面知道当前月份、reload、toast 这些上下文。
+ * 弹窗只负责收集输入与预览，通过 done(ok) 告诉它结果。
+ */
+async function onQuickCommit(items: QuickParseResult['items'], done: (ok: boolean) => void): Promise<void> {
   try {
-    parseResult.value = await quickParse(text)
-    if (parseResult.value.items.length === 0 && parseResult.value.errors.length === 0) {
-      notify('没有解析出内容')
-    }
-  } catch (err) {
-    error.value = messageOf(err, '解析失败')
-  } finally {
-    parsing.value = false
-  }
-}
-
-async function confirmWrite(): Promise<void> {
-  const result = parseResult.value
-  if (!result || result.items.length === 0 || saving.value) return
-
-  saving.value = true
-  error.value = ''
-  try {
-    const items: CreateLedgerEntryInput[] = result.items.map((item) => ({
+    const payload: CreateLedgerEntryInput[] = items.map((item) => ({
       type: item.type,
       amount_cents: item.amount_cents,
       category: item.category,
@@ -161,24 +143,21 @@ async function confirmWrite(): Promise<void> {
     }))
     const batch = await createLedgerBatch({
       batch_id: newBatchId(),
-      raw_text: quickText.value,
-      items,
+      raw_text: items.map((item) => item.raw).join('\n'),
+      items: payload,
     })
-    const otherMonth = result.items.filter(
-      (item) => item.occurred_at.slice(0, 7) !== month.value,
-    ).length
+    // 记到了别的月份时提示一下，否则用户会以为「记了但没显示」
+    const otherMonth = items.filter((item) => item.occurred_at.slice(0, 7) !== month.value).length
     notify(
       otherMonth > 0
         ? `已记录 ${batch.total} 笔，其中 ${otherMonth} 笔在其他月份`
         : `已记录 ${batch.total} 笔`,
     )
-    quickText.value = ''
-    parseResult.value = null
     await reload()
+    done(true)
   } catch (err) {
     error.value = messageOf(err, '写入失败')
-  } finally {
-    saving.value = false
+    done(false)
   }
 }
 
@@ -336,87 +315,6 @@ onBeforeUnmount(() => {
       </div>
     </section>
 
-    <div class="ledger-columns">
-      <section class="ledger-card">
-        <div class="ledger-card-head">
-          <h2 class="ledger-card__title">快速记一笔</h2>
-          <span class="ledger-kbd">⌘ / Ctrl + Enter 解析</span>
-        </div>
-        <p class="field__hint">
-          一行一条：[日期] 分类 [备注…] 金额。日期可写 11月16 / 2026-11-16 / 昨天，不写就是今天；
-          金额支持 12 / 12.5 / 32元 / ¥32 / 二十五块，工资、奖金等自动判为收入。
-        </p>
-        <textarea
-          v-model="quickText"
-          class="textarea ledger-quick__input"
-          placeholder="午饭12&#10;晚饭 20&#10;11月16 午餐 16&#10;昨天 打车 25&#10;工资 8000"
-          aria-label="记账输入"
-          @keydown.meta.enter.prevent="doParse"
-          @keydown.ctrl.enter.prevent="doParse"
-        ></textarea>
-        <div class="ledger-quick__actions">
-          <button
-            class="btn"
-            type="button"
-            :disabled="parsing || !quickText.trim()"
-            @click="doParse"
-          >
-            {{ parsing ? '解析中…' : '解析预览' }}
-          </button>
-          <button
-            v-if="parsedItems.length"
-            class="btn btn--primary"
-            type="button"
-            :disabled="saving"
-            @click="confirmWrite"
-          >
-            {{ saving ? '写入中…' : `确认写入 ${parsedItems.length} 笔` }}
-          </button>
-        </div>
-
-        <div v-if="parseResult" class="ledger-parse" aria-live="polite">
-          <div v-for="item in parsedItems" :key="item.line" class="ledger-parse__row">
-            <span class="ledger-parse__date">{{ shortDate(item.occurred_at) }}</span>
-            <span class="ledger-cat" :class="`ledger-cat--${categoryTone(item.category)}`">
-              {{ item.category }}
-            </span>
-            <span class="ledger-parse__note">{{ item.note || '（无备注）' }}</span>
-            <span class="ledger-parse__amount" :class="{ 'is-income': item.type === 'income' }">
-              {{ formatSignedYuan(item.type, item.amount_cents) }}
-            </span>
-          </div>
-          <ul v-if="parseErrors.length" class="ledger-parse__errors">
-            <li v-for="err in parseErrors" :key="err.line">
-              第 {{ err.line }} 行：{{ err.message }}
-              <span v-if="err.raw" class="muted">（{{ err.raw }}）</span>
-            </li>
-          </ul>
-          <p v-if="!parsedItems.length && !parseErrors.length" class="ledger-muted">
-            没有可写入的内容。
-          </p>
-        </div>
-      </section>
-
-      <section class="ledger-card">
-        <div class="ledger-card-head">
-          <h2 class="ledger-card__title">最近 3 笔</h2>
-          <span class="muted">按录入时间</span>
-        </div>
-        <p class="field__hint">刚记的会出现在这里，兼作「记上了没有」的确认。</p>
-        <p v-if="!recent.length" class="ledger-muted">还没有记录。</p>
-        <div v-for="entry in recent" :key="entry.id" class="ledger-recent__row">
-          <span class="ledger-cat" :class="`ledger-cat--${categoryTone(entry.category)}`">
-            {{ entry.category }}
-          </span>
-          <span class="ledger-recent__note">{{ entry.note || '（无备注）' }}</span>
-          <span class="ledger-recent__amount" :class="{ 'is-income': entry.type === 'income' }">
-            {{ formatSignedYuan(entry.type, entry.amount_cents) }}
-          </span>
-          <span class="ledger-recent__time">{{ formatRelative(entry.created_at) }}</span>
-        </div>
-      </section>
-    </div>
-
     <!-- 统计图表：与上方汇总共用同一份数据，不再额外请求 -->
     <section class="ledger-charts" aria-label="记账统计">
       <div class="ledger-card">
@@ -453,67 +351,104 @@ onBeforeUnmount(() => {
         </label>
       </div>
 
-      <p class="field__hint ledger-entries__hint">
-        改分类会自动记住备注里的第一个词，下次输入直接命中。
-      </p>
-
-      <div v-if="loadingEntries && entries.length === 0" class="ledger-entry-list" aria-busy="true">
-        <div v-for="i in 4" :key="i" class="ledger-entry ledger-entry--skeleton">
-          <span class="skeleton" style="width: 86px; height: 14px"></span>
-          <span class="skeleton" style="width: 64px; height: 26px"></span>
-          <span class="skeleton" style="width: 40%; height: 14px"></span>
-          <span class="skeleton" style="width: 64px; height: 14px"></span>
+      <div v-if="loadingEntries && entries.length === 0" class="ledger-day-list" aria-busy="true">
+        <div v-for="i in 3" :key="i" class="ledger-day">
+          <div class="ledger-day__head">
+            <span class="skeleton skeleton--title" style="width: 96px"></span>
+          </div>
+          <div v-for="j in 2" :key="j" class="ledger-entry">
+            <span class="skeleton" style="width: 46px; height: 14px"></span>
+            <span class="skeleton" style="width: 64px; height: 24px"></span>
+            <span class="skeleton" style="width: 34%; height: 14px"></span>
+            <span class="skeleton" style="width: 56px; height: 14px"></span>
+          </div>
         </div>
       </div>
 
-      <div v-else-if="entries.length === 0" class="ledger-empty">
+      <div v-else-if="dayGroups.length === 0" class="ledger-empty">
         <p class="ledger-empty__title">这个月还没有记录</p>
         <p class="ledger-empty__text">
-          {{ categoryFilter ? '换个分类看看，或者在左边记一笔。' : '在左边输入「午饭12」，先试试解析。' }}
+          {{ categoryFilter ? '换个分类看看，或者点右下角记一笔。' : '点右下角的按钮，输入「午饭12」试试。' }}
         </p>
       </div>
 
-      <div v-else class="ledger-entry-list">
-        <div v-for="entry in entries" :key="entry.id" class="ledger-entry">
-          <span class="ledger-entry__date">{{ formatDateTime(entry.occurred_at) }}</span>
-          <select
-            class="select ledger-entry__cat"
-            :class="`ledger-entry__cat--${categoryTone(entry.category)}`"
-            :value="entry.category"
-            :aria-label="`修改分类：${entry.note || entry.category}`"
-            @change="onCategoryChange(entry, $event)"
-          >
-            <option
-              v-for="category in categoriesForType(entry.type, entry.category)"
-              :key="category"
-              :value="category"
-            >
-              {{ category }}
-            </option>
-          </select>
-          <span class="ledger-entry__note" :title="entry.note">{{ entry.note || '—' }}</span>
-          <span class="ledger-entry__amount" :class="{ 'is-income': entry.type === 'income' }">
-            {{ formatSignedYuan(entry.type, entry.amount_cents) }}
-          </span>
-          <button class="icon-btn ledger-entry__action" type="button" aria-label="编辑金额与时间" @click="openEdit(entry)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M4 20h4L19 9l-4-4L4 16z" />
-              <path d="m13 7 4 4" />
-            </svg>
-          </button>
-          <button
-            class="icon-btn ledger-entry__action ledger-entry__action--danger"
-            type="button"
-            aria-label="删除这笔记录"
-            @click="deleting = entry"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" />
-            </svg>
-          </button>
-        </div>
+      <!-- 按天分组：同一天的小计让「这天花了多少」一眼可见 -->
+      <div v-else class="ledger-day-list">
+        <section v-for="group in dayGroups" :key="group.date" class="ledger-day">
+          <header class="ledger-day__head">
+            <span class="ledger-day__date">{{ relativeDayLabel(group.label, group.date) }}</span>
+            <span class="ledger-day__weekday">{{ group.weekday }}</span>
+            <span class="ledger-day__sum">
+              <span v-if="group.expenseCents" class="ledger-day__sum-item">
+                支出 <strong>{{ formatYuan(group.expenseCents) }}</strong>
+              </span>
+              <span v-if="group.incomeCents" class="ledger-day__sum-item ledger-day__sum-item--income">
+                收入 <strong>{{ formatYuan(group.incomeCents) }}</strong>
+              </span>
+            </span>
+          </header>
+
+          <div class="ledger-entry-list">
+            <div v-for="entry in group.items" :key="entry.id" class="ledger-entry">
+              <span class="ledger-entry__time">{{ timeOf(entry.occurred_at) }}</span>
+              <select
+                class="select ledger-entry__cat"
+                :class="`ledger-entry__cat--${categoryTone(entry.category)}`"
+                :value="entry.category"
+                :aria-label="`修改分类：${entry.note || entry.category}`"
+                @change="onCategoryChange(entry, $event)"
+              >
+                <option
+                  v-for="category in categoriesForType(entry.type, entry.category)"
+                  :key="category"
+                  :value="category"
+                >
+                  {{ category }}
+                </option>
+              </select>
+              <span class="ledger-entry__note" :title="entry.note">{{ entry.note || '—' }}</span>
+              <span class="ledger-entry__amount" :class="{ 'is-income': entry.type === 'income' }">
+                {{ formatSignedYuan(entry.type, entry.amount_cents) }}
+              </span>
+              <button class="icon-btn ledger-entry__action" type="button" aria-label="编辑金额与时间" @click="openEdit(entry)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M4 20h4L19 9l-4-4L4 16z" />
+                  <path d="m13 7 4 4" />
+                </svg>
+              </button>
+              <button
+                class="icon-btn ledger-entry__action ledger-entry__action--danger"
+                type="button"
+                aria-label="删除这笔记录"
+                @click="deleting = entry"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </section>
       </div>
     </section>
+
+    <!-- 记账是低频动作，收进悬浮按钮，把版面留给明细 -->
+    <button
+      class="ledger-fab"
+      type="button"
+      aria-label="快速记一笔"
+      @click="quickOpen = true"
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+        <path d="M12 5v14M5 12h14" />
+      </svg>
+      <span>记一笔</span>
+    </button>
+
+    <LedgerQuickDialog
+      v-model:open="quickOpen"
+      @commit="onQuickCommit"
+    />
 
     <LedgerEditDialog
       v-model:open="editDialogOpen"

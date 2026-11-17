@@ -1,6 +1,20 @@
 import { createApi } from './api'
 import { expect, test } from './fixtures'
 
+
+/**
+ * 打开快速记账弹窗。
+ *
+ * 记账入口从「页面内常驻大文本框」改成了悬浮按钮 + 弹窗：
+ * 看流水是高频动作，记账是低频动作，不该让输入框占掉版面。
+ */
+async function openQuickDialog(page: import('@playwright/test').Page) {
+  await page.getByRole('button', { name: '快速记一笔' }).click()
+  const dialog = page.getByRole('dialog', { name: '快速记账' })
+  await expect(dialog).toBeVisible()
+  return dialog
+}
+
 /**
  * 记账：快捷解析预览、确认写入、月度汇总、切月份、改分类、还款分类、删除。
  *
@@ -10,12 +24,13 @@ import { expect, test } from './fixtures'
 
 test('快捷输入能解析出预览条目', async ({ authedPage: page }) => {
   await page.goto('/ledger')
+  const dialog = await openQuickDialog(page)
 
-  await page.getByLabel('记账输入').fill('早餐 12\n打车 25.5')
-  await page.getByRole('button', { name: '解析预览' }).click()
+  await dialog.getByLabel('记账输入').fill('早餐 12\n打车 25.5')
+  await dialog.getByRole('button', { name: '解析预览' }).click()
 
   // 预览行按解析结果渲染
-  const rows = page.locator('.ledger-parse__row')
+  const rows = dialog.locator('.ledger-parse__row')
   await expect(rows).toHaveCount(2)
   await expect(rows.first()).toContainText('早餐')
   await expect(rows.first()).toContainText('12')
@@ -24,10 +39,14 @@ test('快捷输入能解析出预览条目', async ({ authedPage: page }) => {
 
 test('确认写入后明细出现，月度汇总同步更新', async ({ authedPage: page }) => {
   await page.goto('/ledger')
+  const dialog = await openQuickDialog(page)
 
-  await page.getByLabel('记账输入').fill('早餐 30\n午餐 20')
-  await page.getByRole('button', { name: '解析预览' }).click()
-  await page.getByRole('button', { name: /确认写入 2 笔/ }).click()
+  await dialog.getByLabel('记账输入').fill('早餐 30\n午餐 20')
+  await dialog.getByRole('button', { name: '解析预览' }).click()
+  await dialog.getByRole('button', { name: /确认写入 2 笔/ }).click()
+
+  // 写入成功后弹窗自动关闭
+  await expect(dialog).toBeHidden()
 
   // 明细列表出现两行
   const entries = page.locator('.ledger-entry')
@@ -124,12 +143,13 @@ test('可以删除明细，删除后列表清空', async ({ authedPage: page }) 
 
 test('解析失败的行给出逐行错误，且不写入', async ({ authedPage: page }) => {
   await page.goto('/ledger')
+  const dialog = await openQuickDialog(page)
 
-  await page.getByLabel('记账输入').fill('这一行没有金额')
-  await page.getByRole('button', { name: '解析预览' }).click()
+  await dialog.getByLabel('记账输入').fill('这一行没有金额')
+  await dialog.getByRole('button', { name: '解析预览' }).click()
 
   // 有明显错误提示，且没有可写入的条目
-  await expect(page.locator('.ledger-parse__errors')).toBeVisible()
+  await expect(dialog.locator('.ledger-parse__errors')).toBeVisible()
 
   const api = createApi(page.request)
   expect((await api.ledgerEntries()).items).toHaveLength(0)
@@ -239,6 +259,60 @@ test('「订阅」是内置支出分类，与 Token 并存且互不干扰', asyn
   const options = await row.locator('select.ledger-entry__cat option').allTextContents()
   expect(options).toContain('订阅')
   expect(options).toContain('Token')
+})
+
+test('明细按天分组，每天显示当日小计', async ({ authedPage: page }) => {
+  const api = createApi(page.request)
+  // 同一天两笔支出 + 另一天一笔，验证分组与组内合计
+  await api.quickCommit('早饭 10\n午饭 20\n昨天 晚饭 30')
+
+  await page.goto('/ledger')
+
+  // 应分成两组：今天与昨天（写法上「昨天」会被解析成前一天）
+  const days = page.locator('.ledger-day')
+  await expect(days).toHaveCount(2)
+
+  // 第一组是今天，小计 = 30
+  await expect(days.first().locator('.ledger-day__date')).toHaveText('今天')
+  await expect(days.first().locator('.ledger-day__sum')).toContainText('30')
+
+  // 第二组是昨天，小计 = 30
+  await expect(days.nth(1).locator('.ledger-day__date')).toHaveText('昨天')
+  await expect(days.nth(1).locator('.ledger-day__sum')).toContainText('30')
+
+  // 组内只显示时刻（日期已在表头）
+  await expect(days.first().locator('.ledger-entry__time').first()).toHaveText(/^\d{2}:\d{2}$/)
+})
+
+test('同一天的支出与收入分别汇总，不混在一起', async ({ authedPage: page }) => {
+  const api = createApi(page.request)
+  await api.quickCommit('午饭 50\n工资 8000')
+
+  await page.goto('/ledger')
+  const today = page.locator('.ledger-day').first()
+
+  // 支出 50、收入 8000 各自标注
+  await expect(today.locator('.ledger-day__sum-item').first()).toContainText('支出')
+  await expect(today.locator('.ledger-day__sum-item').first()).toContainText('50')
+  await expect(today.locator('.ledger-day__sum-item--income')).toContainText('收入')
+  // 金额带千分位：¥8,000
+  await expect(today.locator('.ledger-day__sum-item--income')).toContainText('8,000')
+})
+
+test('快速记账入口是悬浮按钮，不占用明细版面', async ({ authedPage: page }) => {
+  await page.goto('/ledger')
+
+  const fab = page.getByRole('button', { name: '快速记一笔' })
+  await expect(fab).toBeVisible()
+
+  // 记账输入框默认不可见：只有点开弹窗才出现
+  await expect(page.getByLabel('记账输入')).toHaveCount(0)
+
+  // 弹窗可用 Esc 之外的显式按钮关闭
+  await fab.click()
+  await expect(page.getByRole('dialog', { name: '快速记账' })).toBeVisible()
+  await page.getByRole('dialog', { name: '快速记账' }).getByRole('button', { name: '取消' }).click()
+  await expect(page.getByRole('dialog', { name: '快速记账' })).toBeHidden()
 })
 
 test('重复提交同一批次不会重复写入（幂等）', async ({ authedPage: page }) => {
