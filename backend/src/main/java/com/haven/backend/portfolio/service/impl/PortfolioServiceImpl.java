@@ -42,6 +42,17 @@ public class PortfolioServiceImpl implements PortfolioService {
 
     @Override
     @Transactional(readOnly = true)
+    public PortfolioList listMyPortfolio(String userId) {
+        UUID uid = UUID.fromString(userId);
+        List<PortfolioItems> items = itemsMapper.selectList(new LambdaQueryWrapper<PortfolioItems>()
+                .eq(PortfolioItems::getUserId, uid)
+                .orderByAsc(PortfolioItems::getSortOrder));
+        List<PortfolioItemSummary> list = items.stream().map(this::toSummary).collect(Collectors.toList());
+        return new PortfolioList(list, list.size());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public PortfolioItemDetail getPublicPortfolioItem(UUID itemId) {
         PortfolioItems item = itemsMapper.selectById(itemId);
         // 未公开的作品在匿名接口统一按不存在处理，避免泄露草稿存在性

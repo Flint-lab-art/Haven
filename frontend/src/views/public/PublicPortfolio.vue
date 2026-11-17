@@ -3,7 +3,7 @@
 import { onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import PublicEmpty from '@/components/layout/PublicEmpty.vue'
-import { listPortfolio, type PortfolioItem } from '@/api/portfolio'
+import { listPublicPortfolio, type PortfolioItem } from '@/api/portfolio'
 import { repoLabel } from '@/utils/portfolio'
 
 const items = ref<PortfolioItem[]>([])
@@ -12,7 +12,7 @@ const error = ref('')
 
 onMounted(async () => {
   try {
-    items.value = (await listPortfolio()).items
+    items.value = (await listPublicPortfolio()).items
   } catch {
     error.value = '作品集加载失败，请稍后重试'
   } finally {

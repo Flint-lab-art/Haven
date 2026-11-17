@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /** 中间栏作品集列表；新增与编辑在右侧。 */
 import { onMounted, ref, watch } from 'vue'
-import { listPortfolio, type PortfolioItem } from '@/api/portfolio'
+import { listMyPortfolio, type PortfolioItem } from '@/api/portfolio'
 import { useUiStore } from '@/stores/ui'
 
 const ui = useUiStore()
@@ -14,7 +14,7 @@ async function load(): Promise<void> {
   loading.value = true
   error.value = ''
   try {
-    items.value = (await listPortfolio()).items
+    items.value = (await listMyPortfolio()).items
   } catch {
     error.value = '作品集加载失败'
   } finally {

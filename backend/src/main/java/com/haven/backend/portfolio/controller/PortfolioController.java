@@ -51,6 +51,13 @@ public class PortfolioController {
 
     // ---- 需要登录的接口 ----
 
+    /** 管理页列表：返回全部作品，含未公开的草稿。 */
+    @GetMapping("/portfolio")
+    public PortfolioList listMine(HttpServletRequest request) {
+        String userId = AuthInterceptor.requireUserId(request);
+        return portfolioService.listMyPortfolio(userId);
+    }
+
     @GetMapping("/portfolio/{id}")
     public PortfolioItemDetail get(@PathVariable UUID id, HttpServletRequest request) {
         String userId = AuthInterceptor.requireUserId(request);

@@ -15,6 +15,12 @@ public interface PortfolioService {
 
     PortfolioList listPublicPortfolio();
 
+    /**
+     * 列出当前用户的**全部**作品，含未公开的草稿。
+     * 管理页必须用它：只返回公开作品会让刚创建、还没勾选公开的作品从列表里消失。
+     */
+    PortfolioList listMyPortfolio(String userId);
+
     PortfolioItemDetail getPublicPortfolioItem(UUID itemId);
 
     PortfolioItemDetail getPortfolioItem(String userId, UUID itemId);

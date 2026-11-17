@@ -12,7 +12,7 @@ import {
   getPortfolioItem,
   deleteItem,
   deleteRepo,
-  listPortfolio,
+  listMyPortfolio,
   updateItem,
   type PortfolioItem,
   type PortfolioRepo,
@@ -39,7 +39,7 @@ const selected = computed(() => items.value.find((item) => item.id === ui.select
 async function load(): Promise<void> {
   loading.value = true
   try {
-    items.value = (await listPortfolio()).items
+    items.value = (await listMyPortfolio()).items
     if (ui.selectedPortfolioId && !items.value.some((item) => item.id === ui.selectedPortfolioId)) {
       ui.selectPortfolio(null)
     }

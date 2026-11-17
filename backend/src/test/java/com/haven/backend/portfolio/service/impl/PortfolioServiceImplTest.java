@@ -55,6 +55,22 @@ class PortfolioServiceImplTest {
                 portfolioService.getPublicPortfolioItem(item.getId()).content());
     }
 
+    @Test
+    @DisplayName("管理页列表必须包含未公开的草稿（只返回公开作品会让新建的作品凭空消失）")
+    void listMine_includesPrivateDrafts() {
+        UUID uid = UUID.randomUUID();
+        PortfolioItems draft = item(false);
+        draft.setUserId(uid);
+        PortfolioItems published = item(true);
+        published.setUserId(uid);
+        when(itemsMapper.selectList(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(java.util.List.of(draft, published));
+
+        var result = portfolioService.listMyPortfolio(uid.toString());
+
+        assertEquals(2, result.items().size(), "未公开作品也必须出现在自己的管理页里");
+    }
+
     private static PortfolioItems item(boolean isPublic) {
         PortfolioItems item = new PortfolioItems();
         item.setId(UUID.randomUUID());

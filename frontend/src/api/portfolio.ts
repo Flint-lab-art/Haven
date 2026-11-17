@@ -54,8 +54,22 @@ export interface UpdateRepoInput {
   is_primary?: boolean
 }
 
-export function listPortfolio(): Promise<ListResult<PortfolioItem>> {
+/**
+ * 公开作品集列表（匿名可访问，只含 is_public=true）。
+ * 公开域页面用它；管理页请用 listMyPortfolio。
+ */
+export function listPublicPortfolio(): Promise<ListResult<PortfolioItem>> {
   return request<ListResult<PortfolioItem>>('/api/public/portfolio')
+}
+
+/**
+ * 当前用户的全部作品（含未公开草稿），管理页用。
+ *
+ * 不能用公开接口：它只返回 is_public=true 的作品，
+ * 会导致刚创建、还没勾选公开的作品从管理页「凭空消失」。
+ */
+export function listMyPortfolio(): Promise<ListResult<PortfolioItem>> {
+  return request<ListResult<PortfolioItem>>('/api/portfolio')
 }
 
 /** 私有域的作品详情，含介绍正文（docs/v3/api.md 1.2）。 */
