@@ -13,7 +13,7 @@ withDefaults(defineProps<{ inline?: boolean }>(), { inline: false })
   </footer>
 </template>
 
-<style>
+<style scoped>
 .site-footer__gongan-icon {
   width: 16px;
   height: 16px;

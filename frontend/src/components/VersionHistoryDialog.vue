@@ -55,6 +55,20 @@ const lines = computed(() =>
     ? diffLines(stripHtml(detail.value.content), stripHtml(props.currentContent))
     : [],
 )
+
+/**
+ * 给每条 diff 行补一个稳定 key。
+ *
+ * 行号在同一份 diff 内唯一（same 行两者都有，其余至少有一个），
+ * 比数组下标更适合做 key：切换版本时 Vue 能正确复用而不是错位重绘。
+ */
+const diffRows = computed(() =>
+  lines.value.map((line, index) => ({
+    ...line,
+    key: `${index}-${line.oldLine ?? 'x'}-${line.newLine ?? 'x'}`,
+  })),
+)
+
 const stats = computed(() => diffStats(lines.value))
 
 /** 标题与当前编辑器标题是否不同，供顶部单独提示。 */
@@ -219,8 +233,8 @@ onBeforeUnmount(() => {
 
             <div v-else class="diff-view">
               <div
-                v-for="(line, index) in lines"
-                :key="index"
+                v-for="line in diffRows"
+                :key="line.key"
                 class="diff-line"
                 :class="`diff-line--${line.kind}`"
               >

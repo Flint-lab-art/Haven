@@ -7,7 +7,8 @@
  * - compact：20–24px（Mini 侧边栏）
  * - small：16–32px（favicon）
  *
- * 统一使用 currentColor，外层用 --brand (#1F2A44) 上色。
+ * 统一使用 currentColor，由外层的 .brand-mark { color: var(--brand) } 上色；
+ * --brand 在每套主题里取值不同，组件自身不写死颜色。
  */
 withDefaults(
   defineProps<{
