@@ -11,6 +11,7 @@ const items = [
   { name: 'settings-sessions', label: '会话' },
   { name: 'settings-devices', label: '授信设备' },
   { name: 'settings-tokens', label: 'API Token' },
+  { name: 'settings-import', label: '导入账单' },
 ] as const
 </script>
 

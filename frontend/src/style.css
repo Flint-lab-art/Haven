@@ -8029,3 +8029,82 @@ select:focus-visible {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ── 账单导入 ──────────────────────────────────────────── */
+.import-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--sp-4);
+  margin-top: var(--sp-4);
+  padding: var(--sp-4);
+  border-radius: var(--r-lg);
+  background: var(--fill-2);
+}
+
+.import-table-wrap {
+  margin-top: var(--sp-4);
+  max-height: 60vh;
+  overflow: auto;
+  border: 1px solid var(--sep);
+  border-radius: var(--r-lg);
+}
+
+.import-table {
+  width: 100%;
+  border-collapse: collapse;
+  font: var(--text-caption);
+}
+
+.import-table th,
+.import-table td {
+  padding: 6px var(--sp-3);
+  text-align: left;
+  border-bottom: 1px solid var(--sep);
+  white-space: nowrap;
+}
+
+.import-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-elevated);
+  font-weight: 600;
+  color: var(--label-2);
+}
+
+.import-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.import-table .nowrap {
+  white-space: nowrap;
+}
+
+/* 长文本列单独限宽，避免把表格撑爆 */
+.import-table .ellipsis {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 被排除的行变灰，但仍然可见，方便核对「为什么没导入」 */
+.import-table tbody tr.is-skipped {
+  opacity: 0.55;
+}
+
+.import-table__cat {
+  width: 92px;
+  min-height: 26px;
+  height: 26px;
+  padding: 1px 22px 1px 8px;
+  font: var(--text-caption);
+  background-position: calc(100% - 12px) 50%, calc(100% - 7px) 50%;
+  background-size: 4px 4px, 4px 4px;
+}
+
+@media (max-width: 900px) {
+  .import-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

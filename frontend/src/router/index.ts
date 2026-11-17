@@ -246,6 +246,15 @@ const privateRoutes: RouteRecordRaw[] = [
         meta: { title: 'API Token', section: 'settings' },
       },
       {
+        path: 'settings/import',
+        name: 'settings-import',
+        components: {
+          default: () => import('@/views/private/SettingsImport.vue'),
+          list: () => import('@/components/common/SettingsPanel.vue'),
+        },
+        meta: { title: '导入账单', section: 'settings' },
+      },
+      {
         // 公开笔记预览（docs/frontend/frontend.md 第四节最后一行，可选）
         path: 'preview/notes/:id',
         name: 'note-preview',
