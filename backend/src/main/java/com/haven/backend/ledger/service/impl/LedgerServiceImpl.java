@@ -82,6 +82,22 @@ public class LedgerServiceImpl implements LedgerService {
             "([零〇一二两三四五六七八九十百千万亿]+(?:点[零〇一二两三四五六七八九]+)?)"
                     + "\\s*(?:元|块|圆|人民币)?\\s*$");
 
+    /** 行首完整日期：2026-11-16 / 2026/11/16 / 2026年11月16日。 */
+    private static final Pattern FULL_DATE = Pattern.compile(
+            "^(\\d{4})\\s*[-/.年]\\s*(\\d{1,2})\\s*[-/.月]\\s*(\\d{1,2})\\s*[日号]?(?=\\s|$)");
+
+    /** 行首月日：11月16 / 11-16 / 11/16，年份默认当前年。 */
+    private static final Pattern MONTH_DAY = Pattern.compile(
+            "^(\\d{1,2})\\s*[-/.月]\\s*(\\d{1,2})\\s*[日号]?(?=\\s|$)");
+
+    /** 行首单日：16号 / 16日，年月默认当前。 */
+    private static final Pattern DAY_ONLY = Pattern.compile(
+            "^(\\d{1,2})\\s*[日号](?=\\s|$)");
+
+    /** 相对日期：今天 / 昨天 / 前天。 */
+    private static final Pattern RELATIVE_DATE = Pattern.compile(
+            "^(今天|昨天|前天)(?=\\s|$)");
+
     private static final Map<Character, Integer> CN_DIGITS = Map.ofEntries(
             Map.entry('零', 0), Map.entry('〇', 0),
             Map.entry('一', 1), Map.entry('二', 2), Map.entry('两', 2),
@@ -142,6 +158,9 @@ public class LedgerServiceImpl implements LedgerService {
 
     private ParsedLedgerItem buildItem(String raw, int line, String remaining, long amountCents,
             Map<String, String> aliases, OffsetDateTime now) {
+        DatePrefix dated = extractDatePrefix(remaining, now);
+        remaining = dated.rest();
+
         String categoryToken;
         String rest;
         int split = firstWhitespace(remaining);
@@ -172,7 +191,75 @@ public class LedgerServiceImpl implements LedgerService {
         String type = INCOME_CATEGORY_SET.contains(category) || containsIncomeKeyword(remaining)
                 ? "income"
                 : "expense";
-        return new ParsedLedgerItem(line, raw, type, amountCents, category, note, now);
+        return new ParsedLedgerItem(line, raw, type, amountCents, category, note, dated.occurredAt());
+    }
+
+    /**
+     * 抽取行首日期，返回剩余文本与发生时间。
+     *
+     * 支持的写法：{@code 2026-11-16}、{@code 2026年11月16日}、{@code 11月16}、
+     * {@code 11-16}、{@code 16号}、{@code 今天 / 昨天 / 前天}。
+     * 没写日期时沿用服务端当前时间；月日与单日默认当前年份。
+     */
+    private DatePrefix extractDatePrefix(String remaining, OffsetDateTime now) {
+        Matcher full = FULL_DATE.matcher(remaining);
+        if (full.find()) {
+            OffsetDateTime at = resolveDate(now,
+                    Integer.parseInt(full.group(1)),
+                    Integer.parseInt(full.group(2)),
+                    Integer.parseInt(full.group(3)));
+            if (at != null) {
+                return new DatePrefix(remaining.substring(full.end()).trim(), at);
+            }
+        }
+
+        Matcher monthDay = MONTH_DAY.matcher(remaining);
+        if (monthDay.find()) {
+            OffsetDateTime at = resolveDate(now, now.getYear(),
+                    Integer.parseInt(monthDay.group(1)),
+                    Integer.parseInt(monthDay.group(2)));
+            if (at != null) {
+                return new DatePrefix(remaining.substring(monthDay.end()).trim(), at);
+            }
+        }
+
+        Matcher dayOnly = DAY_ONLY.matcher(remaining);
+        if (dayOnly.find()) {
+            OffsetDateTime at = resolveDate(now, now.getYear(), now.getMonthValue(),
+                    Integer.parseInt(dayOnly.group(1)));
+            if (at != null) {
+                return new DatePrefix(remaining.substring(dayOnly.end()).trim(), at);
+            }
+        }
+
+        Matcher relative = RELATIVE_DATE.matcher(remaining);
+        if (relative.find()) {
+            int daysAgo = switch (relative.group(1)) {
+                case "昨天" -> 1;
+                case "前天" -> 2;
+                default -> 0;
+            };
+            return new DatePrefix(remaining.substring(relative.end()).trim(), now.minusDays(daysAgo));
+        }
+
+        return new DatePrefix(remaining, now);
+    }
+
+    /** 校验年月日并保留当前时分秒；非法日期返回 null，交给后续规则处理。 */
+    private OffsetDateTime resolveDate(OffsetDateTime now, int year, int month, int day) {
+        if (year < 1970 || year > 2100 || month < 1 || month > 12) {
+            return null;
+        }
+        if (day < 1 || day > YearMonth.of(year, month).lengthOfMonth()) {
+            return null;
+        }
+        return LocalDate.of(year, month, day)
+                .atTime(now.toLocalTime())
+                .atZone(ZoneId.systemDefault())
+                .toOffsetDateTime();
+    }
+
+    private record DatePrefix(String rest, OffsetDateTime occurredAt) {
     }
 
     private AmountMatch extractAmount(String line) {

@@ -92,6 +92,35 @@ class LedgerSmokeTest {
         }
 
         @Test
+        void quickParseSupportsLeadingDates() {
+                String userId = UUID.randomUUID().toString();
+                seedAliases(userId);
+
+                LocalDate today = LocalDate.now();
+                YearMonth thisMonth = YearMonth.from(today);
+
+                QuickParseResult result = ledgerService.quickParse(userId, """
+                                11月16 午饭 16
+                                2026-01-02 午饭 20
+                                昨天 晚饭 30
+                                16号 午饭 12
+                                """);
+
+                assertEquals(4, result.items().size());
+                assertEquals(0, result.errors().size());
+
+                List<ParsedLedgerItem> items = result.items();
+                assertEquals(LocalDate.of(today.getYear(), 11, 16), items.get(0).occurredAt().toLocalDate());
+                assertEquals(LocalDate.of(2026, 1, 2), items.get(1).occurredAt().toLocalDate());
+                assertEquals(today.minusDays(1), items.get(2).occurredAt().toLocalDate());
+                assertEquals(thisMonth.atDay(16), items.get(3).occurredAt().toLocalDate());
+
+                // 不写日期时沿用当前时间
+                QuickParseResult plain = ledgerService.quickParse(userId, "午饭 12");
+                assertEquals(today, plain.items().getFirst().occurredAt().toLocalDate());
+        }
+
+        @Test
         void quickParseSupportsAmountFormats() {
                 String userId = UUID.randomUUID().toString();
                 seedAliases(userId);

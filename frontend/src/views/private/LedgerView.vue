@@ -101,6 +101,13 @@ const deleteMessage = computed(() => {
   return `删除「${note}」这笔 ${formatYuan(entry.amount_cents)} 的记录？删除后无法恢复。`
 })
 
+/** 解析预览里的发生日期，如「11月16日」。 */
+function shortDate(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return `${date.getMonth() + 1}月${date.getDate()}日`
+}
+
 function notify(message: string): void {
   toast.value = message
   if (toastTimer !== undefined) window.clearTimeout(toastTimer)
@@ -204,7 +211,14 @@ async function confirmWrite(): Promise<void> {
       raw_text: quickText.value,
       items,
     })
-    notify(`已记录 ${batch.total} 笔`)
+    const otherMonth = result.items.filter(
+      (item) => item.occurred_at.slice(0, 7) !== month.value,
+    ).length
+    notify(
+      otherMonth > 0
+        ? `已记录 ${batch.total} 笔，其中 ${otherMonth} 笔在其他月份`
+        : `已记录 ${batch.total} 笔`,
+    )
     quickText.value = ''
     parseResult.value = null
     await reload()
@@ -431,13 +445,13 @@ onBeforeUnmount(() => {
           <span class="ledger-kbd">⌘ / Ctrl + Enter 解析</span>
         </div>
         <p class="field__hint">
-          一行一条：分类 [备注…] 金额。金额支持 12 / 12.5 / 32元 / ¥32 / 二十五块；
-          工资、奖金、报销、退款、红包等自动判为收入。
+          一行一条：[日期] 分类 [备注…] 金额。日期可写 11月16 / 2026-11-16 / 昨天，不写就是今天；
+          金额支持 12 / 12.5 / 32元 / ¥32 / 二十五块，工资、奖金等自动判为收入。
         </p>
         <textarea
           v-model="quickText"
           class="textarea ledger-quick__input"
-          placeholder="午饭12&#10;晚饭 20&#10;网购 零食 100&#10;工资 8000"
+          placeholder="午饭12&#10;晚饭 20&#10;11月16 午餐 16&#10;昨天 打车 25&#10;工资 8000"
           aria-label="记账输入"
           @keydown.meta.enter.prevent="doParse"
           @keydown.ctrl.enter.prevent="doParse"
@@ -464,6 +478,7 @@ onBeforeUnmount(() => {
 
         <div v-if="parseResult" class="ledger-parse" aria-live="polite">
           <div v-for="item in parsedItems" :key="item.line" class="ledger-parse__row">
+            <span class="ledger-parse__date">{{ shortDate(item.occurred_at) }}</span>
             <span class="ledger-cat" :class="`ledger-cat--${categoryTone(item.category)}`">
               {{ item.category }}
             </span>

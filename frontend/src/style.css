@@ -7129,6 +7129,13 @@ select:focus-visible {
   color: var(--label-2);
 }
 
+.ledger-parse__date {
+  flex: none;
+  font: var(--text-caption);
+  color: var(--label-3);
+  font-variant-numeric: tabular-nums;
+}
+
 .ledger-parse__amount,
 .ledger-recent__amount {
   flex: none;
