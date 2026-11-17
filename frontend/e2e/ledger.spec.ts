@@ -184,6 +184,32 @@ test('编辑弹窗金额非法时给出提示且不关闭', async ({ authedPage:
   expect(items[0].amount_cents).toBe(1000)
 })
 
+test('「Token」是内置支出分类，并能用别名快捷记账', async ({ authedPage: page }) => {
+  const res = await page.request.get('/api/ledger/categories')
+  const body = (await res.json()) as { items: string[] }
+  expect(body.items).toContain('Token')
+
+  // 默认别名只灌注给开发账号，E2E 账号要自己建一条
+  const alias = await page.request.post('/api/ledger/aliases', {
+    data: { alias: 'claude', category: 'Token' },
+  })
+  expect(alias.ok(), await alias.text()).toBeTruthy()
+
+  // AI 服务的常见写法：第一词是别名，金额在后
+  const api = createApi(page.request)
+  const items = await api.quickCommit('claude 20')
+  expect(items[0]).toMatchObject({ type: 'expense', category: 'Token', amount_cents: 2000 })
+
+  // 界面上的分类下拉里也能选到。
+  // allTextContents() 不自动等待，先等行渲染完再读，否则会读到空数组。
+  await page.goto('/ledger')
+  const row = page.locator('.ledger-entry').filter({ hasText: 'claude' }).first()
+  await expect(row).toBeVisible()
+  await expect(row.locator('select.ledger-entry__cat option').first()).toBeAttached()
+  const options = await row.locator('select.ledger-entry__cat option').allTextContents()
+  expect(options).toContain('Token')
+})
+
 test('重复提交同一批次不会重复写入（幂等）', async ({ authedPage: page }) => {
   const batchId = 'e2e-idempotent-batch'
   const payload = {

@@ -7050,6 +7050,12 @@ select:focus-visible {
   background-color: #8e8e93;
 }
 
+.ledger-dot--token,
+.ledger-cat--token {
+  --tone: #5856d6;
+  background-color: #5856d6;
+}
+
 .ledger-dot--other,
 .ledger-cat--other {
   --tone: var(--label-3);
@@ -7064,6 +7070,7 @@ select:focus-visible {
 .ledger-cat--fun,
 .ledger-cat--health,
 .ledger-cat--repay,
+.ledger-cat--token,
 .ledger-cat--other {
   background: color-mix(in srgb, var(--tone) 14%, transparent);
 }
