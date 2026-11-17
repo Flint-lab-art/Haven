@@ -14,6 +14,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import FolderTreeNode from './FolderTreeNode.vue'
 import { ApiError } from '@/api/client'
 import {
   createFolder,
@@ -25,11 +26,10 @@ import {
 import { deleteNote, listNotes, publishNote, unpublishNote, updateNote, type NoteSummary } from '@/api/notes'
 import { useUiStore } from '@/stores/ui'
 import { uploadImage } from '@/api/uploads'
-import { BRAND_ICONS, brandColor, type BrandIcon } from '@/utils/brand-icons'
+
 import {
   folderDropPosition,
   folderIndent,
-  isImageIcon,
   isFolderDescendant,
   isInteractiveDragTarget,
   noteDropPosition,
@@ -275,17 +275,6 @@ function noteTarget(note: NoteSummary): { name: string; params: { id: string } }
 function openMenu(folder: Folder): void {
   closeIconPicker()
   menuFolderId.value = menuFolderId.value === folder.id ? null : folder.id
-}
-
-/** 图标是不是品牌 logo 的 key（如 go / python）。 */
-function brandIcon(icon: string | null | undefined): BrandIcon | undefined {
-  if (!icon || isImageIcon(icon)) return undefined
-  return BRAND_ICONS.find((it) => it.key === icon)
-}
-
-/** 图片加载失败时退回默认图标，不显示破图。 */
-function onIconError(event: Event): void {
-  ;(event.target as HTMLImageElement).style.display = 'none'
 }
 
 function startChangeIcon(folder: Folder): void {
@@ -971,125 +960,85 @@ onBeforeUnmount(() => {
       <template v-for="row in rows" :key="row.kind === 'folder' ? `f-${row.folder.id}` : `n-${row.note.id}`">
         <!-- 文件夹行 -->
         <template v-if="row.kind === 'folder'">
-          <div
-            class="tree-row tree-row--folder"
-            :class="{
-              'tree-row--selected': selectedFolder === row.folder.id,
-              'tree-row--dragging': isDragging('folder', row.folder.id),
-              'tree-row--drop-before': isDrop('folder', row.folder.id, 'before'),
-              'tree-row--drop-after': isDrop('folder', row.folder.id, 'after'),
-              'tree-row--drop-inside': isDrop('folder', row.folder.id, 'inside'),
-            }"
-            role="treeitem"
-            :aria-expanded="expanded.has(row.folder.id)"
-            :draggable="!row.folder.is_inbox"
-            :style="{ paddingLeft: folderIndent(row.depth) }"
-            @click="selectFolder(row.folder)"
-            @contextmenu.prevent="openMenu(row.folder)"
+          <FolderTreeNode
+            :folder="row.folder"
+            :depth="row.depth"
+            :expanded="expanded.has(row.folder.id)"
+            :selected="selectedFolder === row.folder.id"
+            :dragging="isDragging('folder', row.folder.id)"
+            :drop-position="
+              isDrop('folder', row.folder.id, 'before')
+                ? 'before'
+                : isDrop('folder', row.folder.id, 'after')
+                  ? 'after'
+                  : isDrop('folder', row.folder.id, 'inside')
+                    ? 'inside'
+                    : null
+            "
+            :renaming="renamingId === row.folder.id"
+            v-model:rename-draft="renameDraft"
+            @select="selectFolder(row.folder)"
+            @toggle="toggleFolder(row.folder.id)"
+            @menu="openMenu(row.folder)"
+            @change-icon="toggleIconPicker(row.folder)"
+            @create-note="createNoteIn(row.folder)"
+            @create-child="startCreate(row.folder.id)"
+            @submit-rename="
+              renameDraft.trim() && renameDraft !== row.folder.name
+                ? submitRename(row.folder)
+                : cancelRename()
+            "
+            @cancel-rename="cancelRename"
             @dragstart="startFolderDrag($event, row.folder)"
-            @dragover.prevent="onFolderDragOver($event, row.folder)"
-            @drop.prevent="onFolderDrop(row.folder)"
+            @dragover="onFolderDragOver($event, row.folder)"
+            @drop="onFolderDrop(row.folder)"
             @dragend="clearDrag"
-          >
+          />
+
+          <div v-if="menuFolderId === row.folder.id" class="tree-menu" role="menu">
             <button
-              class="tree-toggle"
+              class="tree-menu__item"
               type="button"
-              :aria-label="expanded.has(row.folder.id) ? '折叠文件夹' : '展开文件夹'"
-              @click.stop="toggleFolder(row.folder.id)"
+              role="menuitem"
+              @click.stop="startCreate(row.folder.id)"
             >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" :class="{ 'tree-chevron--open': expanded.has(row.folder.id) }" aria-hidden="true">
-                <path d="m9 6 6 6-6 6" />
-              </svg>
+              新建子文件夹
             </button>
-
             <button
-              class="tree-icon-btn"
+              class="tree-menu__item"
               type="button"
-              :title="`更改「${row.folder.name}」的图标`"
-              :aria-label="`更改「${row.folder.name}」的图标`"
-              @click.stop="toggleIconPicker(row.folder)"
+              role="menuitem"
+              @click.stop="startRename(row.folder)"
             >
-              <img
-                v-if="isImageIcon(row.folder.icon)"
-                class="tree-icon tree-icon--image"
-                :src="row.folder.icon!"
-                alt=""
-                aria-hidden="true"
-                @error="onIconError"
-              />
-              <span
-                v-else-if="brandIcon(row.folder.icon)"
-                class="tree-icon tree-icon--brand"
-                :style="{ '--brand-color': brandColor(brandIcon(row.folder.icon)!) }"
-                aria-hidden="true"
-                v-html="brandIcon(row.folder.icon)!.svg"
-              ></span>
-              <span v-else-if="row.folder.icon" class="tree-icon tree-icon--emoji" aria-hidden="true">
-                {{ row.folder.icon }}
-              </span>
-              <svg v-else class="tree-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true">
-                <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-              </svg>
+              重命名
             </button>
-
-            <input
-              v-if="renamingId === row.folder.id"
-              v-model="renameDraft"
-              class="input tree-rename"
-              type="text"
-              aria-label="文件夹名"
-              @click.stop
-              @keydown.enter.prevent="submitRename(row.folder)"
-              @keydown.esc.prevent="cancelRename"
-              @blur="renameDraft.trim() && renameDraft !== row.folder.name ? submitRename(row.folder) : cancelRename()"
-            />
-            <span v-else class="tree-name">{{ row.folder.name }}</span>
-
-            <button class="icon-btn tree-action" type="button" title="在此文件夹新建笔记" aria-label="在此文件夹新建笔记" @click.stop="createNoteIn(row.folder)">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M6 3h7l5 5v13H6z" />
-                <path d="M13 3v5h5" />
-                <path d="M12 12v5M9.5 14.5h5" />
-              </svg>
+            <button
+              class="tree-menu__item"
+              type="button"
+              role="menuitem"
+              @click.stop="startChangeIcon(row.folder)"
+            >
+              更改图标
             </button>
-            <button class="icon-btn tree-action" type="button" title="新建子文件夹" aria-label="新建子文件夹" @click.stop="startCreate(row.folder.id)">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-                <path d="M12 11v5M9.5 13.5h5" />
-              </svg>
+            <button
+              v-if="!row.folder.is_inbox"
+              class="tree-menu__item tree-menu__item--danger"
+              type="button"
+              role="menuitem"
+              @click.stop="removeFolder(row.folder)"
+            >
+              删除
             </button>
-            <button class="icon-btn tree-more" type="button" title="更多操作" aria-label="更多操作" @click.stop="openMenu(row.folder)">
-              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <circle cx="5" cy="12" r="1.6" />
-                <circle cx="12" cy="12" r="1.6" />
-                <circle cx="19" cy="12" r="1.6" />
-              </svg>
-            </button>
-
-            <div v-if="menuFolderId === row.folder.id" class="tree-menu" role="menu">
-              <button class="tree-menu__item" type="button" role="menuitem" @click.stop="startCreate(row.folder.id)">
-                新建子文件夹
-              </button>
-              <button class="tree-menu__item" type="button" role="menuitem" @click.stop="startRename(row.folder)">
-                重命名
-              </button>
-              <button class="tree-menu__item" type="button" role="menuitem" @click.stop="startChangeIcon(row.folder)">
-                更改图标
-              </button>
-              <button v-if="!row.folder.is_inbox" class="tree-menu__item tree-menu__item--danger" type="button" role="menuitem" @click.stop="removeFolder(row.folder)">
-                删除
-              </button>
-            </div>
-
-            <IconPicker
-              v-if="iconFolderId === row.folder.id"
-              :open="true"
-              :disabled="busy"
-              @select="(value: string | null) => saveIcon(row.folder, value)"
-              @upload="(file: File) => uploadIcon(row.folder, file)"
-              @close="closeIconPicker"
-            />
           </div>
+
+          <IconPicker
+            v-if="iconFolderId === row.folder.id"
+            :open="true"
+            :disabled="busy"
+            @select="(value: string | null) => saveIcon(row.folder, value)"
+            @upload="(file: File) => uploadIcon(row.folder, file)"
+            @close="closeIconPicker"
+          />
 
           <div v-if="creatingUnder === row.folder.id" class="tree-input" :style="{ paddingLeft: folderIndent(row.depth + 1) }">
             <input
