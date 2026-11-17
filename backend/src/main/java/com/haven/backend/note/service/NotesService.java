@@ -1,41 +1,72 @@
 package com.haven.backend.note.service;
 
-import java.util.Map;
+import com.haven.backend.note.dto.NoteDtos.NoteDetail;
+import com.haven.backend.note.dto.NoteDtos.NotePage;
+import com.haven.backend.note.dto.NoteDtos.NoteVersionDetail;
+import com.haven.backend.note.dto.NoteDtos.NoteVersionPage;
+import com.haven.backend.note.dto.NoteDtos.PublicNoteDetail;
+import com.haven.backend.note.dto.NoteDtos.PublicNotePage;
+import com.haven.backend.note.dto.NoteDtos.TrashNotePage;
+import java.util.List;
 import java.util.UUID;
 
+/**
+ * 笔记服务。
+ * <p>
+ * 所有返回值都是有名字的 DTO（见 {@code NoteDtos}），不再使用 {@code Map<String,Object>}。
+ */
 public interface NotesService {
-    Map<String, Object> listNotes(String userId, Integer limit, Integer offset, String visibility, UUID tagId,
-            UUID folderId, Boolean includeTrash);
 
-    Map<String, Object> getNote(String userId, UUID noteId);
+    NotePage listNotes(
+            String userId,
+            Integer limit,
+            Integer offset,
+            String visibility,
+            UUID tagId,
+            UUID folderId,
+            Boolean includeTrash);
 
-    Map<String, Object> createNote(String userId, String title, String content, java.util.List<UUID> tagIds,
-            UUID folderId);
+    NoteDetail getNote(String userId, UUID noteId);
 
-    Map<String, Object> updateNote(String userId, UUID noteId, String title, String content,
-            java.util.List<UUID> tagIds, UUID folderId, Integer sortOrder);
+    NoteDetail createNote(String userId, String title, String content, List<UUID> tagIds, UUID folderId);
+
+    /**
+     * 更新笔记。
+     *
+     * @param folderId 目标文件夹；为 {@code null} 且 {@code clearFolder=false} 时表示不修改
+     * @param clearFolder 为 true 时把笔记移到根目录（忽略 {@code folderId}）
+     */
+    NoteDetail updateNote(
+            String userId,
+            UUID noteId,
+            String title,
+            String content,
+            List<UUID> tagIds,
+            UUID folderId,
+            boolean clearFolder,
+            Integer sortOrder);
 
     void deleteNote(String userId, UUID noteId);
 
-    Map<String, Object> listTrash(String userId, int limit, int offset);
+    TrashNotePage listTrash(String userId, int limit, int offset);
 
-    Map<String, Object> restoreNote(String userId, UUID noteId);
+    NoteDetail restoreNote(String userId, UUID noteId);
 
     void purgeNote(String userId, UUID noteId);
 
     void emptyTrash(String userId);
 
-    Map<String, Object> publishNote(String userId, UUID noteId);
+    NoteDetail publishNote(String userId, UUID noteId);
 
-    Map<String, Object> unpublishNote(String userId, UUID noteId);
+    NoteDetail unpublishNote(String userId, UUID noteId);
 
-    Map<String, Object> listVersions(String userId, UUID noteId, int limit, int offset);
+    NoteVersionPage listVersions(String userId, UUID noteId, int limit, int offset);
 
-    Map<String, Object> getVersion(String userId, UUID noteId, UUID versionId);
+    NoteVersionDetail getVersion(String userId, UUID noteId, UUID versionId);
 
-    Map<String, Object> restoreVersion(String userId, UUID noteId, UUID versionId);
+    NoteDetail restoreVersion(String userId, UUID noteId, UUID versionId);
 
-    Map<String, Object> listPublicNotes(int limit, int offset);
+    PublicNotePage listPublicNotes(int limit, int offset);
 
-    Map<String, Object> getPublicNote(UUID noteId);
+    PublicNoteDetail getPublicNote(UUID noteId);
 }

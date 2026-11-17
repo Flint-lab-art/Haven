@@ -1,10 +1,26 @@
 package com.haven.backend.note.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.haven.backend.audit.AuditEventType;
+import com.haven.backend.audit.AuditRecorder;
+import com.haven.backend.audit.AuditTargetType;
 import com.haven.backend.exception.BizException;
+import com.haven.backend.note.dto.NoteDtos.NoteDetail;
+import com.haven.backend.note.dto.NoteDtos.NotePage;
+import com.haven.backend.note.dto.NoteDtos.NoteSummary;
+import com.haven.backend.note.dto.NoteDtos.NoteVersionDetail;
+import com.haven.backend.note.dto.NoteDtos.NoteVersionPage;
+import com.haven.backend.note.dto.NoteDtos.NoteVersionSummary;
+import com.haven.backend.note.dto.NoteDtos.PublicNoteDetail;
+import com.haven.backend.note.dto.NoteDtos.PublicNotePage;
+import com.haven.backend.note.dto.NoteDtos.PublicNoteSummary;
+import com.haven.backend.note.dto.NoteDtos.TagBrief;
+import com.haven.backend.note.dto.NoteDtos.TrashNotePage;
+import com.haven.backend.note.dto.NoteDtos.TrashNoteSummary;
 import com.haven.backend.note.entity.Folders;
 import com.haven.backend.note.entity.NoteTags;
 import com.haven.backend.note.entity.NoteVersions;
+import com.haven.backend.note.entity.NoteVisibility;
 import com.haven.backend.note.entity.Notes;
 import com.haven.backend.note.entity.Tags;
 import com.haven.backend.note.mapper.FoldersMapper;
@@ -13,49 +29,67 @@ import com.haven.backend.note.mapper.NoteVersionsMapper;
 import com.haven.backend.note.mapper.NotesMapper;
 import com.haven.backend.note.mapper.TagsMapper;
 import com.haven.backend.note.service.NotesService;
-
+import java.time.Clock;
+import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.time.OffsetDateTime;
-import java.util.*;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class NotesServiceImpl implements NotesService {
 
     private final NotesMapper notesMapper;
+    private final Clock clock;
+    private final AuditRecorder auditRecorder;
     private final NoteTagsMapper noteTagsMapper;
     private final TagsMapper tagsMapper;
     private final NoteVersionsMapper noteVersionsMapper;
     private final FoldersMapper foldersMapper;
 
     private static final long VERSION_MERGE_MINUTES = 5;
+    /** 列表项正文预览长度。 */
+    private static final int PREVIEW_LENGTH = 200;
 
     @Override
-    public Map<String, Object> listNotes(String userId, Integer limit, Integer offset,
-            String visibility, UUID tagId, UUID folderId, Boolean includeTrash) {
+    public NotePage listNotes(
+            String userId,
+            Integer limit,
+            Integer offset,
+            String visibility,
+            UUID tagId,
+            UUID folderId,
+            Boolean includeTrash) {
         UUID uid = UUID.fromString(userId);
-        int lim = Math.min(limit != null ? limit : 20, 100);
-        int off = offset != null ? offset : 0;
+        int lim = Math.clamp(limit != null ? limit : 20, 1, 100);
+        int off = Math.max(offset != null ? offset : 0, 0);
 
         var wrapper = new LambdaQueryWrapper<Notes>().eq(Notes::getUserId, uid);
-        if (!Boolean.TRUE.equals(includeTrash))
+        if (!Boolean.TRUE.equals(includeTrash)) {
             wrapper.isNull(Notes::getDeletedAt);
-        if (visibility != null && !visibility.isBlank())
+        }
+        if (visibility != null && !visibility.isBlank()) {
             wrapper.eq(Notes::getVisibility, visibility);
-        if (folderId != null)
+        }
+        if (folderId != null) {
             wrapper.eq(Notes::getFolderId, folderId);
+        }
 
         // 按标签过滤：先查关联 note_id
         if (tagId != null) {
-            List<UUID> noteIds = noteTagsMapper.selectList(
-                    new LambdaQueryWrapper<NoteTags>().eq(NoteTags::getTagId, tagId))
-                    .stream().map(NoteTags::getNoteId).collect(Collectors.toList());
-            if (noteIds.isEmpty())
-                return Map.of("items", List.of(), "total", 0);
+            List<UUID> noteIds =
+                    noteTagsMapper.selectList(new LambdaQueryWrapper<NoteTags>().eq(NoteTags::getTagId, tagId)).stream()
+                            .map(NoteTags::getNoteId)
+                            .collect(Collectors.toList());
+            if (noteIds.isEmpty()) {
+                return new NotePage(List.of(), 0);
+            }
             wrapper.in(Notes::getId, noteIds);
         }
 
@@ -63,14 +97,15 @@ public class NotesServiceImpl implements NotesService {
         wrapper.orderByDesc(Notes::getUpdatedAt).last("LIMIT " + lim + " OFFSET " + off);
         List<Notes> notes = notesMapper.selectList(wrapper);
 
-        List<Map<String, Object>> items = notes.stream()
-                .map(n -> buildNoteSummary(n, uid))
+        Map<UUID, List<TagBrief>> tagsByNote = loadTags(uid, notes);
+        List<NoteSummary> items = notes.stream()
+                .map(n -> toSummary(n, tagsByNote.getOrDefault(n.getId(), List.of())))
                 .collect(Collectors.toList());
-        return Map.of("items", items, "total", total);
+        return new NotePage(items, total);
     }
 
     @Override
-    public Map<String, Object> getNote(String userId, UUID noteId) {
+    public NoteDetail getNote(String userId, UUID noteId) {
         UUID uid = UUID.fromString(userId);
         Notes note = getOwnedNote(uid, noteId);
         return buildNoteDetail(note, uid);
@@ -78,23 +113,27 @@ public class NotesServiceImpl implements NotesService {
 
     @Override
     @Transactional
-    public Map<String, Object> createNote(String userId, String title, String content,
-            List<UUID> tagIds, UUID folderId) {
+    public NoteDetail createNote(String userId, String title, String content, List<UUID> tagIds, UUID folderId) {
         UUID uid = UUID.fromString(userId);
         // 验证 folder
         if (folderId != null) {
             Folders f = foldersMapper.selectById(folderId);
-            if (f == null || !f.getUserId().equals(uid))
+            if (f == null || !f.getUserId().equals(uid)) {
                 throw BizException.notFound("文件夹不存在");
+            }
         }
 
         int maxOrder = 0;
         if (folderId != null) {
             Notes max = notesMapper.selectOne(new LambdaQueryWrapper<Notes>()
-                    .eq(Notes::getUserId, uid).eq(Notes::getFolderId, folderId)
-                    .isNull(Notes::getDeletedAt).orderByDesc(Notes::getSortOrder).last("LIMIT 1"));
-            if (max != null)
+                    .eq(Notes::getUserId, uid)
+                    .eq(Notes::getFolderId, folderId)
+                    .isNull(Notes::getDeletedAt)
+                    .orderByDesc(Notes::getSortOrder)
+                    .last("LIMIT 1"));
+            if (max != null) {
                 maxOrder = max.getSortOrder() != null ? max.getSortOrder() : 0;
+            }
         }
 
         Notes note = new Notes();
@@ -102,16 +141,17 @@ public class NotesServiceImpl implements NotesService {
         note.setUserId(uid);
         note.setTitle(title != null ? title : "");
         note.setContent(content != null ? content : "");
-        note.setVisibility("private");
+        note.setVisibility(NoteVisibility.PRIVATE);
         note.setFolderId(folderId);
         note.setSortOrder(maxOrder + 1);
         note.setSearchText(buildSearchText(note.getTitle(), note.getContent()));
-        note.setCreatedAt(OffsetDateTime.now());
-        note.setUpdatedAt(OffsetDateTime.now());
+        note.setCreatedAt(OffsetDateTime.now(clock));
+        note.setUpdatedAt(OffsetDateTime.now(clock));
         notesMapper.insert(note);
 
-        if (tagIds != null && !tagIds.isEmpty())
-            setTags(note.getId(), tagIds);
+        if (tagIds != null && !tagIds.isEmpty()) {
+            setTags(uid, note.getId(), tagIds);
+        }
 
         // 创建版本快照
         saveVersion(note, uid);
@@ -120,12 +160,20 @@ public class NotesServiceImpl implements NotesService {
 
     @Override
     @Transactional
-    public Map<String, Object> updateNote(String userId, UUID noteId, String title, String content,
-            List<UUID> tagIds, UUID folderId, Integer sortOrder) {
+    public NoteDetail updateNote(
+            String userId,
+            UUID noteId,
+            String title,
+            String content,
+            List<UUID> tagIds,
+            UUID folderId,
+            boolean clearFolder,
+            Integer sortOrder) {
         UUID uid = UUID.fromString(userId);
         Notes note = getOwnedNote(uid, noteId);
-        if (Boolean.TRUE.equals(note.getDeletedAt() != null))
+        if (Boolean.TRUE.equals(note.getDeletedAt() != null)) {
             throw BizException.validation("回收站中的笔记不能编辑");
+        }
 
         boolean changed = false;
         if (title != null) {
@@ -138,9 +186,13 @@ public class NotesServiceImpl implements NotesService {
         }
         if (folderId != null) {
             Folders f = foldersMapper.selectById(folderId);
-            if (f == null || !f.getUserId().equals(uid))
+            if (f == null || !f.getUserId().equals(uid)) {
                 throw BizException.notFound("文件夹不存在");
+            }
             note.setFolderId(folderId);
+            changed = true;
+        } else if (clearFolder) {
+            note.setFolderId(null);
             changed = true;
         }
         if (sortOrder != null) {
@@ -150,72 +202,78 @@ public class NotesServiceImpl implements NotesService {
 
         if (changed) {
             note.setSearchText(buildSearchText(note.getTitle(), note.getContent()));
-            note.setUpdatedAt(OffsetDateTime.now());
+            note.setUpdatedAt(OffsetDateTime.now(clock));
             notesMapper.updateById(note);
             saveVersion(note, uid);
         }
-        if (tagIds != null)
-            setTags(note.getId(), tagIds);
+        if (tagIds != null) {
+            setTags(uid, note.getId(), tagIds);
+        }
 
         return buildNoteDetail(note, uid);
     }
 
     @Override
+    @Transactional
     public void deleteNote(String userId, UUID noteId) {
         UUID uid = UUID.fromString(userId);
         Notes note = getOwnedNote(uid, noteId);
-        note.setDeletedAt(OffsetDateTime.now());
-        note.setUpdatedAt(OffsetDateTime.now());
+        note.setDeletedAt(OffsetDateTime.now(clock));
+        note.setUpdatedAt(OffsetDateTime.now(clock));
         notesMapper.updateById(note);
     }
 
     @Override
-    public Map<String, Object> listTrash(String userId, int limit, int offset) {
+    public TrashNotePage listTrash(String userId, int limit, int offset) {
         UUID uid = UUID.fromString(userId);
-        int lim = Math.min(limit, 100);
+        int lim = Math.clamp(limit, 1, 100);
+        int off = Math.max(offset, 0);
         // 先查总数（不带 ORDER BY）
-        var countWrapper = new LambdaQueryWrapper<Notes>()
-                .eq(Notes::getUserId, uid).isNotNull(Notes::getDeletedAt);
+        var countWrapper =
+                new LambdaQueryWrapper<Notes>().eq(Notes::getUserId, uid).isNotNull(Notes::getDeletedAt);
         long total = notesMapper.selectCount(countWrapper);
         // 再查列表（带 ORDER BY 和分页）
         var listWrapper = new LambdaQueryWrapper<Notes>()
-                .eq(Notes::getUserId, uid).isNotNull(Notes::getDeletedAt)
+                .eq(Notes::getUserId, uid)
+                .isNotNull(Notes::getDeletedAt)
                 .orderByDesc(Notes::getDeletedAt)
-                .last("LIMIT " + lim + " OFFSET " + offset);
+                .last("LIMIT " + lim + " OFFSET " + off);
         List<Notes> notes = notesMapper.selectList(listWrapper);
 
-        List<Map<String, Object>> items = notes.stream().map(n -> {
-            Map<String, Object> m = new LinkedHashMap<>();
-            m.put("id", n.getId().toString());
-            m.put("title", n.getTitle());
-            String c = n.getContent() != null ? n.getContent() : "";
-            m.put("content_preview", c.length() > 200 ? c.substring(0, 200) : c);
-            m.put("folder_id", n.getFolderId() != null ? n.getFolderId().toString() : null);
-            m.put("folder_path", getFolderPath(n.getFolderId(), uid));
-            m.put("deleted_at", n.getDeletedAt());
-            return m;
-        }).collect(Collectors.toList());
-        return Map.of("items", items, "total", total);
+        List<TrashNoteSummary> items = notes.stream()
+                .map(n -> new TrashNoteSummary(
+                        n.getId(),
+                        n.getTitle(),
+                        preview(n.getContent()),
+                        n.getFolderId(),
+                        getFolderPath(n.getFolderId(), uid),
+                        n.getDeletedAt()))
+                .collect(Collectors.toList());
+        return new TrashNotePage(items, total);
     }
 
     @Override
-    public Map<String, Object> restoreNote(String userId, UUID noteId) {
+    @Transactional
+    public NoteDetail restoreNote(String userId, UUID noteId) {
         UUID uid = UUID.fromString(userId);
         Notes note = getOwnedNote(uid, noteId);
-        if (note.getDeletedAt() == null)
+        if (note.getDeletedAt() == null) {
             throw BizException.validation("笔记不在回收站中");
+        }
         note.setDeletedAt(null);
-        note.setUpdatedAt(OffsetDateTime.now());
+        note.setUpdatedAt(OffsetDateTime.now(clock));
         notesMapper.updateById(note);
         return buildNoteDetail(note, uid);
     }
 
     @Override
+    @Transactional
     public void purgeNote(String userId, UUID noteId) {
         UUID uid = UUID.fromString(userId);
         Notes note = getOwnedNote(uid, noteId);
-        if (note.getDeletedAt() == null)
+        if (note.getDeletedAt() == null) {
             throw BizException.validation("只能永久删除非回收站的笔记");
+        }
         noteTagsMapper.delete(new LambdaQueryWrapper<NoteTags>().eq(NoteTags::getNoteId, noteId));
         noteVersionsMapper.delete(new LambdaQueryWrapper<NoteVersions>().eq(NoteVersions::getNoteId, noteId));
         notesMapper.deleteById(noteId);
@@ -235,152 +293,174 @@ public class NotesServiceImpl implements NotesService {
     }
 
     @Override
-    public Map<String, Object> publishNote(String userId, UUID noteId) {
+    @Transactional
+    public NoteDetail publishNote(String userId, UUID noteId) {
         UUID uid = UUID.fromString(userId);
         Notes note = getOwnedNote(uid, noteId);
-        note.setVisibility("public");
-        if (note.getPublishedAt() == null)
-            note.setPublishedAt(OffsetDateTime.now());
-        note.setUpdatedAt(OffsetDateTime.now());
+        note.setVisibility(NoteVisibility.PUBLIC);
+        if (note.getPublishedAt() == null) {
+            note.setPublishedAt(OffsetDateTime.now(clock));
+        }
+        note.setUpdatedAt(OffsetDateTime.now(clock));
         notesMapper.updateById(note);
+        auditRecorder.record(uid, null, AuditEventType.NOTE_PUBLISHED, AuditTargetType.NOTE, note.getId(), null, null);
         return buildNoteDetail(note, uid);
     }
 
     @Override
-    public Map<String, Object> unpublishNote(String userId, UUID noteId) {
+    @Transactional
+    public NoteDetail unpublishNote(String userId, UUID noteId) {
         UUID uid = UUID.fromString(userId);
         Notes note = getOwnedNote(uid, noteId);
-        note.setVisibility("private");
-        note.setUpdatedAt(OffsetDateTime.now());
+        note.setVisibility(NoteVisibility.PRIVATE);
+        note.setUpdatedAt(OffsetDateTime.now(clock));
         notesMapper.updateById(note);
+        auditRecorder.record(
+                uid, null, AuditEventType.NOTE_UNPUBLISHED, AuditTargetType.NOTE, note.getId(), null, null);
         return buildNoteDetail(note, uid);
     }
 
     @Override
-    public Map<String, Object> listVersions(String userId, UUID noteId, int limit, int offset) {
+    public NoteVersionPage listVersions(String userId, UUID noteId, int limit, int offset) {
         UUID uid = UUID.fromString(userId);
         getOwnedNote(uid, noteId); // 确认归属
-        int lim = Math.min(limit, 100);
+        int lim = Math.clamp(limit, 1, 100);
+        int off = Math.max(offset, 0);
         // 先查总数（不带 ORDER BY）
-        var countWrapper = new LambdaQueryWrapper<NoteVersions>()
-                .eq(NoteVersions::getNoteId, noteId);
+        var countWrapper = new LambdaQueryWrapper<NoteVersions>().eq(NoteVersions::getNoteId, noteId);
         long total = noteVersionsMapper.selectCount(countWrapper);
         // 再查列表（带 ORDER BY 和分页）
         var listWrapper = new LambdaQueryWrapper<NoteVersions>()
                 .eq(NoteVersions::getNoteId, noteId)
                 .orderByDesc(NoteVersions::getCreatedAt)
-                .last("LIMIT " + lim + " OFFSET " + offset);
+                .last("LIMIT " + lim + " OFFSET " + off);
         List<NoteVersions> versions = noteVersionsMapper.selectList(listWrapper);
-        List<Map<String, Object>> items = versions.stream().map(v -> {
-            Map<String, Object> m = new LinkedHashMap<>();
-            m.put("id", v.getId().toString());
-            m.put("title", v.getTitle());
-            m.put("created_at", v.getCreatedAt());
-            m.put("content_size", v.getContent() != null ? v.getContent().length() : 0);
-            return m;
-        }).collect(Collectors.toList());
-        return Map.of("items", items, "total", total);
+        List<NoteVersionSummary> items = versions.stream()
+                .map(v -> new NoteVersionSummary(
+                        v.getId(),
+                        v.getTitle(),
+                        preview(v.getContent()),
+                        v.getCreatedAt(),
+                        v.getContent() != null ? v.getContent().length() : 0))
+                .collect(Collectors.toList());
+        return new NoteVersionPage(items, total);
     }
 
     @Override
-    public Map<String, Object> getVersion(String userId, UUID noteId, UUID versionId) {
+    public NoteVersionDetail getVersion(String userId, UUID noteId, UUID versionId) {
         UUID uid = UUID.fromString(userId);
         getOwnedNote(uid, noteId);
         NoteVersions v = noteVersionsMapper.selectById(versionId);
-        if (v == null || !v.getNoteId().equals(noteId))
+        if (v == null || !v.getNoteId().equals(noteId)) {
             throw BizException.notFound("版本不存在");
-        Map<String, Object> m = new LinkedHashMap<>();
-        m.put("id", v.getId().toString());
-        m.put("note_id", v.getNoteId().toString());
-        m.put("title", v.getTitle());
-        m.put("content", v.getContent());
-        m.put("folder_id", v.getFolderId() != null ? v.getFolderId().toString() : null);
-        m.put("tag_ids", v.getTagIds() != null ? v.getTagIds() : List.of());
-        m.put("created_at", v.getCreatedAt());
-        return m;
+        }
+        return new NoteVersionDetail(
+                v.getId(),
+                v.getTitle(),
+                v.getContent(),
+                v.getFolderId(),
+                v.getTagIds() != null ? v.getTagIds() : List.of(),
+                v.getCreatedAt(),
+                v.getContent() != null ? v.getContent().length() : 0);
     }
 
     @Override
     @Transactional
-    public Map<String, Object> restoreVersion(String userId, UUID noteId, UUID versionId) {
+    public NoteDetail restoreVersion(String userId, UUID noteId, UUID versionId) {
         UUID uid = UUID.fromString(userId);
         Notes note = getOwnedNote(uid, noteId);
         NoteVersions v = noteVersionsMapper.selectById(versionId);
-        if (v == null || !v.getNoteId().equals(noteId))
+        if (v == null || !v.getNoteId().equals(noteId)) {
             throw BizException.notFound("版本不存在");
+        }
 
         note.setTitle(v.getTitle());
         note.setContent(v.getContent());
         note.setFolderId(v.getFolderId());
         note.setSearchText(buildSearchText(note.getTitle(), note.getContent()));
-        note.setUpdatedAt(OffsetDateTime.now());
+        note.setUpdatedAt(OffsetDateTime.now(clock));
         notesMapper.updateById(note);
 
         // 恢复标签
         List<UUID> tagIds = v.getTagIds();
-        if (tagIds != null && !tagIds.isEmpty())
-            setTags(note.getId(), tagIds);
-        else
+        if (tagIds != null && !tagIds.isEmpty()) {
+            setTags(uid, note.getId(), tagIds);
+        } else {
             noteTagsMapper.delete(new LambdaQueryWrapper<NoteTags>().eq(NoteTags::getNoteId, noteId));
+        }
 
         saveVersion(note, uid);
         return buildNoteDetail(note, uid);
     }
 
     @Override
-    public Map<String, Object> listPublicNotes(int limit, int offset) {
-        int lim = Math.min(limit, 100);
+    public PublicNotePage listPublicNotes(int limit, int offset) {
+        int lim = Math.clamp(limit, 1, 100);
+        int off = Math.max(offset, 0);
         // 先查总数（不带 ORDER BY）
         var countWrapper = new LambdaQueryWrapper<Notes>()
-                .eq(Notes::getVisibility, "public").isNotNull(Notes::getPublishedAt)
+                .eq(Notes::getVisibility, NoteVisibility.PUBLIC)
+                .isNotNull(Notes::getPublishedAt)
                 .isNull(Notes::getDeletedAt);
         long total = notesMapper.selectCount(countWrapper);
         // 再查列表（带 ORDER BY 和分页）
         var listWrapper = new LambdaQueryWrapper<Notes>()
-                .eq(Notes::getVisibility, "public").isNotNull(Notes::getPublishedAt)
+                .eq(Notes::getVisibility, NoteVisibility.PUBLIC)
+                .isNotNull(Notes::getPublishedAt)
                 .isNull(Notes::getDeletedAt)
                 .orderByDesc(Notes::getPublishedAt)
-                .last("LIMIT " + lim + " OFFSET " + offset);
+                .last("LIMIT " + lim + " OFFSET " + off);
         List<Notes> notes = notesMapper.selectList(listWrapper);
-        List<Map<String, Object>> items = notes.stream().map(n -> {
-            Map<String, Object> m = new LinkedHashMap<>();
-            m.put("id", n.getId().toString());
-            m.put("title", n.getTitle());
-            String c = n.getContent() != null ? n.getContent() : "";
-            m.put("content_preview", c.length() > 200 ? c.substring(0, 200) : c);
-            m.put("published_at", n.getPublishedAt());
-            m.put("updated_at", n.getUpdatedAt());
-            m.put("tags", getNoteTags(n.getId()));
-            return m;
-        }).collect(Collectors.toList());
-        return Map.of("items", items, "total", total);
+        Map<UUID, List<TagBrief>> tagsByNote = loadTags(noteUserId(notes), notes);
+        List<PublicNoteSummary> items = notes.stream()
+                .map(n -> new PublicNoteSummary(
+                        n.getId(),
+                        n.getTitle(),
+                        preview(n.getContent()),
+                        n.getPublishedAt(),
+                        n.getUpdatedAt(),
+                        tagsByNote.getOrDefault(n.getId(), List.of())))
+                .collect(Collectors.toList());
+        return new PublicNotePage(items, total);
     }
 
     @Override
-    public Map<String, Object> getPublicNote(UUID noteId) {
+    public PublicNoteDetail getPublicNote(UUID noteId) {
         Notes note = notesMapper.selectById(noteId);
-        if (note == null || !"public".equals(note.getVisibility()) || note.getPublishedAt() == null)
+        if (note == null
+                || note.getDeletedAt() != null
+                || !NoteVisibility.PUBLIC.equals(note.getVisibility())
+                || note.getPublishedAt() == null) {
             throw BizException.notFound("笔记不存在或未公开");
-        Map<String, Object> m = new LinkedHashMap<>();
-        m.put("id", note.getId().toString());
-        m.put("title", note.getTitle());
-        m.put("content", note.getContent());
-        m.put("published_at", note.getPublishedAt());
-        m.put("updated_at", note.getUpdatedAt());
-        m.put("tags", getNoteTags(note.getId()));
-        return m;
+        }
+        return new PublicNoteDetail(
+                note.getId(),
+                note.getTitle(),
+                note.getContent(),
+                note.getPublishedAt(),
+                note.getUpdatedAt(),
+                loadTags(note.getUserId(), List.of(note)).getOrDefault(note.getId(), List.of()));
     }
 
     // ---- 内部方法 ----
 
     private Notes getOwnedNote(UUID userId, UUID noteId) {
         Notes note = notesMapper.selectById(noteId);
-        if (note == null || !note.getUserId().equals(userId))
+        if (note == null || !note.getUserId().equals(userId)) {
             throw BizException.notFound("笔记不存在");
+        }
         return note;
     }
 
-    private void setTags(UUID noteId, List<UUID> tagIds) {
+    private void setTags(UUID userId, UUID noteId, List<UUID> tagIds) {
+        if (!tagIds.isEmpty()) {
+            // 标签必须属于当前用户，否则会形成跨租户关联并回显他人标签名
+            long owned = tagsMapper.selectCount(
+                    new LambdaQueryWrapper<Tags>().eq(Tags::getUserId, userId).in(Tags::getId, tagIds));
+            if (owned != tagIds.stream().distinct().count()) {
+                throw BizException.notFound("标签不存在");
+            }
+        }
         noteTagsMapper.delete(new LambdaQueryWrapper<NoteTags>().eq(NoteTags::getNoteId, noteId));
         for (UUID tid : tagIds) {
             NoteTags nt = new NoteTags();
@@ -390,31 +470,52 @@ public class NotesServiceImpl implements NotesService {
         }
     }
 
-    private List<Map<String, String>> getNoteTags(UUID noteId) {
-        List<NoteTags> rels = noteTagsMapper.selectList(
-                new LambdaQueryWrapper<NoteTags>().eq(NoteTags::getNoteId, noteId));
-        if (rels.isEmpty())
-            return List.of();
-        List<UUID> tagIds = rels.stream().map(NoteTags::getTagId).collect(Collectors.toList());
-        List<Tags> tags = tagsMapper.selectList(new LambdaQueryWrapper<Tags>().in(Tags::getId, tagIds));
-        return tags.stream().map(t -> Map.of("id", t.getId().toString(), "name", t.getName()))
-                .collect(Collectors.toList());
+    /**
+     * 一次查询取回多条笔记的标签并分组，避免列表页逐条查关联（N+1）。
+     *
+     * @param userId 为 null 时不按标签归属过滤（仅用于已确认的公开笔记）
+     */
+    private Map<UUID, List<TagBrief>> loadTags(UUID userId, List<Notes> notes) {
+        if (notes.isEmpty()) {
+            return Map.of();
+        }
+        List<UUID> noteIds = notes.stream().map(Notes::getId).collect(Collectors.toList());
+        Map<UUID, List<TagBrief>> result = new HashMap<>();
+        for (NoteTagsMapper.NoteTag row : noteTagsMapper.selectTagsForNotes(userId, noteIds)) {
+            result.computeIfAbsent(row.noteId(), k -> new ArrayList<>()).add(new TagBrief(row.tagId(), row.tagName()));
+        }
+        return result;
+    }
+
+    /**
+     * 公开接口跨作者查询，返回 null 表示不按标签归属过滤。
+     * <p>
+     * 公开列表里的笔记可能属于不同作者，取单条笔记 authors 会漏标签，
+     * 因此只按 note 批量过滤；标签本身已在可见性校验中确认属于公开笔记。
+     */
+    private static UUID noteUserId(List<Notes> notes) {
+        return null;
     }
 
     private void saveVersion(Notes note, UUID userId) {
-        // 5 分钟合并窗口
-        NoteVersions latest = noteVersionsMapper.selectOne(
-                new LambdaQueryWrapper<NoteVersions>()
-                        .eq(NoteVersions::getNoteId, note.getId())
-                        .orderByDesc(NoteVersions::getCreatedAt).last("LIMIT 1"));
-        if (latest != null && latest.getCreatedAt().plusMinutes(VERSION_MERGE_MINUTES).isAfter(OffsetDateTime.now())) {
-            latest.setTitle(note.getTitle());
-            latest.setContent(note.getContent());
-            latest.setFolderId(note.getFolderId());
-            latest.setTagIds(getTagIdList(note.getId()));
-            latest.setCreatedAt(OffsetDateTime.now());
-            noteVersionsMapper.updateById(latest);
-            return;
+        // 5 分钟合并窗口；窗口锚点用空窗起点，不能用会被刷新的 created_at，否则窗口无限滑动
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        NoteVersions latest = noteVersionsMapper.selectOne(new LambdaQueryWrapper<NoteVersions>()
+                .eq(NoteVersions::getNoteId, note.getId())
+                .orderByDesc(NoteVersions::getCreatedAt)
+                .last("LIMIT 1"));
+        if (latest != null && latest.getWindowStartedAt() != null) {
+            OffsetDateTime windowEnd = latest.getWindowStartedAt().plusMinutes(VERSION_MERGE_MINUTES);
+            if (windowEnd.isAfter(now)) {
+                // 同一窗口内合并内容，但不改写 created_at / window_started_at
+                latest.setTitle(note.getTitle());
+                latest.setContent(note.getContent());
+                latest.setFolderId(note.getFolderId());
+                latest.setTagIds(getTagIdList(note.getId()));
+                latest.setUpdatedAt(now);
+                noteVersionsMapper.updateById(latest);
+                return;
+            }
         }
         NoteVersions v = new NoteVersions();
         v.setId(UUID.randomUUID());
@@ -424,66 +525,90 @@ public class NotesServiceImpl implements NotesService {
         v.setContent(note.getContent());
         v.setFolderId(note.getFolderId());
         v.setTagIds(getTagIdList(note.getId()));
-        v.setCreatedAt(OffsetDateTime.now());
+        v.setCreatedAt(now);
+        v.setUpdatedAt(now);
+        v.setWindowStartedAt(now);
         noteVersionsMapper.insert(v);
     }
 
     private List<UUID> getTagIdList(UUID noteId) {
-        List<NoteTags> rels = noteTagsMapper.selectList(
-                new LambdaQueryWrapper<NoteTags>().eq(NoteTags::getNoteId, noteId));
+        List<NoteTags> rels =
+                noteTagsMapper.selectList(new LambdaQueryWrapper<NoteTags>().eq(NoteTags::getNoteId, noteId));
         return rels.stream().map(NoteTags::getTagId).collect(Collectors.toList());
     }
 
     private String buildSearchText(String title, String content) {
         StringBuilder sb = new StringBuilder();
-        if (title != null)
+        if (title != null) {
             sb.append(title);
+        }
         if (content != null) {
-            String text = content.replaceAll("<[^>]*>", " ").replaceAll("\\s+", " ").trim();
-            if (sb.length() > 0)
+            String text =
+                    content.replaceAll("<[^>]*>", " ").replaceAll("\\s+", " ").trim();
+            if (sb.length() > 0) {
                 sb.append(" ");
+            }
             sb.append(text);
         }
         return sb.toString();
     }
 
     private String getFolderPath(UUID folderId, UUID userId) {
-        if (folderId == null)
+        if (folderId == null) {
             return "/";
+        }
         Folders f = foldersMapper.selectById(folderId);
-        if (f == null)
+        // 文件夹已被删除或不属于当前用户时，不暴露名称
+        if (f == null || userId == null || !f.getUserId().equals(userId)) {
             return "/";
+        }
         return "/" + f.getName();
     }
 
-    private Map<String, Object> buildNoteSummary(Notes n, UUID uid) {
-        Map<String, Object> m = new LinkedHashMap<>();
-        m.put("id", n.getId().toString());
-        m.put("folder_id", n.getFolderId() != null ? n.getFolderId().toString() : null);
-        m.put("sort_order", n.getSortOrder());
-        m.put("title", n.getTitle());
-        String c = n.getContent() != null ? n.getContent() : "";
-        m.put("content_preview", c.length() > 200 ? c.substring(0, 200) : c);
-        m.put("visibility", n.getVisibility());
-        m.put("published_at", n.getPublishedAt());
-        m.put("created_at", n.getCreatedAt());
-        m.put("updated_at", n.getUpdatedAt());
-        m.put("tags", getNoteTags(n.getId()));
-        return m;
+    /** 正文预览：去除换行并截断到 200 个字符。 */
+    private static String preview(String content) {
+        if (content == null) {
+            return "";
+        }
+        return content.length() > PREVIEW_LENGTH ? content.substring(0, PREVIEW_LENGTH) : content;
     }
 
-    private Map<String, Object> buildNoteDetail(Notes n, UUID uid) {
-        Map<String, Object> m = new LinkedHashMap<>();
-        m.put("id", n.getId().toString());
-        m.put("folder_id", n.getFolderId() != null ? n.getFolderId().toString() : null);
-        m.put("sort_order", n.getSortOrder());
-        m.put("title", n.getTitle());
-        m.put("content", n.getContent());
-        m.put("visibility", n.getVisibility());
-        m.put("published_at", n.getPublishedAt());
-        m.put("created_at", n.getCreatedAt());
-        m.put("updated_at", n.getUpdatedAt());
-        m.put("tags", getNoteTags(n.getId()));
-        return m;
+    /**
+     * 笔记列表项的统一映射，供笔记列表、标签页、搜索结果共用，避免多份重复实现。
+     *
+     * @param tags 已批量加载的标签，null 表示不附标签
+     */
+    static NoteSummary toSummary(Notes n, List<TagBrief> tags) {
+        return new NoteSummary(
+                n.getId(),
+                n.getFolderId(),
+                n.getSortOrder(),
+                n.getTitle(),
+                preview(n.getContent()),
+                n.getVisibility(),
+                n.getPublishedAt(),
+                n.getCreatedAt(),
+                n.getUpdatedAt(),
+                tags != null ? tags : List.of());
+    }
+
+    /** 单条映射（不附标签），用于不需要标签的场景。 */
+    static NoteSummary toSummary(Notes n) {
+        return toSummary(n, null);
+    }
+
+    private NoteDetail buildNoteDetail(Notes n, UUID uid) {
+        List<TagBrief> tags = loadTags(n.getUserId(), List.of(n)).getOrDefault(n.getId(), List.of());
+        return new NoteDetail(
+                n.getId(),
+                n.getFolderId(),
+                n.getSortOrder(),
+                n.getTitle(),
+                n.getContent(),
+                n.getVisibility(),
+                n.getPublishedAt(),
+                n.getCreatedAt(),
+                n.getUpdatedAt(),
+                tags);
     }
 }

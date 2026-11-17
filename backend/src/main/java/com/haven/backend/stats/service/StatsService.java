@@ -1,7 +1,7 @@
 package com.haven.backend.stats.service;
 
-import java.util.Map;
+import com.haven.backend.stats.dto.StatsDtos.StatsSnapshot;
 
 public interface StatsService {
-    Map<String, Object> getStats(String userId);
+    StatsSnapshot getStats(String userId);
 }

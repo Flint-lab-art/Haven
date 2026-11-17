@@ -1,10 +1,9 @@
 package com.haven.backend.system.controller;
 
+import com.haven.backend.system.dto.SystemDtos.HealthResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.Map;
 
 @RestController
 public class HealthController {
@@ -13,7 +12,7 @@ public class HealthController {
     private String version;
 
     @GetMapping("/api/health")
-    public Map<String, Object> health() {
-        return Map.of("status", "ok", "version", version);
+    public HealthResponse health() {
+        return new HealthResponse("ok", version);
     }
 }

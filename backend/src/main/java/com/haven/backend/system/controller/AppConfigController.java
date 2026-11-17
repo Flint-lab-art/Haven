@@ -1,12 +1,11 @@
 package com.haven.backend.system.controller;
 
+import com.haven.backend.system.dto.SystemDtos.AppConfigResponse;
+import java.util.Arrays;
+import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
 
 /**
  * 运行时前端配置。
@@ -36,8 +35,7 @@ public class AppConfigController {
      * Jackson 的 SNAKE_CASE 命名策略不影响 Map 的 key，这里直接写 snake_case。
      */
     @GetMapping("/api/app-config")
-    public Map<String, Object> appConfig() {
-        return Map.of(
-                "private_hosts", privateHosts, "version", appVersion);
+    public AppConfigResponse appConfig() {
+        return new AppConfigResponse(appVersion, privateHosts);
     }
 }

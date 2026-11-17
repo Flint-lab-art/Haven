@@ -11,6 +11,4 @@ import com.haven.backend.portfolio.entity.PortfolioItems;
  * @author Kairo
  * @since 2026-11-08
  */
-public interface PortfolioItemsMapper extends BaseMapper<PortfolioItems> {
-
-}
+public interface PortfolioItemsMapper extends BaseMapper<PortfolioItems> {}

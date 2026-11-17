@@ -1,19 +1,28 @@
 package com.haven.backend.note.controller;
 
-
 import com.haven.backend.auth.interceptor.AuthInterceptor;
+import com.haven.backend.note.dto.CreateFolderRequest;
+import com.haven.backend.note.dto.FolderDtos.FolderList;
+import com.haven.backend.note.dto.FolderDtos.FolderResponse;
+import com.haven.backend.note.dto.UpdateFolderRequest;
 import com.haven.backend.note.entity.Folders;
+import com.haven.backend.note.service.FolderUpdate;
 import com.haven.backend.note.service.FoldersService;
-
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
+import java.util.List;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
-import org.springframework.web.bind.annotation.*;
-
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/folders")
@@ -23,55 +32,47 @@ public class FoldersController {
     private final FoldersService foldersService;
 
     @GetMapping
-    public Map<String, Object> list(HttpServletRequest request) {
+    public FolderList list(HttpServletRequest request) {
         String userId = AuthInterceptor.requireUserId(request);
-        List<Folders> folders = foldersService.listFolders(userId);
-        List<Map<String, Object>> items = folders.stream().map(this::toMap).toList();
-        return Map.of("items", items, "total", items.size());
+        List<FolderResponse> items = foldersService.listFolders(userId).stream()
+                .map(FoldersController::toResponse)
+                .toList();
+        return new FolderList(items, items.size());
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public Map<String, Object> create(@RequestBody Map<String, Object> body, HttpServletRequest request) {
+    public FolderResponse create(@Valid @RequestBody CreateFolderRequest req, HttpServletRequest request) {
         String userId = AuthInterceptor.requireUserId(request);
-        String name = (String) body.get("name");
-        UUID parentId = body.get("parent_id") != null ? UUID.fromString(body.get("parent_id").toString()) : null;
-        String icon = (String) body.get("icon");
-        Folders folder = foldersService.createFolder(userId, name, parentId, icon);
-        return toMap(folder);
+        return toResponse(foldersService.createFolder(userId, req.name(), req.parentId(), req.icon()));
     }
 
     @PatchMapping("/{id}")
-    public Map<String, Object> update(@PathVariable String id, @RequestBody Map<String, Object> body,
-            HttpServletRequest request) {
+    public FolderResponse update(
+            @PathVariable UUID id, @Valid @RequestBody UpdateFolderRequest req, HttpServletRequest request) {
         String userId = AuthInterceptor.requireUserId(request);
-        UUID folderId = UUID.fromString(id);
-        String name = body.containsKey("name") ? (String) body.get("name") : null;
-        UUID parentId = null;
-        if (body.containsKey("parent_id")) {
-            parentId = body.get("parent_id") != null ? UUID.fromString(body.get("parent_id").toString()) : null;
-        }
-        String icon = body.containsKey("icon") ? (String) body.get("icon") : null;
-        Integer sortOrder = body.containsKey("sort_order") ? ((Number) body.get("sort_order")).intValue() : null;
-        Folders folder = foldersService.updateFolder(userId, folderId, name, parentId, icon, sortOrder);
-        return toMap(folder);
+        FolderUpdate update = new FolderUpdate(
+                req.parentId(), Boolean.TRUE.equals(req.clearParent()), req.name(), req.icon(), req.sortOrder());
+        return toResponse(foldersService.updateFolder(userId, id, update));
     }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable String id, HttpServletRequest request) {
+    public void delete(@PathVariable UUID id, HttpServletRequest request) {
         String userId = AuthInterceptor.requireUserId(request);
-        foldersService.deleteFolder(userId, UUID.fromString(id));
+        foldersService.deleteFolder(userId, id);
     }
 
-    private Map<String, Object> toMap(Folders f) {
-        Map<String, Object> m = new LinkedHashMap<>();
-        m.put("id", f.getId().toString());
-        m.put("parent_id", f.getParentId() != null ? f.getParentId().toString() : null);
-        m.put("name", f.getName());
-        m.put("icon", f.getIcon());
-        m.put("is_inbox", f.getIsInbox());
-        m.put("sort_order", f.getSortOrder());
-        return m;
+    private static FolderResponse toResponse(Folders f) {
+        return new FolderResponse(
+                f.getId(),
+                f.getParentId(),
+                f.getName(),
+                f.getSortOrder(),
+                f.getIcon(),
+                f.getCreatedAt(),
+                f.getUpdatedAt(),
+                Boolean.TRUE.equals(f.getIsInbox()),
+                List.of());
     }
 }

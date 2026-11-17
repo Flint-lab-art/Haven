@@ -11,6 +11,4 @@ import com.haven.backend.note.entity.NoteVersions;
  * @author Kairo
  * @since 2026-11-08
  */
-public interface NoteVersionsMapper extends BaseMapper<NoteVersions> {
-
-}
+public interface NoteVersionsMapper extends BaseMapper<NoteVersions> {}

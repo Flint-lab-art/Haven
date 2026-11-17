@@ -11,6 +11,4 @@ import com.haven.backend.note.entity.Tags;
  * @author Kairo
  * @since 2026-11-08
  */
-public interface TagsMapper extends BaseMapper<Tags> {
-
-}
+public interface TagsMapper extends BaseMapper<Tags> {}

@@ -1,16 +1,35 @@
 package com.haven.backend.portfolio.service;
 
-import java.util.Map;
+import com.haven.backend.portfolio.dto.PortfolioDtos.PortfolioItemDetail;
+import com.haven.backend.portfolio.dto.PortfolioDtos.PortfolioList;
+import com.haven.backend.portfolio.dto.PortfolioDtos.PortfolioRepoResponse;
+import com.haven.backend.portfolio.dto.UpdatePortfolioItemRequest;
 import java.util.UUID;
 
+/**
+ * 作品集服务。
+ * <p>
+ * 所有返回值都是有名字的 DTO（见 {@code PortfolioDtos}）；公开接口只返回 {@code is_public=true} 的作品。
+ */
 public interface PortfolioService {
-    Map<String, Object> listPublicPortfolio();
-    Map<String, Object> getPublicPortfolioItem(UUID itemId);
-    Map<String, Object> getPortfolioItem(String userId, UUID itemId);
-    Map<String, Object> createPortfolioItem(String userId, String title, String description, String content, Integer sortOrder);
-    Map<String, Object> updatePortfolioItem(String userId, UUID itemId, String title, String description, String content, Integer sortOrder);
+
+    PortfolioList listPublicPortfolio();
+
+    PortfolioItemDetail getPublicPortfolioItem(UUID itemId);
+
+    PortfolioItemDetail getPortfolioItem(String userId, UUID itemId);
+
+    PortfolioItemDetail createPortfolioItem(
+            String userId, String title, String description, String content, Integer sortOrder, Boolean isPublic);
+
+    PortfolioItemDetail updatePortfolioItem(String userId, UUID itemId, UpdatePortfolioItemRequest req);
+
     void deletePortfolioItem(String userId, UUID itemId);
-    Map<String, Object> addRepo(String userId, UUID itemId, String url, String title, boolean isPrimary);
-    Map<String, Object> updateRepo(String userId, UUID itemId, UUID repoId, String url, String title, Boolean isPrimary);
+
+    PortfolioRepoResponse addRepo(String userId, UUID itemId, String url, String title, boolean isPrimary);
+
+    PortfolioRepoResponse updateRepo(
+            String userId, UUID itemId, UUID repoId, String url, String title, Boolean isPrimary);
+
     void deleteRepo(String userId, UUID itemId, UUID repoId);
 }

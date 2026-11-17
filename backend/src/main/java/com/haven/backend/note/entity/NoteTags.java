@@ -3,12 +3,11 @@ package com.haven.backend.note.entity;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.haven.backend.typehandler.UuidTypeHandler;
+import java.io.Serializable;
+import java.util.UUID;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.ToString;
-
-import java.io.Serializable;
-import java.util.UUID;
 
 @Getter
 @Setter
