@@ -11,36 +11,20 @@
  * 数据一次拉全：folder 接口返回平铺数组，笔记按 folder_id 分组；
  * 笔记分页在内部循环取完（个人使用量级足够）。
  */
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import FolderTreeNode from './FolderTreeNode.vue'
 import NoteTreeItem from './NoteTreeItem.vue'
 import { ApiError } from '@/api/client'
-import {
-  createFolder,
-  deleteFolder,
-  listFolders,
-  updateFolder,
-  type Folder,
-} from '@/api/folders'
-import { deleteNote, listNotes, publishNote, unpublishNote, updateNote, type NoteSummary } from '@/api/notes'
+import { deleteFolder, updateFolder, type Folder } from '@/api/folders'
+import { deleteNote, publishNote, unpublishNote, updateNote, type NoteSummary } from '@/api/notes'
+import { useFolderEditing } from '@/composables/useFolderEditing'
+import { useFolderIcon } from '@/composables/useFolderIcon'
+import { useNoteTree } from '@/composables/useNoteTree'
 import { useTreeDrag } from '@/composables/useTreeDrag'
 import { useUiStore } from '@/stores/ui'
-import { uploadImage } from '@/api/uploads'
-
-import {
-  folderIndent,
-  isFolderDescendant,
-} from '@/utils/tree'
-
-/** 分页上限 100，内部循环取完所有笔记。 */
-const PAGE_SIZE = 100
-
-/** 图标面板的三个来源页（docs/v4/frontend/frontend.md 3.3）。 */
-type Row =
-  | { kind: 'folder'; folder: Folder; depth: number }
-  | { kind: 'note'; note: NoteSummary; depth: number }
+import { folderIndent, isFolderDescendant } from '@/utils/tree'
 
 const route = useRoute()
 const router = useRouter()
@@ -63,28 +47,109 @@ const {
   () => busy.value,
 )
 
-const folders = ref<Folder[]>([])
-const notes = ref<NoteSummary[]>([])
-const loading = ref(true)
-const error = ref('')
 const busy = ref(false)
 
-const expanded = ref<Set<string>>(new Set())
-/** 当前选中的文件夹 id；加载完成后默认选中收件箱。 */
-const selectedFolder = ref<string | null>(null)
+// 数据层：加载、树结构、展开状态
+const {
+  folders,
+  notes,
+  loading,
+  error,
+  selectedFolder,
+  expanded,
+  childrenMap,
+  notesMap,
+  rows,
+  visibleNotes,
+  panelTitle,
+  inboxFolderId,
+  refresh,
+  expand,
+} = useNoteTree((validIds) => {
+  // 刷新后文件夹可能已被删：关掉指向它的图标面板
+  if (iconFolderId.value && !validIds.has(iconFolderId.value)) closeIconPicker()
+})
+
+const currentNoteId = computed(() => String(route.params.id ?? ''))
+
+// 文件夹的创建与重命名
+const {
+  creatingUnder,
+  createDraft,
+  renamingId,
+  renameDraft,
+  startCreate: startCreateRaw,
+  cancelCreate,
+  submitCreate: submitCreateRaw,
+  startRename: startRenameRaw,
+  cancelRename,
+  submitRename,
+} = useFolderEditing({
+  busy,
+  error,
+  expand,
+  selectFolder: (id) => {
+    selectedFolder.value = id
+  },
+  onSaved: async () => {
+    ui.foldersChanged()
+    await refresh()
+  },
+  actionError,
+})
+
+/** 顶部「新建文件夹」：建在根目录，不跟随当前选中的目录。 */
+function startCreateRoot(): void {
+  selectedFolder.value = null
+  void startCreateRaw(null)
+}
+
+/** 菜单里点「新建子文件夹」：先关菜单再进入创建态。 */
+function startCreate(parentId: string | null): Promise<void> {
+  menuFolderId.value = null
+  return startCreateRaw(parentId)
+}
+
+/** 菜单里点「重命名」：先关菜单再进入编辑态。 */
+function startRename(folder: Folder): Promise<void> {
+  menuFolderId.value = null
+  return startRenameRaw(folder)
+}
+
+// 文件夹图标
+const {
+  iconFolderId,
+  open: startChangeIconRaw,
+  toggle: toggleIconPicker,
+  close: closeIconPicker,
+  save: saveIcon,
+  upload: uploadIcon,
+} = useFolderIcon({
+  busy,
+  error,
+  onSaved: async () => {
+    ui.foldersChanged()
+    await refresh()
+  },
+  actionError,
+})
+
+/** 菜单里点「更改图标」：先关菜单再开面板。 */
+function startChangeIcon(folder: Folder): void {
+  menuFolderId.value = null
+  startChangeIconRaw(folder)
+}
+
+/** 模板里用的提交入口。 */
+function submitCreate(): Promise<void> {
+  return submitCreateRaw()
+}
+/** 新建笔记时的目标目录（未选中时交给后端默认归入收件箱）。 */
+const targetFolderId = computed(() => selectedFolder.value)
 
 /** 当前拖拽中的节点与可放置位置。 */
 
 const menuFolderId = ref<string | null>(null)
-/** undefined = 未在创建；null = 建在根目录；字符串 = 建在该文件夹下。 */
-const creatingUnder = ref<string | null | undefined>(undefined)
-const createDraft = ref('')
-const renamingId = ref<string | null>(null)
-const renameDraft = ref('')
-
-/** 正在设置图标的文件夹，以及手动输入的 Emoji。 */
-const iconFolderId = ref<string | null>(null)
-
 /** 待确认的删除目标。 */
 const pendingDelete = ref<{
   kind: 'note' | 'folder'
@@ -96,132 +161,6 @@ const deleting = ref(false)
 const busyNoteId = ref<string | null>(null)
 
 let refreshTimer: ReturnType<typeof setTimeout> | undefined
-
-const currentNoteId = computed(() => String(route.params.id ?? ''))
-
-/** parent_id -> 子文件夹（按 sort_order、name 排序）。 */
-const childrenMap = computed(() => {
-  const map = new Map<string | null, Folder[]>()
-  for (const folder of folders.value) {
-    const key = folder.parent_id ?? null
-    const list = map.get(key) ?? []
-    list.push(folder)
-    map.set(key, list)
-  }
-  for (const list of map.values()) {
-    list.sort(
-      (a, b) =>
-        Number(b.is_inbox) - Number(a.is_inbox) ||
-        a.sort_order - b.sort_order ||
-        a.name.localeCompare(b.name, 'zh-CN'),
-    )
-  }
-  return map
-})
-
-/** folder_id -> 笔记（按目录内 sort_order，更新时间为兜底）。 */
-const notesMap = computed(() => {
-  const map = new Map<string | null, NoteSummary[]>()
-  for (const note of notes.value) {
-    const key = note.folder_id ?? null
-    const list = map.get(key) ?? []
-    list.push(note)
-    map.set(key, list)
-  }
-  for (const list of map.values()) {
-    list.sort(
-      (a, b) =>
-        a.sort_order - b.sort_order ||
-        new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
-    )
-  }
-  return map
-})
-
-/** 把树按当前展开状态拍平成行，便于渲染与键盘导航。 */
-const rows = computed(() => {
-  const out: Row[] = []
-  const visited = new Set<string>()
-
-  const walk = (parent: string | null, depth: number): void => {
-    for (const folder of childrenMap.value.get(parent) ?? []) {
-      if (visited.has(folder.id)) continue
-      visited.add(folder.id)
-
-      out.push({ kind: 'folder', folder, depth })
-      if (!expanded.value.has(folder.id)) continue
-
-      // 直属笔记先出现在文件夹下方，再展开子文件夹，
-      // 这样在某个目录里新建的笔记会紧跟在该目录后面。
-      for (const note of notesMap.value.get(folder.id) ?? []) {
-        out.push({ kind: 'note', note, depth: depth + 1 })
-      }
-      walk(folder.id, depth + 1)
-    }
-  }
-
-  walk(null, 0)
-  return out
-})
-
-/** 当前用户的真实收件箱 id。 */
-const inboxFolderId = computed(() => folders.value.find((folder) => folder.is_inbox)?.id ?? null)
-
-/** 当前可见的笔记顺序，供上下方向键切换。 */
-const visibleNotes = computed(() => {
-  const out: NoteSummary[] = []
-  for (const row of rows.value) {
-    if (row.kind === 'note') out.push(row.note)
-  }
-  return out
-})
-
-/** 当前选中的文件夹；未选中时新建笔记交给后端默认归入收件箱。 */
-const targetFolderId = computed(() => selectedFolder.value)
-
-/** 顶部左侧显示当前目录名（ui-design.md 9.1）。 */
-const panelTitle = computed(() => {
-  if (!selectedFolder.value) return '收件箱'
-  return folders.value.find((folder) => folder.id === selectedFolder.value)?.name ?? '收件箱'
-})
-
-async function fetchAllNotes(): Promise<NoteSummary[]> {
-  const all: NoteSummary[] = []
-  let offset = 0
-  for (;;) {
-    const page = await listNotes({ limit: PAGE_SIZE, offset })
-    all.push(...page.items)
-    offset += page.items.length
-    if (page.items.length === 0 || offset >= page.total) break
-  }
-  return all
-}
-
-async function refresh(): Promise<void> {
-  loading.value = true
-  error.value = ''
-  try {
-    const [folderResult, allNotes] = await Promise.all([listFolders(), fetchAllNotes()])
-    folders.value = folderResult.items
-    notes.value = allNotes
-
-    const ids = new Set(folderResult.items.map((folder) => folder.id))
-    const selectionMissing = !selectedFolder.value || !ids.has(selectedFolder.value)
-    if (selectionMissing) {
-      const inbox = folderResult.items.find((folder) => folder.is_inbox)
-      selectedFolder.value = inbox?.id ?? folderResult.items[0]?.id ?? null
-      if (selectedFolder.value) {
-        expanded.value = new Set([...expanded.value, selectedFolder.value])
-      }
-    }
-    expanded.value = new Set([...expanded.value].filter((id) => ids.has(id)))
-    if (iconFolderId.value && !ids.has(iconFolderId.value)) closeIconPicker()
-  } catch {
-    error.value = '笔记加载失败，请稍后重试'
-  } finally {
-    loading.value = false
-  }
-}
 
 function actionError(err: unknown, fallback: string): string {
   if (err instanceof ApiError) {
@@ -253,13 +192,6 @@ function toggleFolder(id: string): void {
   expanded.value = next
 }
 
-function expand(id: string): void {
-  if (expanded.value.has(id)) return
-  const next = new Set(expanded.value)
-  next.add(id)
-  expanded.value = next
-}
-
 function selectFolder(folder: Folder): void {
   selectedFolder.value = folder.id
   expand(folder.id)
@@ -279,147 +211,6 @@ function noteTarget(note: NoteSummary): { name: string; params: { id: string } }
 function openMenu(folder: Folder): void {
   closeIconPicker()
   menuFolderId.value = menuFolderId.value === folder.id ? null : folder.id
-}
-
-function startChangeIcon(folder: Folder): void {
-  menuFolderId.value = null
-  iconFolderId.value = folder.id
-}
-
-/** 点击图标本身：再点一次收起面板。 */
-function toggleIconPicker(folder: Folder): void {
-  if (iconFolderId.value === folder.id) {
-    closeIconPicker()
-    return
-  }
-  startChangeIcon(folder)
-}
-
-function closeIconPicker(): void {
-  iconFolderId.value = null
-}
-
-/** 上传图片并保存为图标。 */
-async function uploadIcon(folder: Folder, file: File): Promise<void> {
-  if (busy.value) return
-
-  busy.value = true
-  error.value = ''
-  try {
-    const res = await uploadImage(file, 'icon')
-    await updateFolder(folder.id, { icon: res.url })
-    closeIconPicker()
-    ui.foldersChanged()
-    await refresh()
-  } catch (err) {
-    error.value = actionError(err, '上传图标失败')
-  } finally {
-    busy.value = false
-  }
-}
-
-/** value 为 null / 空串时清除图标，回到默认文件夹图标。 */
-async function saveIcon(folder: Folder, value: string | null): Promise<void> {
-  if (busy.value) return
-  const icon = value?.trim() || null
-  if (icon === folder.icon) {
-    closeIconPicker()
-    return
-  }
-
-  busy.value = true
-  error.value = ''
-  try {
-    await updateFolder(folder.id, { icon })
-    closeIconPicker()
-    ui.foldersChanged()
-    await refresh()
-  } catch (err) {
-    error.value = actionError(err, '更新图标失败')
-  } finally {
-    busy.value = false
-  }
-}
-
-/** 顶部「新建文件夹」：建在根目录，不跟随当前选中的目录。 */
-function startCreateRoot(): void {
-  selectedFolder.value = null
-  void startCreate(null)
-}
-
-async function startCreate(parentId: string | null): Promise<void> {
-  menuFolderId.value = null
-  creatingUnder.value = parentId
-  createDraft.value = ''
-  // 根目录输入框渲染在树的顶部，不受展开状态影响（ui-design.md 9.1）
-  if (parentId) expand(parentId)
-  await nextTick()
-  document.querySelector<HTMLInputElement>('.tree-input .input')?.focus()
-}
-
-function cancelCreate(): void {
-  creatingUnder.value = undefined
-  createDraft.value = ''
-}
-
-async function submitCreate(): Promise<void> {
-  const name = createDraft.value.trim()
-  if (!name || busy.value) return
-
-  busy.value = true
-  error.value = ''
-  const parentId = creatingUnder.value ?? null
-  try {
-    const created = await createFolder({ name, parent_id: parentId })
-    creatingUnder.value = undefined
-    createDraft.value = ''
-    if (parentId) expand(parentId)
-    selectedFolder.value = created.id
-    ui.foldersChanged()
-    await refresh()
-  } catch (err) {
-    error.value = actionError(err, '创建文件夹失败')
-  } finally {
-    busy.value = false
-  }
-}
-
-async function startRename(folder: Folder): Promise<void> {
-  menuFolderId.value = null
-  renamingId.value = folder.id
-  renameDraft.value = folder.name
-  await nextTick()
-  const input = document.querySelector<HTMLInputElement>('.tree-rename')
-  input?.focus()
-  input?.select()
-}
-
-function cancelRename(): void {
-  renamingId.value = null
-  renameDraft.value = ''
-}
-
-async function submitRename(folder: Folder): Promise<void> {
-  const name = renameDraft.value.trim()
-  if (!name || busy.value) return
-  if (name === folder.name) {
-    cancelRename()
-    return
-  }
-
-  busy.value = true
-  error.value = ''
-  try {
-    await updateFolder(folder.id, { name })
-    renamingId.value = null
-    renameDraft.value = ''
-    ui.foldersChanged()
-    await refresh()
-  } catch (err) {
-    error.value = actionError(err, '重命名失败')
-  } finally {
-    busy.value = false
-  }
 }
 
 async function removeFolder(folder: Folder): Promise<void> {

@@ -20,19 +20,17 @@ import TagDropdown from '@/components/note/TagDropdown.vue'
 import VersionHistoryDialog from '@/components/editor/VersionHistoryDialog.vue'
 import { ApiError } from '@/api/client'
 import {
-  createNote,
   getNote,
-  updateNote,
   type Note,
 } from '@/api/notes'
 import { listTags, type Tag } from '@/api/tags'
 import { listFolders, type Folder } from '@/api/folders'
+import { useNoteAutoSave } from '@/composables/useNoteAutoSave'
 import { useUiStore } from '@/stores/ui'
 import { countWords, formatReadingTime } from '@/utils/text-stats'
 import { stripHtml } from '@/utils/html'
 
 /** 自动保存防抖时间（ui-design.md 7.5.4）。 */
-const AUTOSAVE_DELAY = 1000
 
 const route = useRoute()
 const router = useRouter()
@@ -50,11 +48,9 @@ const folderId = ref<string | null>(null)
 const selectedTagIds = ref<string[]>([])
 
 const loading = ref(true)
-const saving = ref(false)
 const error = ref('')
 /** 载入 / 回填期间不触发自动保存。 */
 const hydrating = ref(true)
-const saveState = ref<'idle' | 'dirty' | 'saving' | 'saved' | 'error'>('idle')
 
 const editorRef = ref<InstanceType<typeof RichTextEditor> | null>(null)
 
@@ -96,57 +92,35 @@ const isBlankNewNote = computed(
 )
 
 /** 最近一次成功保存时的内容快照，用来判断是否真的需要再存一次。 */
-const lastSaved = ref('')
-/** 上次保存时的标签集合；只有标签变化或新建笔记时才重新拉标签计数。 */
-let lastSavedTags = ''
-
-let saveTimer: ReturnType<typeof setTimeout> | undefined
-let savePending = false
-/** 正处在离开守卫里：此时新建笔记后不再 replace 路由，避免打断原导航。 */
-let leaving = false
-/** 用户已确认「保存失败也要关闭」：离开守卫不再重复保存与询问一次。 */
-let leavingAnyway = false
-
-const statusText = computed(() => {
-  switch (saveState.value) {
-    case 'dirty':
-      return '未保存'
-    case 'saving':
-      return '正在保存…'
-    case 'saved':
-      return '已保存'
-    case 'error':
-      return '保存失败'
-    default:
-      return ''
-  }
-})
-
-function snapshot(): string {
-  return JSON.stringify({
-    title: title.value,
-    content: content.value,
-    tags: selectedTagIds.value,
-    folder: folderId.value,
-  })
-}
-
-/** 标题、正文、标签任一变化都走同一个防抖保存。 */
-watch(
-  [title, content, selectedTagIds, folderId],
-  () => {
-    if (hydrating.value) return
-    if (snapshot() === lastSaved.value) return
-    scheduleSave()
+// 自动保存状态机（防抖、排队、新建换路由、404 放弃）
+const {
+  saving,
+  saveState,
+  lastSaved,
+  statusText,
+  snapshot,
+  schedule: scheduleSave,
+  save,
+  alignBaseline,
+  cancelPending,
+  syncTagsBaseline,
+  saveTagsOnly,
+} = useNoteAutoSave({
+  noteId,
+  isNew,
+  draft: { title, content, folderId, selectedTagIds },
+  note,
+  hydrating,
+  isBlankNewNote,
+  syncEditor: () => editorRef.value?.sync(),
+  isLeaving: () => leaving,
+  replaceToDetail: async (id) => {
+    await router.replace({ name: 'note-detail', params: { id } })
   },
-  { deep: true },
-)
-
-function scheduleSave(): void {
-  saveState.value = 'dirty'
-  if (saveTimer) clearTimeout(saveTimer)
-  saveTimer = setTimeout(() => void save(), AUTOSAVE_DELAY)
-}
+  onTagsChanged: () => reloadTags(),
+  onSaved: () => ui.notesChanged(),
+  onError: (err) => handleError(err),
+})
 
 function handleError(err: unknown): void {
   if (err instanceof ApiError) {
@@ -158,97 +132,9 @@ function handleError(err: unknown): void {
   }
 }
 
-/** 保存；`syncEditor` 用于离开页面 / 发布前把编辑器最新内容补进来。 */
-async function save(syncEditor = false): Promise<boolean> {
-  if (saveTimer) {
-    clearTimeout(saveTimer)
-    saveTimer = undefined
-  }
-  if (hydrating.value) return true
-
-  if (syncEditor && editorRef.value) {
-    editorRef.value.sync()
-    await nextTick()
-  }
-
-  // 空白新笔记不创建空记录：把基线对齐，状态回到闲置
-  if (isBlankNewNote.value) {
-    lastSaved.value = snapshot()
-    if (saveState.value !== 'idle') saveState.value = 'idle'
-    return true
-  }
-
-  if (snapshot() === lastSaved.value) {
-    if (saveState.value !== 'saved' && saveState.value !== 'idle') saveState.value = 'saved'
-    return true
-  }
-  if (saving.value) {
-    savePending = true
-    return true
-  }
-
-  saving.value = true
-  saveState.value = 'saving'
-  error.value = ''
-
-  const pending = snapshot()
-  const tagKey = JSON.stringify(selectedTagIds.value)
-  try {
-    if (isNew.value) {
-      const created = await createNote({
-        title: title.value,
-        content: content.value,
-        tag_ids: selectedTagIds.value,
-        folder_id: folderId.value,
-      })
-      note.value = created
-      lastSaved.value = pending
-      saveState.value = 'saved'
-      ui.notesChanged()
-      // 换成详情地址；路由监听会重新载入，hydrating 防止回填触发再次保存
-      if (!leaving) {
-        await router.replace({ name: 'note-detail', params: { id: created.id } })
-      }
-      lastSavedTags = tagKey
-      await reloadTags()
-      return true
-    }
-
-    const targetFolder = folderId.value
-    const updated = await updateNote(noteId.value, {
-      title: title.value,
-      content: content.value,
-      tag_ids: selectedTagIds.value,
-      ...(targetFolder ? { folder_id: targetFolder } : { clear_folder: true }),
-    })
-    note.value = updated
-    lastSaved.value = pending
-    saveState.value = 'saved'
-    ui.notesChanged()
-    // 标签计数变了：不再被使用的标签会自动从列表消失
-    if (tagKey !== lastSavedTags) {
-      lastSavedTags = tagKey
-      await reloadTags()
-    }
-    return true
-  } catch (err) {
-    if (err instanceof ApiError && err.isNotFound) {
-      // 笔记已在目录树里被删除：放弃本次保存，并允许离开
-      lastSaved.value = snapshot()
-      saveState.value = 'idle'
-      return true
-    }
-    handleError(err)
-    saveState.value = 'error'
-    return false
-  } finally {
-    saving.value = false
-    if (savePending) {
-      savePending = false
-      if (snapshot() !== lastSaved.value) scheduleSave()
-    }
-  }
-}
+/** 离开守卫用的标志。 */
+let leaving = false
+let leavingAnyway = false
 
 async function load(): Promise<void> {
   hydrating.value = true
@@ -291,8 +177,8 @@ async function load(): Promise<void> {
     }
     // 等编辑器把初始内容同步完，再把当前状态记为「已保存」
     requestAnimationFrame(() => {
-      lastSaved.value = snapshot()
-      lastSavedTags = JSON.stringify(selectedTagIds.value)
+      alignBaseline()
+      syncTagsBaseline()
       saveState.value = isNew.value ? 'idle' : 'saved'
       hydrating.value = false
     })
@@ -325,58 +211,17 @@ async function onTagCreated(tag: Tag): Promise<void> {
     tags.value = [...tags.value, tag]
   }
   if (isNew.value || hydrating.value) {
-    // 新笔记：selectedTagIds 已由子组件更新，首次保存会带上；
-    // 同步基线，避免「刚建标签」被当成未保存的改动
-    lastSavedTags = JSON.stringify(selectedTagIds.value)
-    if (lastSaved.value) {
-      try {
-        const saved = JSON.parse(lastSaved.value) as Record<string, unknown>
-        saved.tags = selectedTagIds.value
-        lastSaved.value = JSON.stringify(saved)
-      } catch {
-        // 快照格式异常时忽略，下一次保存会以当前标签为准
-      }
-    }
+    // 新笔记：首次保存会带上标签；同步基线，避免「刚建标签」被当成未保存的改动
+    syncTagsBaseline()
     return
   }
 
-  const pending = snapshot()
-  const tagKey = JSON.stringify(selectedTagIds.value)
-  const newTagId = tag.id
-  const revertTag = (): void => {
+  const created = await saveTagsOnly()
+  if (!created) {
     // 关联失败：把刚建的标签从本篇撤掉；标签本身保留，可在下次使用时再关联
-    selectedTagIds.value = selectedTagIds.value.filter((id) => id !== newTagId)
-    tags.value = tags.value.filter((item) => item.id !== newTagId)
-    lastSaved.value = snapshot()
-  }
-
-  saving.value = true
-  saveState.value = 'saving'
-  error.value = ''
-  try {
-    const updated = await updateNote(noteId.value, { tag_ids: selectedTagIds.value })
-    note.value = updated
-    lastSaved.value = pending
-    lastSavedTags = tagKey
-    saveState.value = 'saved'
-    ui.notesChanged()
-    await reloadTags()
-  } catch (err) {
-    if (err instanceof ApiError && err.isNotFound) {
-      lastSaved.value = snapshot()
-      saveState.value = 'idle'
-      return
-    }
-    revertTag()
-    handleError(err)
-    saveState.value = 'error'
-    await reloadTags()
-  } finally {
-    saving.value = false
-    if (savePending) {
-      savePending = false
-      if (snapshot() !== lastSaved.value) scheduleSave()
-    }
+    selectedTagIds.value = selectedTagIds.value.filter((id) => id !== tag.id)
+    tags.value = tags.value.filter((item) => item.id !== tag.id)
+    alignBaseline()
   }
 }
 
@@ -470,10 +315,7 @@ function whenSaveIdle(): Promise<void> {
 
 /** 关闭当前笔记：先保存一次，成功（或用户确认放弃）后回到工作台空态。 */
 async function closeNote(): Promise<void> {
-  if (saveTimer) {
-    clearTimeout(saveTimer)
-    saveTimer = undefined
-  }
+  cancelPending()
   await whenSaveIdle()
   // 空白的新建笔记直接关掉，不创建记录
   if (isNew.value) {
@@ -514,7 +356,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
-  if (saveTimer) clearTimeout(saveTimer)
+  cancelPending()
   ui.registerNoteFlush(null)
 })
 </script>

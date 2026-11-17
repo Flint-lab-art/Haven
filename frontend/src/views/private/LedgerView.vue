@@ -12,17 +12,15 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import LedgerDonutChart from '@/components/LedgerDonutChart.vue'
 import LedgerTrendChart from '@/components/LedgerTrendChart.vue'
 import { ApiError } from '@/api/client'
+import { useLedgerData } from '@/composables/useLedgerData'
 import {
   createLedgerBatch,
   deleteLedgerEntry,
-  getLedgerSummary,
-  listLedgerEntries,
   quickParse,
   updateLedgerEntry,
   type CreateLedgerEntryInput,
   type LedgerCategory,
   type LedgerEntry,
-  type LedgerSummary,
   type QuickParseResult,
 } from '@/api/ledger'
 import { formatDateTime, formatRelative } from '@/utils/format'
@@ -34,7 +32,6 @@ import {
   formatSignedYuan,
   formatYuan,
   fromLocalDateTimeInput,
-  monthRange,
   parseYuanToCents,
   shiftMonth,
   toLocalDateTimeInput,
@@ -44,14 +41,26 @@ const month = ref(currentMonth())
 const categoryFilter = ref<LedgerCategory | ''>('')
 const rankType = ref<'expense' | 'income'>('expense')
 
-const summary = ref<LedgerSummary | null>(null)
-const entries = ref<LedgerEntry[]>([])
-const total = ref(0)
-
-const loadingSummary = ref(false)
-const loadingEntries = ref(false)
 const error = ref('')
 const toast = ref('')
+
+// 月度数据：汇总与明细，含请求竞态处理
+const {
+  summary,
+  entries,
+  total,
+  loadingSummary,
+  loadingEntries,
+  loadSummary,
+  loadEntries,
+  reload,
+  applyEntry,
+} = useLedgerData({
+  month,
+  categoryFilter,
+  error,
+  messageOf: (err, fallback) => messageOf(err, fallback),
+})
 
 const quickText = ref('')
 const parsing = ref(false)
@@ -70,7 +79,6 @@ const editForm = reactive({
 const deleting = ref<LedgerEntry | null>(null)
 const deletingBusy = ref(false)
 
-let entriesSeq = 0
 let toastTimer: number | undefined
 
 const parsedItems = computed(() => parseResult.value?.items ?? [])
@@ -125,53 +133,8 @@ function messageOf(err: unknown, fallback: string): string {
   return fallback
 }
 
-async function loadSummary(): Promise<void> {
-  if (!isValidMonth(month.value)) return
-  loadingSummary.value = true
-  try {
-    summary.value = await getLedgerSummary(month.value)
-  } catch (err) {
-    error.value = messageOf(err, '汇总加载失败')
-  } finally {
-    loadingSummary.value = false
-  }
-}
-
-async function loadEntries(): Promise<void> {
-  if (!isValidMonth(month.value)) return
-  const seq = ++entriesSeq
-  loadingEntries.value = true
-  const { from, to } = monthRange(month.value)
-  try {
-    const result = await listLedgerEntries({
-      from,
-      to,
-      category: categoryFilter.value || undefined,
-      limit: 100,
-      offset: 0,
-    })
-    if (seq !== entriesSeq) return
-    entries.value = result.items
-    total.value = result.total
-  } catch (err) {
-    if (seq !== entriesSeq) return
-    error.value = messageOf(err, '明细加载失败')
-  } finally {
-    if (seq === entriesSeq) loadingEntries.value = false
-  }
-}
-
-async function reload(): Promise<void> {
-  error.value = ''
-  await Promise.all([loadSummary(), loadEntries()])
-}
-
 function changeMonth(delta: number): void {
   month.value = shiftMonth(month.value, delta)
-}
-
-function isValidMonth(value: string): boolean {
-  return /^\d{4}-\d{2}$/.test(value)
 }
 
 async function doParse(): Promise<void> {
@@ -302,16 +265,6 @@ async function saveEdit(): Promise<void> {
     editError.value = messageOf(err, '保存失败')
   } finally {
     editSaving.value = false
-  }
-}
-
-function applyEntry(updated: LedgerEntry): void {
-  const index = entries.value.findIndex((item) => item.id === updated.id)
-  if (index >= 0) entries.value[index] = updated
-  if (summary.value) {
-    summary.value.recent = summary.value.recent.map((item) =>
-      item.id === updated.id ? updated : item,
-    )
   }
 }
 
