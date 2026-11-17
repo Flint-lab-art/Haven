@@ -7,7 +7,7 @@
  * - 不跳转路由，避免离开编辑页丢掉未保存的上下文。
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import ConfirmDialog from './ConfirmDialog.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { ApiError } from '@/api/client'
 import {
   getVersion,

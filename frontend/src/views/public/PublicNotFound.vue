@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /** 公开域 404：不暴露后台入口。 */
 import { RouterLink } from 'vue-router'
-import PublicEmpty from '@/components/PublicEmpty.vue'
+import PublicEmpty from '@/components/layout/PublicEmpty.vue'
 </script>
 
 <template>

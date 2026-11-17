@@ -107,7 +107,7 @@ src/
 │   ├── ledger.ts         # 解析、批量写入、汇总、明细
 │   ├── sessions.ts / devices.ts / tokens.ts
 │   └── uploads.ts        # multipart 图片上传
-├── components/           # 布局、编辑器、弹窗、列表等可复用组件
+├── components/           # 按角色分组，见下方「组件目录」
 ├── composables/          # useGlobalShortcuts、useCodeCopy
 ├── router/
 │   ├── index.ts          # 公开 / 私有路由表、登录守卫、标题

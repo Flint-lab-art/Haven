@@ -13,7 +13,7 @@
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import ConfirmDialog from './ConfirmDialog.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { ApiError } from '@/api/client'
 import {
   createFolder,

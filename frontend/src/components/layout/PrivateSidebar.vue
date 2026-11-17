@@ -12,7 +12,7 @@ import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
 import { logout } from '@/api/auth'
-import HavenMark from './HavenMark.vue'
+import HavenMark from '@/components/common/HavenMark.vue'
 
 const auth = useAuthStore()
 const ui = useUiStore()

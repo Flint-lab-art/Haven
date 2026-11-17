@@ -7,8 +7,8 @@
  */
 import { computed, ref, watch } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
-import PrivateSidebar from './PrivateSidebar.vue'
-import CommandPalette from './CommandPalette.vue'
+import PrivateSidebar from '@/components/layout/PrivateSidebar.vue'
+import CommandPalette from '@/components/common/CommandPalette.vue'
 import { useGlobalShortcuts } from '@/composables/useGlobalShortcuts'
 import { useUiStore } from '@/stores/ui'
 

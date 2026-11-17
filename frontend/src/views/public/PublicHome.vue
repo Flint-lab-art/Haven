@@ -8,7 +8,7 @@
  */
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import PublicNoteRow from '@/components/PublicNoteRow.vue'
+import PublicNoteRow from '@/components/layout/PublicNoteRow.vue'
 import { listPublicNotes, type PublicNoteSummary } from '@/api/notes'
 import { listPortfolio, type PortfolioItem } from '@/api/portfolio'
 import { repoLabel } from '@/utils/portfolio'

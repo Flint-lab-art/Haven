@@ -2,7 +2,7 @@
 /** 中间栏搜索（私有域）：输入关键词，结果平铺在列表里，点击进入右侧笔记。 */
 import { ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import NoteListItem from './NoteListItem.vue'
+import NoteListItem from '@/components/note/NoteListItem.vue'
 import { searchPrivate, type SearchNoteHit, type SearchTagHit } from '@/api/search'
 import { formatRelative } from '@/utils/format'
 

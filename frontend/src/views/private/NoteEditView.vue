@@ -15,9 +15,9 @@
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
-import RichTextEditor from '@/components/RichTextEditor.vue'
-import TagDropdown from '@/components/TagDropdown.vue'
-import VersionHistoryDialog from '@/components/VersionHistoryDialog.vue'
+import RichTextEditor from '@/components/editor/RichTextEditor.vue'
+import TagDropdown from '@/components/note/TagDropdown.vue'
+import VersionHistoryDialog from '@/components/editor/VersionHistoryDialog.vue'
 import { ApiError } from '@/api/client'
 import {
   createNote,

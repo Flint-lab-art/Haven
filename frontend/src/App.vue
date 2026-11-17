@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { RouterView, useRoute } from 'vue-router'
-import SiteFooter from '@/components/SiteFooter.vue'
+import SiteFooter from '@/components/layout/SiteFooter.vue'
 import { detectDomain } from '@/router/domain'
 
 const route = useRoute()

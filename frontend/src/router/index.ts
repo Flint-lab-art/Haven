@@ -13,7 +13,7 @@ import { useAuthStore } from '@/stores/auth'
 const publicRoutes: RouteRecordRaw[] = [
   {
     path: '/',
-    component: () => import('@/components/PublicLayout.vue'),
+    component: () => import('@/components/layout/PublicLayout.vue'),
     children: [
       {
         path: '',
@@ -70,7 +70,7 @@ const publicRoutes: RouteRecordRaw[] = [
  * `default` 是右侧详情区，`list` 是中间列表栏。
  * 同一分区共用同一个 `list` 组件，切换右侧笔记时左、中两栏不重建。
  */
-const noteList = () => import('@/components/NoteListPanel.vue')
+const noteList = () => import('@/components/note/NoteListPanel.vue')
 
 const privateRoutes: RouteRecordRaw[] = [
   {
@@ -81,7 +81,7 @@ const privateRoutes: RouteRecordRaw[] = [
   },
   {
     path: '/',
-    component: () => import('@/components/PrivateLayout.vue'),
+    component: () => import('@/components/layout/PrivateLayout.vue'),
     children: [
       {
         // 仪表盘：概览统计（docs/v5/frontend/frontend.md 第一节）
@@ -96,7 +96,7 @@ const privateRoutes: RouteRecordRaw[] = [
         path: 'notes',
         name: 'workbench',
         components: {
-          default: () => import('@/components/EmptyDetail.vue'),
+          default: () => import('@/components/common/EmptyDetail.vue'),
           list: noteList,
         },
         meta: {
@@ -129,8 +129,8 @@ const privateRoutes: RouteRecordRaw[] = [
         path: 'search',
         name: 'search',
         components: {
-          default: () => import('@/components/EmptyDetail.vue'),
-          list: () => import('@/components/SearchPanel.vue'),
+          default: () => import('@/components/common/EmptyDetail.vue'),
+          list: () => import('@/components/note/SearchPanel.vue'),
         },
         meta: {
           title: '搜索',
@@ -182,7 +182,7 @@ const privateRoutes: RouteRecordRaw[] = [
         name: 'trash',
         components: {
           default: () => import('@/views/private/TrashView.vue'),
-          list: () => import('@/components/TrashPanel.vue'),
+          list: () => import('@/components/note/TrashPanel.vue'),
         },
         meta: {
           title: '回收站',
@@ -196,7 +196,7 @@ const privateRoutes: RouteRecordRaw[] = [
         name: 'settings',
         components: {
           default: () => import('@/views/private/SettingsHome.vue'),
-          list: () => import('@/components/SettingsPanel.vue'),
+          list: () => import('@/components/common/SettingsPanel.vue'),
         },
         meta: { title: '设置', section: 'settings' },
       },
@@ -205,7 +205,7 @@ const privateRoutes: RouteRecordRaw[] = [
         name: 'settings-appearance',
         components: {
           default: () => import('@/views/private/SettingsAppearance.vue'),
-          list: () => import('@/components/SettingsPanel.vue'),
+          list: () => import('@/components/common/SettingsPanel.vue'),
         },
         meta: { title: '外观', section: 'settings' },
       },
@@ -214,7 +214,7 @@ const privateRoutes: RouteRecordRaw[] = [
         name: 'settings-security',
         components: {
           default: () => import('@/views/private/SettingsSecurity.vue'),
-          list: () => import('@/components/SettingsPanel.vue'),
+          list: () => import('@/components/common/SettingsPanel.vue'),
         },
         meta: { title: '账号安全', section: 'settings' },
       },
@@ -223,7 +223,7 @@ const privateRoutes: RouteRecordRaw[] = [
         name: 'settings-sessions',
         components: {
           default: () => import('@/views/private/SettingsSessions.vue'),
-          list: () => import('@/components/SettingsPanel.vue'),
+          list: () => import('@/components/common/SettingsPanel.vue'),
         },
         meta: { title: '会话', section: 'settings' },
       },
@@ -232,7 +232,7 @@ const privateRoutes: RouteRecordRaw[] = [
         name: 'settings-devices',
         components: {
           default: () => import('@/views/private/SettingsDevices.vue'),
-          list: () => import('@/components/SettingsPanel.vue'),
+          list: () => import('@/components/common/SettingsPanel.vue'),
         },
         meta: { title: '授信设备', section: 'settings' },
       },
@@ -241,7 +241,7 @@ const privateRoutes: RouteRecordRaw[] = [
         name: 'settings-tokens',
         components: {
           default: () => import('@/views/private/SettingsTokens.vue'),
-          list: () => import('@/components/SettingsPanel.vue'),
+          list: () => import('@/components/common/SettingsPanel.vue'),
         },
         meta: { title: 'API Token', section: 'settings' },
       },

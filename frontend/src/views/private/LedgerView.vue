@@ -8,7 +8,7 @@
  * 3. 明细：按月 / 分类筛选，改分类即自动记忆别名，可改金额与时间、删除。
  */
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import LedgerDonutChart from '@/components/LedgerDonutChart.vue'
 import LedgerTrendChart from '@/components/LedgerTrendChart.vue'
 import { ApiError } from '@/api/client'

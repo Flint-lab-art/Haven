@@ -6,7 +6,7 @@
  * 不提供历史版本入口——历史版本只在编辑页出现。
  */
 import { onMounted, ref, watch } from 'vue'
-import ConfirmDialog from './ConfirmDialog.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { ApiError } from '@/api/client'
 import { emptyTrash, listTrash, type TrashItem } from '@/api/notes'
 import { useUiStore } from '@/stores/ui'

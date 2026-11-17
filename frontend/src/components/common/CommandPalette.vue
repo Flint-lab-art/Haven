@@ -14,7 +14,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { searchPrivate, type SearchNoteHit } from '@/api/search'
 import { listFolders, type Folder } from '@/api/folders'
-import FolderPicker from './FolderPicker.vue'
+import FolderPicker from '@/components/note/FolderPicker.vue'
 
 const props = defineProps<{
   open: boolean

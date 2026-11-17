@@ -12,7 +12,7 @@ import {
   shift,
   type VirtualElement,
 } from '@floating-ui/dom'
-import EditorSlashMenu from '@/components/EditorSlashMenu.vue'
+import EditorSlashMenu from '@/components/editor/EditorSlashMenu.vue'
 import { pickImage } from './editor-image'
 
 export interface SlashItem {

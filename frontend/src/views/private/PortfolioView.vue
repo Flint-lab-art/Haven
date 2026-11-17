@@ -4,7 +4,7 @@
  * 列表在中间栏，选中项与「正在新建」由 ui store 维护。
  */
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { ApiError } from '@/api/client'
 import {
   addRepo,

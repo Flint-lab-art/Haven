@@ -2,7 +2,7 @@
 /** 公开作品集：平铺条目，主链接最显眼。 */
 import { onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import PublicEmpty from '@/components/PublicEmpty.vue'
+import PublicEmpty from '@/components/layout/PublicEmpty.vue'
 import { listPortfolio, type PortfolioItem } from '@/api/portfolio'
 import { repoLabel } from '@/utils/portfolio'
 

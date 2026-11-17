@@ -2,7 +2,7 @@
 /** 私有域里的公开笔记预览：按公开接口取数据，避免把私有接口的草稿状态带进预览。 */
 import { onMounted, ref } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
-import TagBadge from '@/components/TagBadge.vue'
+import TagBadge from '@/components/note/TagBadge.vue'
 import { getPublicNote, type PublicNote } from '@/api/notes'
 import { formatDate } from '@/utils/format'
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /** 公开域顶栏：只有只读入口，没有登录、设置、后台链接。 */
 import { RouterLink } from 'vue-router'
-import HavenMark from './HavenMark.vue'
+import HavenMark from '@/components/common/HavenMark.vue'
 </script>
 
 <template>

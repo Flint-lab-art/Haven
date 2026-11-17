@@ -6,7 +6,7 @@
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
-import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import IssueFormDialog from '@/components/IssueFormDialog.vue'
 import { ApiError } from '@/api/client'
 import {
