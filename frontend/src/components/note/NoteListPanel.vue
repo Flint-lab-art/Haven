@@ -141,6 +141,7 @@ function startChangeIcon(folder: Folder): void {
   startChangeIconRaw(folder)
 }
 
+
 /** 模板里用的提交入口。 */
 function submitCreate(): Promise<void> {
   return submitCreateRaw()
@@ -681,7 +682,18 @@ onBeforeUnmount(() => {
             @dragover="onFolderDragOver($event, row.folder)"
             @drop="onFolderDrop(row.folder)"
             @dragend="clearDrag"
-          />
+          >
+            <template #picker>
+              <IconPicker
+                v-if="iconFolderId === row.folder.id"
+                :open="true"
+                :disabled="busy"
+                @select="(value: string | null) => saveIcon(row.folder, value)"
+                @upload="(file: File) => uploadIcon(row.folder, file)"
+                @close="closeIconPicker"
+              />
+            </template>
+          </FolderTreeNode>
 
           <div v-if="menuFolderId === row.folder.id" class="tree-menu" role="menu">
             <button
@@ -719,14 +731,6 @@ onBeforeUnmount(() => {
             </button>
           </div>
 
-          <IconPicker
-            v-if="iconFolderId === row.folder.id"
-            :open="true"
-            :disabled="busy"
-            @select="(value: string | null) => saveIcon(row.folder, value)"
-            @upload="(file: File) => uploadIcon(row.folder, file)"
-            @close="closeIconPicker"
-          />
 
           <div v-if="creatingUnder === row.folder.id" class="tree-input" :style="{ paddingLeft: folderIndent(row.depth + 1) }">
             <input

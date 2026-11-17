@@ -145,3 +145,57 @@ describe('NoteListPanel 文件夹图标', () => {
     expect(wrapper.find('.icon-picker').exists()).toBe(false)
   })
 })
+
+describe('NoteListPanel 图标面板的 pointerdown 竞态', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    setActivePinia(createPinia())
+    listFolders.mockResolvedValue({ items: [inbox, work], total: 2 })
+  })
+
+  it('真实点击顺序下打开再收起：pointerdown 不会抢先关掉面板', async () => {
+    const wrapper = mount(NoteListPanel)
+    await flushPromises()
+
+    const iconBtn = wrapper.findAll('.tree-row--folder')[1].find('.tree-icon-btn')
+
+    // 第一次点击：真实的浏览器会先派发 pointerdown，再派发 click
+    await iconBtn.trigger('pointerdown')
+    await iconBtn.trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.icon-picker').exists()).toBe(true)
+
+    // 再点一次同一个按钮：pointerdown 会关面板，click 又会打开 → 表现为「关不掉」
+    await iconBtn.trigger('pointerdown')
+    await iconBtn.trigger('click')
+    await flushPromises()
+
+    // 期望：点击图标按钮应当收起面板（toggle 语义），实际会被 click 重新打开
+    expect(wrapper.find('.icon-picker').exists()).toBe(false)
+  })
+})
+
+describe('图标面板的 DOM 位置', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    setActivePinia(createPinia())
+    listFolders.mockResolvedValue({ items: [inbox, work], total: 2 })
+  })
+
+  it('面板必须挂在 .tree-row 内部，否则绝对定位会相对 body 并被 .tree 裁剪', async () => {
+    const wrapper = mount(NoteListPanel)
+    await flushPromises()
+
+    await wrapper.findAll('.tree-row--folder')[1].find('.tree-icon-btn').trigger('click')
+    await flushPromises()
+
+    const picker = wrapper.find('.icon-picker')
+    expect(picker.exists()).toBe(true)
+
+    // 关键断言：最近的 .tree-row 祖先必须存在，且 .icon-picker 的父链里要有它
+    const row = picker.element.closest('.tree-row')
+    expect(row).not.toBeNull()
+    // 再确认它就是被点击的那一行（而不是别的行）
+    expect(row!.classList.contains('tree-row--folder')).toBe(true)
+  })
+})

@@ -218,5 +218,12 @@ function onIconError(event: Event): void {
         <circle cx="19" cy="12" r="1.6" />
       </svg>
     </button>
+
+    <!--
+      图标面板挂在行内部：.icon-picker 是 position:absolute + top:100%，
+      需要 .tree-row 这个定位祖先。放到行外面会相对 body 定位，
+      再被 .tree 的 overflow-y:auto 裁掉，表现为「点开看不到」。
+    -->
+    <slot name="picker" />
   </div>
 </template>
