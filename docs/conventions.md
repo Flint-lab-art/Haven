@@ -121,6 +121,32 @@ private Note getOwnedNote(UUID userId, UUID noteId) {
 
 新增端点时确认是否需要 `@RequireAccess`（见 [auth.md](auth.md#3-授权级别)）。
 
+### 2.8.1 把字段更新为 null 必须用 UpdateWrapper
+
+MyBatis-Plus 的 `updateById` 默认**跳过 null 字段**（`FieldStrategy.NOT_NULL`）：
+
+```java
+// 错误：不会生成任何清空语句，但接口返回 200
+note.setDeletedAt(null);
+note.setUpdatedAt(now);
+notesMapper.updateById(note);
+
+// 正确：显式 set null
+notesMapper.update(
+        new Notes(),
+        new LambdaUpdateWrapper<Notes>()
+                .eq(Notes::getId, noteId)
+                .eq(Notes::getUserId, uid)
+                .set(Notes::getDeletedAt, null)
+                .set(Notes::getUpdatedAt, now));
+```
+
+这个坑非常隐蔽：**`updated_at` 会变，目标字段纹丝不动**，界面上看起来「点了没反应、也不报错」。
+项目里踩过的四处：回收站还原（`deleted_at`）、笔记移到根目录（`folder_id`）、
+文件夹移到根目录（`parent_id`）、关闭 TOTP（`totp_secret`）。
+
+由 `note/NullFieldUpdateTest` 守着；新增"清空某个字段"的写操作时，照着它补一个用例。
+
 ### 2.9 常量
 
 ```java

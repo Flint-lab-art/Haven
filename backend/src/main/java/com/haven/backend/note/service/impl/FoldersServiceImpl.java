@@ -90,6 +90,13 @@ public class FoldersServiceImpl extends ServiceImpl<FoldersMapper, Folders> impl
             checkCycle(folderId, parentId, uid);
             folder.setParentId(parentId);
         } else if (update.clearParent()) {
+            // updateById 跳过 null 字段，移到根目录必须用 UpdateWrapper 显式 set null
+            foldersMapper.update(
+                    new Folders(),
+                    new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<Folders>()
+                            .eq(Folders::getId, folderId)
+                            .eq(Folders::getUserId, uid)
+                            .set(Folders::getParentId, null));
             folder.setParentId(null);
         }
         if (icon != null) {

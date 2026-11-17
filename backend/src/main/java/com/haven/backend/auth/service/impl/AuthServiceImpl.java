@@ -300,10 +300,18 @@ public class AuthServiceImpl implements AuthService {
         if (!TotpUtil.verify(user.getTotpSecret(), req.code(), clock)) {
             throw BizException.unauthorized("动态码错误");
         }
+        // totp_secret 必须真正清空：updateById 会跳过 null 字段，密钥会残留在库里
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        usersMapper.update(
+                new Users(),
+                new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<Users>()
+                        .eq(Users::getId, user.getId())
+                        .set(Users::getTotpSecret, null)
+                        .set(Users::getTotpEnabled, false)
+                        .set(Users::getUpdatedAt, now));
         user.setTotpSecret(null);
         user.setTotpEnabled(false);
-        user.setUpdatedAt(OffsetDateTime.now(clock));
-        usersMapper.updateById(user);
+        user.setUpdatedAt(now);
 
         // TOTP 关闭后，基于 TOTP 的授信设备全部失效
         trustedDeviceService.revokeAll(userId);

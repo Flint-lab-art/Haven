@@ -192,6 +192,13 @@ public class NotesServiceImpl implements NotesService {
             note.setFolderId(folderId);
             changed = true;
         } else if (clearFolder) {
+            // 同理：setFolderId(null) + updateById 不会写库，用 UpdateWrapper 显式清空
+            notesMapper.update(
+                    new Notes(),
+                    new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<Notes>()
+                            .eq(Notes::getId, noteId)
+                            .eq(Notes::getUserId, uid)
+                            .set(Notes::getFolderId, null));
             note.setFolderId(null);
             changed = true;
         }
@@ -260,9 +267,18 @@ public class NotesServiceImpl implements NotesService {
         if (note.getDeletedAt() == null) {
             throw BizException.validation("笔记不在回收站中");
         }
+        // 必须用 UpdateWrapper 显式 set null：updateById 会跳过 null 字段（FieldStrategy.NOT_NULL），
+        // 直接 setDeletedAt(null) + updateById 不会生成清空语句，笔记永远留在回收站。
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        notesMapper.update(
+                new Notes(),
+                new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<Notes>()
+                        .eq(Notes::getId, noteId)
+                        .eq(Notes::getUserId, uid)
+                        .set(Notes::getDeletedAt, null)
+                        .set(Notes::getUpdatedAt, now));
         note.setDeletedAt(null);
-        note.setUpdatedAt(OffsetDateTime.now(clock));
-        notesMapper.updateById(note);
+        note.setUpdatedAt(now);
         return buildNoteDetail(note, uid);
     }
 
