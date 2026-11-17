@@ -27,6 +27,14 @@ import { useUiStore } from '@/stores/ui'
 import { isUploadableImage, listUploads, uploadImage, type UploadedFile } from '@/api/uploads'
 import { BRAND_ICONS, brandColor, searchBrandGroups, type BrandIcon } from '@/utils/brand-icons'
 import { searchEmojiGroups } from '@/utils/emoji'
+import {
+  folderDropPosition,
+  folderIndent,
+  isFolderDescendant,
+  isInteractiveDragTarget,
+  noteDropPosition,
+  noteIndent,
+} from '@/utils/tree'
 
 /** 分页上限 100，内部循环取完所有笔记。 */
 const PAGE_SIZE = 100
@@ -623,19 +631,7 @@ function onDocumentKeydown(event: KeyboardEvent): void {
   }
 }
 
-function folderIndent(depth: number): string {
-  return `${8 + depth * 16}px`
-}
-
-function noteIndent(depth: number): string {
-  return `${8 + depth * 16 + 26}px`
-}
-
 /* ---------------- 拖拽 ---------------- */
-
-function isInteractiveDragTarget(target: EventTarget | null): boolean {
-  return target instanceof Element && target.closest('button, input, .tree-menu') !== null
-}
 
 function isDragging(kind: DragState['kind'], id: string): boolean {
   return dragState.value?.kind === kind && dragState.value.id === id
@@ -651,18 +647,6 @@ function isDrop(
   if (kind === 'root') return true
   if ('id' in target && target.id !== id) return false
   return position === undefined || ('position' in target && target.position === position)
-}
-
-function isFolderDescendant(rootId: string, candidateId: string): boolean {
-  const seen = new Set<string>()
-  let current: string | null = folders.value.find((folder) => folder.id === candidateId)?.parent_id ?? null
-  while (current) {
-    if (current === rootId) return true
-    if (seen.has(current)) return false
-    seen.add(current)
-    current = folders.value.find((folder) => folder.id === current)?.parent_id ?? null
-  }
-  return false
 }
 
 function startFolderDrag(event: DragEvent, folder: Folder): void {
@@ -696,19 +680,6 @@ function clearDrag(): void {
   dropTarget.value = null
 }
 
-function folderDropPosition(event: DragEvent, element: HTMLElement): 'before' | 'after' | 'inside' {
-  const rect = element.getBoundingClientRect()
-  const offset = event.clientY - rect.top
-  if (offset < rect.height * 0.25) return 'before'
-  if (offset > rect.height * 0.75) return 'after'
-  return 'inside'
-}
-
-function noteDropPosition(event: DragEvent, element: HTMLElement): 'before' | 'after' {
-  const rect = element.getBoundingClientRect()
-  return event.clientY - rect.top < rect.height / 2 ? 'before' : 'after'
-}
-
 function onFolderDragOver(event: DragEvent, folder: Folder): void {
   const drag = dragState.value
   if (!drag) return
@@ -720,7 +691,7 @@ function onFolderDragOver(event: DragEvent, folder: Folder): void {
     return
   }
 
-  if (drag.id === folder.id || isFolderDescendant(drag.id, folder.id)) {
+  if (drag.id === folder.id || isFolderDescendant(folders.value, drag.id, folder.id)) {
     dropTarget.value = null
     return
   }
@@ -735,7 +706,10 @@ function onFolderDragOver(event: DragEvent, folder: Folder): void {
   dropTarget.value = {
     kind: 'folder',
     id: folder.id,
-    position: folderDropPosition(event, event.currentTarget as HTMLElement),
+    position: folderDropPosition(
+      event.clientY,
+      (event.currentTarget as HTMLElement).getBoundingClientRect(),
+    ),
   }
 }
 
@@ -753,7 +727,10 @@ function onNoteDragOver(event: DragEvent, note: NoteSummary): void {
   dropTarget.value = {
     kind: 'note',
     id: note.id,
-    position: noteDropPosition(event, event.currentTarget as HTMLElement),
+    position: noteDropPosition(
+      event.clientY,
+      (event.currentTarget as HTMLElement).getBoundingClientRect(),
+    ),
   }
 }
 
@@ -932,7 +909,7 @@ async function onFolderDrop(folder: Folder): Promise<void> {
     return
   }
 
-  if (drag.id === folder.id || isFolderDescendant(drag.id, folder.id)) return
+  if (drag.id === folder.id || isFolderDescendant(folders.value, drag.id, folder.id)) return
   const moving = folders.value.find((item) => item.id === drag.id)
   if (!moving || target?.kind !== 'folder' || target.id !== folder.id) return
 
