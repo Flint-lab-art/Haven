@@ -4,7 +4,14 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.haven.backend.exception.BizException;
 import com.haven.backend.ledger.dto.CreateLedgerBatchRequest;
 import com.haven.backend.ledger.dto.CreateLedgerEntryRequest;
-import com.haven.backend.ledger.dto.LedgerParseError;
+import com.haven.backend.ledger.dto.LedgerDtos.LedgerAliasDto;
+import com.haven.backend.ledger.dto.LedgerDtos.LedgerAliasPage;
+import com.haven.backend.ledger.dto.LedgerDtos.LedgerBatchDto;
+import com.haven.backend.ledger.dto.LedgerDtos.LedgerEntryDto;
+import com.haven.backend.ledger.dto.LedgerDtos.LedgerEntryPage;
+import com.haven.backend.ledger.dto.LedgerDtos.LedgerQuickCommitDto;
+import com.haven.backend.ledger.dto.LedgerDtos.LedgerSummaryDto;
+import com.haven.backend.ledger.dto.LedgerDtos.LedgerTrendDto;
 import com.haven.backend.ledger.dto.ParsedLedgerItem;
 import com.haven.backend.ledger.dto.QuickCommitRequest;
 import com.haven.backend.ledger.dto.QuickParseResult;
@@ -12,354 +19,104 @@ import com.haven.backend.ledger.dto.UpdateLedgerEntryRequest;
 import com.haven.backend.ledger.dto.UpsertLedgerAliasRequest;
 import com.haven.backend.ledger.entity.LedgerAliases;
 import com.haven.backend.ledger.entity.LedgerBatches;
+import com.haven.backend.ledger.entity.LedgerCategories;
 import com.haven.backend.ledger.entity.LedgerEntries;
+import com.haven.backend.ledger.entity.LedgerTypes;
 import com.haven.backend.ledger.mapper.LedgerAliasesMapper;
 import com.haven.backend.ledger.mapper.LedgerBatchesMapper;
 import com.haven.backend.ledger.mapper.LedgerEntriesMapper;
+import com.haven.backend.ledger.service.LedgerClassifier;
 import com.haven.backend.ledger.service.LedgerService;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.math.BigDecimal;
-import java.math.RoundingMode;
+import com.haven.backend.ledger.service.LedgerStatsCalculator;
+import com.haven.backend.ledger.service.LedgerTextParser;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.YearMonth;
 import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * 记账服务实现。
+ * <p>
+ * 只负责「编排」：数据库读写、事务边界、权限校验、参数收敛。
+ * 具体职责拆到三个协作类：
+ * <ul>
+ *   <li>{@link LedgerTextParser}：快捷输入的语法解析（金额、日期），无数据库依赖；</li>
+ *   <li>{@link LedgerClassifier}：分类 / 方向 / 备注的判定规则；</li>
+ *   <li>{@link LedgerStatsCalculator}：总额、分类排行、按天走势的纯计算。</li>
+ * </ul>
+ */
 @Service
 @RequiredArgsConstructor
 public class LedgerServiceImpl implements LedgerService {
 
-    /** 支出大类。 */
-    public static final List<String> EXPENSE_CATEGORIES = List.of(
-            "餐饮", "购物", "交通", "居家", "娱乐", "医疗", "未分类");
-
-    /** 收入大类：与支出共用单层 category 字段，用 type 区分方向。 */
-    public static final List<String> INCOME_CATEGORIES = List.of(
-            "工资", "奖金", "报销", "退款", "红包", "其他收入");
-
-    /** 所有允许的分类（支出 + 收入）。 */
-    public static final List<String> CATEGORIES = List.of(
-            "餐饮", "购物", "交通", "居家", "娱乐", "医疗", "未分类",
-            "工资", "奖金", "报销", "退款", "红包", "其他收入");
-
-    public static final List<String> TYPES = List.of("expense", "income");
-
-    private static final Set<String> CATEGORY_SET = Set.copyOf(CATEGORIES);
-    private static final Set<String> INCOME_CATEGORY_SET = Set.copyOf(INCOME_CATEGORIES);
-
-    /**
-     * 未命中别名、但文本里出现这些词时也判为收入。
-     * 覆盖「工资到账 10000」「公司报销 320」这类备注写法。
-     */
-    private static final Set<String> INCOME_KEYWORDS = Set.of(
-            "工资", "薪水", "薪资", "月薪", "发工资",
-            "奖金", "年终奖", "提成", "绩效",
-            "报销", "报账",
-            "退款", "退钱", "退费", "退回",
-            "红包", "压岁钱", "礼金", "收礼",
-            "利息", "分红", "理财收益", "兼职", "外快", "卖二手",
-            "收入");
-
-    /** 行末阿拉伯数字金额：12 / 12.5 / 32元 / ¥32。 */
-    private static final Pattern ARABIC_AMOUNT = Pattern.compile(
-            "(?<![\\d.])(?:[¥￥]\\s*)?(\\d+(?:\\.\\d{1,2})?)\\s*(?:元|块|圆|人民币)?\\s*$");
-
-    /** 行末中文数字金额：二十五块 / 十二点五元。 */
-    private static final Pattern CHINESE_AMOUNT = Pattern.compile(
-            "([零〇一二两三四五六七八九十百千万亿]+(?:点[零〇一二两三四五六七八九]+)?)"
-                    + "\\s*(?:元|块|圆|人民币)?\\s*$");
-
-    /** 行首完整日期：2026-11-16 / 2026/11/16 / 2026年11月16日。 */
-    private static final Pattern FULL_DATE = Pattern.compile(
-            "^(\\d{4})\\s*[-/.年]\\s*(\\d{1,2})\\s*[-/.月]\\s*(\\d{1,2})\\s*[日号]?(?=\\s|$)");
-
-    /** 行首月日：11月16 / 11-16 / 11/16，年份默认当前年。 */
-    private static final Pattern MONTH_DAY = Pattern.compile(
-            "^(\\d{1,2})\\s*[-/.月]\\s*(\\d{1,2})\\s*[日号]?(?=\\s|$)");
-
-    /** 行首单日：16号 / 16日，年月默认当前。 */
-    private static final Pattern DAY_ONLY = Pattern.compile(
-            "^(\\d{1,2})\\s*[日号](?=\\s|$)");
-
-    /** 相对日期：今天 / 昨天 / 前天。 */
-    private static final Pattern RELATIVE_DATE = Pattern.compile(
-            "^(今天|昨天|前天)(?=\\s|$)");
-
-    private static final Map<Character, Integer> CN_DIGITS = Map.ofEntries(
-            Map.entry('零', 0), Map.entry('〇', 0),
-            Map.entry('一', 1), Map.entry('二', 2), Map.entry('两', 2),
-            Map.entry('三', 3), Map.entry('四', 4), Map.entry('五', 5),
-            Map.entry('六', 6), Map.entry('七', 7), Map.entry('八', 8),
-            Map.entry('九', 9));
-
-    private static final Map<Character, Integer> CN_UNITS = Map.of(
-            '十', 10, '百', 100, '千', 1_000, '万', 10_000, '亿', 100_000_000);
+    /** 列表接口的分页上限。 */
+    private static final int MAX_PAGE_SIZE = 100;
+    /** 最近条目默认条数。 */
+    private static final int RECENT_LIMIT = 3;
+    /** 趋势窗口上限（天）。 */
+    private static final int MAX_TREND_DAYS = 90;
+    /** 别名长度上限，超过则不参与学习。 */
+    private static final int MAX_ALIAS_LENGTH = 64;
 
     private final LedgerBatchesMapper batchesMapper;
     private final LedgerEntriesMapper entriesMapper;
     private final LedgerAliasesMapper aliasesMapper;
+    private final LedgerTextParser parser;
+    private final LedgerClassifier classifier;
+    private final LedgerStatsCalculator statsCalculator;
+    private final Clock clock;
 
     // -----------------------------------------------------------------------
-    // 快捷输入解析
+    // 快捷输入
     // -----------------------------------------------------------------------
 
     @Override
     public QuickParseResult quickParse(String userId, String text) {
-        UUID uid = UUID.fromString(userId);
-        Map<String, String> aliases = loadAliases(uid);
-        OffsetDateTime now = OffsetDateTime.now();
-
-        List<ParsedLedgerItem> items = new ArrayList<>();
-        List<LedgerParseError> errors = new ArrayList<>();
-        String[] lines = text.split("\\R", -1);
-
-        for (int i = 0; i < lines.length; i++) {
-            String raw = lines[i].trim();
-            if (raw.isEmpty()) {
-                continue;
-            }
-
-            int lineNo = i + 1;
-            AmountMatch match;
-            try {
-                match = extractAmount(raw);
-            } catch (IllegalArgumentException e) {
-                errors.add(new LedgerParseError(lineNo, raw, e.getMessage()));
-                continue;
-            }
-
-            if (match == null) {
-                errors.add(new LedgerParseError(lineNo, raw, "未找到金额"));
-                continue;
-            }
-            if (match.amountCents() <= 0) {
-                errors.add(new LedgerParseError(lineNo, raw, "金额必须大于 0"));
-                continue;
-            }
-
-            items.add(buildItem(raw, lineNo, match.remaining(), match.amountCents(), aliases, now));
-        }
-
-        return new QuickParseResult(items, errors);
+        LedgerTextParser.Result result =
+                parser.parse(text, loadAliases(UUID.fromString(userId)), OffsetDateTime.now(clock));
+        return new QuickParseResult(result.items(), result.errors());
     }
 
-    private ParsedLedgerItem buildItem(String raw, int line, String remaining, long amountCents,
-            Map<String, String> aliases, OffsetDateTime now) {
-        DatePrefix dated = extractDatePrefix(remaining, now);
-        remaining = dated.rest();
+    @Override
+    @Transactional
+    public LedgerQuickCommitDto quickCommit(String userId, QuickCommitRequest req) {
+        QuickParseResult parsed = quickParse(userId, req.text());
+        String batchId = hasText(req.batchId())
+                ? req.batchId().trim()
+                : UUID.randomUUID().toString();
 
-        String categoryToken;
-        String rest;
-        int split = firstWhitespace(remaining);
-        if (split >= 0) {
-            categoryToken = remaining.substring(0, split).trim();
-            rest = remaining.substring(split + 1).trim();
-        } else {
-            categoryToken = remaining.trim();
-            rest = "";
+        // 一行也没解析出来时不写空批次，只回传错误，方便快捷指令直接展示。
+        if (parsed.items().isEmpty()) {
+            LedgerBatchDto empty = new LedgerBatchDto(false, batchId, req.text(), null, List.of(), 0);
+            return new LedgerQuickCommitDto(empty, parsed.errors());
         }
 
-        String category;
-        String note;
-        String aliasCategory = aliases.get(categoryToken);
-        if (aliasCategory != null) {
-            // 别名命中：原词并入备注，category 使用翻译后的大类。
-            category = aliasCategory;
-            note = join(categoryToken, rest);
-        } else if (CATEGORY_SET.contains(categoryToken)) {
-            category = categoryToken;
-            note = rest;
-        } else {
-            // 未知词：落入未分类，原词保留在备注中，方便之后人工归类。
-            category = "未分类";
-            note = join(categoryToken, rest);
-        }
-
-        String type = INCOME_CATEGORY_SET.contains(category) || containsIncomeKeyword(remaining)
-                ? "income"
-                : "expense";
-        return new ParsedLedgerItem(line, raw, type, amountCents, category, note, dated.occurredAt());
+        List<CreateLedgerEntryRequest> items =
+                parsed.items().stream().map(this::toCreateRequest).toList();
+        LedgerBatchDto batch = createBatch(userId, new CreateLedgerBatchRequest(batchId, req.text(), items));
+        return new LedgerQuickCommitDto(batch, parsed.errors());
     }
 
-    /**
-     * 抽取行首日期，返回剩余文本与发生时间。
-     *
-     * 支持的写法：{@code 2026-11-16}、{@code 2026年11月16日}、{@code 11月16}、
-     * {@code 11-16}、{@code 16号}、{@code 今天 / 昨天 / 前天}。
-     * 没写日期时沿用服务端当前时间；月日与单日默认当前年份。
-     */
-    private DatePrefix extractDatePrefix(String remaining, OffsetDateTime now) {
-        Matcher full = FULL_DATE.matcher(remaining);
-        if (full.find()) {
-            OffsetDateTime at = resolveDate(now,
-                    Integer.parseInt(full.group(1)),
-                    Integer.parseInt(full.group(2)),
-                    Integer.parseInt(full.group(3)));
-            if (at != null) {
-                return new DatePrefix(remaining.substring(full.end()).trim(), at);
-            }
-        }
-
-        Matcher monthDay = MONTH_DAY.matcher(remaining);
-        if (monthDay.find()) {
-            OffsetDateTime at = resolveDate(now, now.getYear(),
-                    Integer.parseInt(monthDay.group(1)),
-                    Integer.parseInt(monthDay.group(2)));
-            if (at != null) {
-                return new DatePrefix(remaining.substring(monthDay.end()).trim(), at);
-            }
-        }
-
-        Matcher dayOnly = DAY_ONLY.matcher(remaining);
-        if (dayOnly.find()) {
-            OffsetDateTime at = resolveDate(now, now.getYear(), now.getMonthValue(),
-                    Integer.parseInt(dayOnly.group(1)));
-            if (at != null) {
-                return new DatePrefix(remaining.substring(dayOnly.end()).trim(), at);
-            }
-        }
-
-        Matcher relative = RELATIVE_DATE.matcher(remaining);
-        if (relative.find()) {
-            int daysAgo = switch (relative.group(1)) {
-                case "昨天" -> 1;
-                case "前天" -> 2;
-                default -> 0;
-            };
-            return new DatePrefix(remaining.substring(relative.end()).trim(), now.minusDays(daysAgo));
-        }
-
-        return new DatePrefix(remaining, now);
-    }
-
-    /** 校验年月日并保留当前时分秒；非法日期返回 null，交给后续规则处理。 */
-    private OffsetDateTime resolveDate(OffsetDateTime now, int year, int month, int day) {
-        if (year < 1970 || year > 2100 || month < 1 || month > 12) {
-            return null;
-        }
-        if (day < 1 || day > YearMonth.of(year, month).lengthOfMonth()) {
-            return null;
-        }
-        return LocalDate.of(year, month, day)
-                .atTime(now.toLocalTime())
-                .atZone(ZoneId.systemDefault())
-                .toOffsetDateTime();
-    }
-
-    private record DatePrefix(String rest, OffsetDateTime occurredAt) {
-    }
-
-    private AmountMatch extractAmount(String line) {
-        Matcher arabic = ARABIC_AMOUNT.matcher(line);
-        if (arabic.find()) {
-            return new AmountMatch(parseArabicCents(arabic.group(1)),
-                    line.substring(0, arabic.start()).trim());
-        }
-
-        Matcher chinese = CHINESE_AMOUNT.matcher(line);
-        if (chinese.find()) {
-            return new AmountMatch(parseChineseCents(chinese.group(1)),
-                    line.substring(0, chinese.start()).trim());
-        }
-        return null;
-    }
-
-    private long parseArabicCents(String value) {
-        try {
-            return toCents(new BigDecimal(value));
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("金额格式不正确");
-        }
-    }
-
-    private long parseChineseCents(String value) {
-        String[] parts = value.split("点", 2);
-        long integer = parseChineseInteger(parts[0]);
-
-        BigDecimal amount = BigDecimal.valueOf(integer);
-        if (parts.length == 2) {
-            StringBuilder decimals = new StringBuilder();
-            for (char c : parts[1].toCharArray()) {
-                Integer digit = CN_DIGITS.get(c);
-                if (digit == null) {
-                    throw new IllegalArgumentException("金额格式不正确");
-                }
-                decimals.append(digit);
-            }
-            if (decimals.isEmpty()) {
-                throw new IllegalArgumentException("金额格式不正确");
-            }
-            amount = amount.add(new BigDecimal("0." + decimals));
-        }
-        return toCents(amount);
-    }
-
-    private long parseChineseInteger(String value) {
-        long total = 0;
-        long section = 0;
-        long number = 0;
-
-        for (char c : value.toCharArray()) {
-            Integer digit = CN_DIGITS.get(c);
-            if (digit != null) {
-                number = digit;
-                continue;
-            }
-
-            Integer unit = CN_UNITS.get(c);
-            if (unit == null) {
-                throw new IllegalArgumentException("金额格式不正确");
-            }
-
-            if (unit >= 10_000) {
-                section += number;
-                if (section == 0) {
-                    section = 1;
-                }
-                total += section * unit;
-                section = 0;
-                number = 0;
-            } else {
-                if (number == 0) {
-                    number = 1;
-                }
-                section += number * unit;
-                number = 0;
-            }
-        }
-        return total + section + number;
-    }
-
-    private long toCents(BigDecimal value) {
-        try {
-            return value.movePointRight(2)
-                    .setScale(0, RoundingMode.UNNECESSARY)
-                    .longValueExact();
-        } catch (ArithmeticException e) {
-            throw new IllegalArgumentException("金额最多保留两位小数");
-        }
+    private CreateLedgerEntryRequest toCreateRequest(ParsedLedgerItem p) {
+        return new CreateLedgerEntryRequest(p.type(), p.amountCents(), p.category(), p.note(), p.occurredAt());
     }
 
     // -----------------------------------------------------------------------
-    // 批次与条目
+    // 批次
     // -----------------------------------------------------------------------
 
     @Override
     @Transactional
-    public Map<String, Object> createBatch(String userId, CreateLedgerBatchRequest req) {
+    public LedgerBatchDto createBatch(String userId, CreateLedgerBatchRequest req) {
         UUID uid = UUID.fromString(userId);
         String batchId = req.batchId().trim();
 
@@ -368,20 +125,20 @@ public class LedgerServiceImpl implements LedgerService {
         }
         req.items().forEach(this::validateEntry);
 
+        OffsetDateTime now = OffsetDateTime.now(clock);
         LedgerBatches batch = new LedgerBatches()
                 .setUserId(uid)
                 .setBatchId(batchId)
                 .setRawText(req.rawText())
-                .setCreatedAt(OffsetDateTime.now());
+                .setCreatedAt(now);
 
         // 相同 user_id + batch_id 已存在时直接回放，不重复写入条目。
         if (batchesMapper.insertIfAbsent(batch) == 0) {
-            return buildBatchResult(uid, batchId, false);
+            return buildBatchDto(uid, batchId, false);
         }
 
-        OffsetDateTime now = OffsetDateTime.now();
         for (CreateLedgerEntryRequest item : req.items()) {
-            LedgerEntries entry = new LedgerEntries()
+            entriesMapper.insert(new LedgerEntries()
                     .setId(UUID.randomUUID())
                     .setUserId(uid)
                     .setType(item.type())
@@ -390,79 +147,51 @@ public class LedgerServiceImpl implements LedgerService {
                     .setNote(item.note() != null ? item.note() : "")
                     .setOccurredAt(item.occurredAt() != null ? item.occurredAt() : now)
                     .setBatchId(batchId)
-                    .setCreatedAt(now);
-            entriesMapper.insert(entry);
+                    .setCreatedAt(now));
         }
-
-        return buildBatchResult(uid, batchId, true);
+        return buildBatchDto(uid, batchId, true);
     }
 
     @Override
-    @Transactional
-    public Map<String, Object> quickCommit(String userId, QuickCommitRequest req) {
-        QuickParseResult parsed = quickParse(userId, req.text());
-        String batchId = hasText(req.batchId())
-                ? req.batchId().trim()
-                : UUID.randomUUID().toString();
-
-        // 一行也没解析出来时不写空批次，只回传错误，方便快捷指令直接展示。
-        if (parsed.items().isEmpty()) {
-            Map<String, Object> result = new LinkedHashMap<>();
-            result.put("created", false);
-            result.put("batch_id", batchId);
-            result.put("raw_text", req.text());
-            result.put("items", List.of());
-            result.put("total", 0);
-            result.put("errors", parsed.errors());
-            return result;
-        }
-
-        List<CreateLedgerEntryRequest> items = parsed.items().stream()
-                .map(p -> new CreateLedgerEntryRequest(
-                        p.type(), p.amountCents(), p.category(), p.note(), p.occurredAt()))
-                .toList();
-
-        Map<String, Object> result = createBatch(userId,
-                new CreateLedgerBatchRequest(batchId, req.text(), items));
-        result.put("errors", parsed.errors());
-        return result;
+    public LedgerBatchDto getBatch(String userId, String batchId) {
+        return buildBatchDto(UUID.fromString(userId), batchId.trim(), null);
     }
 
-    @Override
-    public Map<String, Object> getBatch(String userId, String batchId) {
-        UUID uid = UUID.fromString(userId);
-        return buildBatchResult(uid, batchId.trim(), null);
-    }
+    // -----------------------------------------------------------------------
+    // 条目
+    // -----------------------------------------------------------------------
 
     @Override
-    public Map<String, Object> listEntries(String userId, String type, String category,
-            OffsetDateTime from, OffsetDateTime to, int limit, int offset) {
+    public LedgerEntryPage listEntries(
+            String userId,
+            String type,
+            String category,
+            OffsetDateTime from,
+            OffsetDateTime to,
+            int limit,
+            int offset) {
         UUID uid = UUID.fromString(userId);
         validateRange(from, to);
-
-        int lim = Math.min(Math.max(limit, 1), 100);
-        int off = Math.max(offset, 0);
 
         LambdaQueryWrapper<LedgerEntries> wrapper = filtered(uid, type, category, from, to);
         long total = entriesMapper.selectCount(wrapper);
 
         wrapper.orderByDesc(LedgerEntries::getOccurredAt)
                 .orderByDesc(LedgerEntries::getCreatedAt)
-                .last("LIMIT " + lim + " OFFSET " + off);
+                .last("LIMIT " + clampLimit(limit) + " OFFSET " + Math.max(offset, 0));
         List<LedgerEntries> entries = entriesMapper.selectList(wrapper);
 
-        List<Map<String, Object>> items = entries.stream().map(this::toEntryMap).toList();
-        return Map.of("items", items, "total", total);
+        return new LedgerEntryPage(entries.stream().map(this::toEntryDto).toList(), total);
     }
 
     @Override
-    public Map<String, Object> getEntry(String userId, UUID entryId) {
-        return toEntryMap(getOwned(UUID.fromString(userId), entryId));
+    public LedgerEntryDto getEntry(String userId, UUID entryId) {
+        return toEntryDto(getOwned(UUID.fromString(userId), entryId));
     }
 
     @Override
     @Transactional
-    public Map<String, Object> updateEntry(String userId, UUID entryId, UpdateLedgerEntryRequest req) {
+    public LedgerEntryDto updateEntry(String userId, UUID entryId, UpdateLedgerEntryRequest req) {
         UUID uid = UUID.fromString(userId);
         LedgerEntries entry = getOwned(uid, entryId);
 
@@ -470,7 +199,7 @@ public class LedgerServiceImpl implements LedgerService {
             validateCategory(req.category());
             entry.setCategory(req.category());
             // 人工归类时顺便把原词写入别名表，下次输入即可直接命中。
-            upsertAliasFromNote(uid, entry.getNote(), req.category());
+            learnAliasFromNote(uid, entry.getNote(), req.category());
         }
         if (req.amountCents() != null) {
             if (req.amountCents() <= 0) {
@@ -483,30 +212,26 @@ public class LedgerServiceImpl implements LedgerService {
         }
 
         entriesMapper.updateById(entry);
-        return toEntryMap(entry);
+        return toEntryDto(entry);
     }
 
     @Override
     @Transactional
     public void deleteEntry(String userId, UUID entryId) {
-        UUID uid = UUID.fromString(userId);
-        getOwned(uid, entryId);
+        getOwned(UUID.fromString(userId), entryId);
         entriesMapper.deleteById(entryId);
     }
 
     @Override
-    public Map<String, Object> recentEntries(String userId, int limit) {
+    public LedgerEntryPage recentEntries(String userId, int limit) {
         UUID uid = UUID.fromString(userId);
-        int lim = Math.min(Math.max(limit, 1), 100);
+        List<LedgerEntries> entries = entriesMapper.selectList(new LambdaQueryWrapper<LedgerEntries>()
+                .eq(LedgerEntries::getUserId, uid)
+                .orderByDesc(LedgerEntries::getCreatedAt)
+                .last("LIMIT " + clampLimit(limit)));
 
-        List<LedgerEntries> entries = entriesMapper.selectList(
-                new LambdaQueryWrapper<LedgerEntries>()
-                        .eq(LedgerEntries::getUserId, uid)
-                        .orderByDesc(LedgerEntries::getCreatedAt)
-                        .last("LIMIT " + lim));
-
-        List<Map<String, Object>> items = entries.stream().map(this::toEntryMap).toList();
-        return Map.of("items", items, "total", items.size());
+        List<LedgerEntryDto> items = entries.stream().map(this::toEntryDto).toList();
+        return new LedgerEntryPage(items, items.size());
     }
 
     // -----------------------------------------------------------------------
@@ -514,155 +239,66 @@ public class LedgerServiceImpl implements LedgerService {
     // -----------------------------------------------------------------------
 
     @Override
-    public Map<String, Object> summary(String userId, String month) {
+    public LedgerSummaryDto summary(String userId, String month) {
         UUID uid = UUID.fromString(userId);
         YearMonth targetMonth = parseMonth(month);
-        ZoneId zone = ZoneId.systemDefault();
+        ZoneId zone = clock.getZone();
 
         OffsetDateTime from = targetMonth.atDay(1).atStartOfDay(zone).toOffsetDateTime();
-        OffsetDateTime to = targetMonth.plusMonths(1).atDay(1).atStartOfDay(zone).toOffsetDateTime();
+        OffsetDateTime to =
+                targetMonth.plusMonths(1).atDay(1).atStartOfDay(zone).toOffsetDateTime();
 
-        List<LedgerEntries> entries = entriesMapper.selectList(
-                filtered(uid, null, null, from, to));
+        List<LedgerEntries> entries = entriesMapper.selectList(filtered(uid, null, null, from, to));
 
         List<LocalDate> dates = new ArrayList<>();
         for (int day = 1; day <= targetMonth.lengthOfMonth(); day++) {
             dates.add(targetMonth.atDay(day));
         }
 
-        List<LedgerEntries> recent = entriesMapper.selectList(
-                new LambdaQueryWrapper<LedgerEntries>()
-                        .eq(LedgerEntries::getUserId, uid)
-                        .orderByDesc(LedgerEntries::getCreatedAt)
-                        .last("LIMIT 3"));
+        List<LedgerEntries> recent = entriesMapper.selectList(new LambdaQueryWrapper<LedgerEntries>()
+                .eq(LedgerEntries::getUserId, uid)
+                .orderByDesc(LedgerEntries::getCreatedAt)
+                .last("LIMIT " + RECENT_LIMIT));
 
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("month", targetMonth.toString());
-        result.put("from", from);
-        result.put("to", to);
-        result.putAll(windowStats(entries, dates, zone));
-        result.put("recent", recent.stream().map(this::toEntryMap).toList());
-        return result;
+        LedgerStatsCalculator.WindowStats stats = statsCalculator.summarize(entries, dates, zone);
+        return new LedgerSummaryDto(
+                targetMonth.toString(),
+                from,
+                to,
+                stats.totalExpenseCents(),
+                stats.totalIncomeCents(),
+                stats.totalCount(),
+                stats.categoryRanking(),
+                stats.incomeCategoryRanking(),
+                stats.daily(),
+                recent.stream().map(this::toEntryDto).toList());
     }
 
     @Override
-    public Map<String, Object> trend(String userId, int days) {
+    public LedgerTrendDto trend(String userId, int days) {
         UUID uid = UUID.fromString(userId);
-        int span = Math.min(Math.max(days, 1), 90);
-        ZoneId zone = ZoneId.systemDefault();
+        int span = Math.clamp(days, 1, MAX_TREND_DAYS);
+        ZoneId zone = clock.getZone();
 
-        LocalDate end = LocalDate.now(zone);
+        LocalDate end = LocalDate.now(clock);
         LocalDate start = end.minusDays(span - 1L);
         OffsetDateTime from = start.atStartOfDay(zone).toOffsetDateTime();
         OffsetDateTime to = end.plusDays(1).atStartOfDay(zone).toOffsetDateTime();
 
-        List<LedgerEntries> entries = entriesMapper.selectList(
-                filtered(uid, null, null, from, to));
-
+        List<LedgerEntries> entries = entriesMapper.selectList(filtered(uid, null, null, from, to));
         List<LocalDate> dates = start.datesUntil(end.plusDays(1)).toList();
 
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("days", span);
-        result.put("from", from);
-        result.put("to", to);
-        result.putAll(windowStats(entries, dates, zone));
-        return result;
-    }
-
-    /**
-     * 一个时间窗口内的统计：总额、支出 / 收入分类排行、按天走势。
-     * <p>
-     * {@code dates} 决定按天序列的范围，并负责补零；窗口外（理论上不会出现）的条目只计入总额。
-     */
-    private Map<String, Object> windowStats(List<LedgerEntries> entries, List<LocalDate> dates,
-            ZoneId zone) {
-        long totalExpense = 0;
-        long totalIncome = 0;
-        Map<String, long[]> expenseRanking = new LinkedHashMap<>();
-        Map<String, long[]> incomeRanking = new LinkedHashMap<>();
-
-        Map<LocalDate, long[]> daily = new LinkedHashMap<>();
-        for (LocalDate date : dates) {
-            daily.put(date, new long[3]); // [支出, 收入, 笔数]
-        }
-
-        for (LedgerEntries entry : entries) {
-            long cents = entry.getAmountCents() == null ? 0 : entry.getAmountCents();
-            boolean income = "income".equals(entry.getType());
-
-            if (income) {
-                totalIncome += cents;
-                accumulate(incomeRanking, entry);
-            } else {
-                totalExpense += cents;
-                accumulate(expenseRanking, entry);
-            }
-
-            if (entry.getOccurredAt() == null) {
-                continue;
-            }
-            long[] bucket = daily.get(entry.getOccurredAt().atZoneSameInstant(zone).toLocalDate());
-            if (bucket == null) {
-                continue;
-            }
-            if (income) {
-                bucket[1] += cents;
-            } else {
-                bucket[0] += cents;
-            }
-            bucket[2]++;
-        }
-
-        List<Map<String, Object>> points = daily.entrySet().stream().map(e -> {
-            Map<String, Object> point = new LinkedHashMap<>();
-            point.put("date", e.getKey().toString());
-            point.put("expense_cents", e.getValue()[0]);
-            point.put("income_cents", e.getValue()[1]);
-            point.put("count", e.getValue()[2]);
-            return point;
-        }).toList();
-
-        Map<String, Object> stats = new LinkedHashMap<>();
-        stats.put("total_expense_cents", totalExpense);
-        stats.put("total_income_cents", totalIncome);
-        stats.put("total_count", entries.size());
-        stats.put("category_ranking", toRanking(expenseRanking));
-        stats.put("income_category_ranking", toRanking(incomeRanking));
-        stats.put("daily", points);
-        return stats;
-    }
-
-    private void accumulate(Map<String, long[]> ranking, LedgerEntries entry) {
-        long[] bucket = ranking.computeIfAbsent(entry.getCategory(), k -> new long[2]);
-        bucket[0] += entry.getAmountCents();
-        bucket[1]++;
-    }
-
-    private List<Map<String, Object>> toRanking(Map<String, long[]> ranking) {
-        return ranking.entrySet().stream()
-                .sorted((a, b) -> {
-                    int byAmount = Long.compare(b.getValue()[0], a.getValue()[0]);
-                    return byAmount != 0 ? byAmount : a.getKey().compareTo(b.getKey());
-                })
-                .map(e -> {
-                    Map<String, Object> item = new LinkedHashMap<>();
-                    item.put("category", e.getKey());
-                    item.put("amount_cents", e.getValue()[0]);
-                    item.put("count", e.getValue()[1]);
-                    return item;
-                })
-                .toList();
-    }
-
-    private YearMonth parseMonth(String month) {
-        if (!hasText(month)) {
-            return YearMonth.now();
-        }
-        try {
-            return YearMonth.parse(month.trim());
-        } catch (DateTimeParseException e) {
-            throw BizException.validation("month 格式必须为 YYYY-MM");
-        }
+        LedgerStatsCalculator.WindowStats stats = statsCalculator.summarize(entries, dates, zone);
+        return new LedgerTrendDto(
+                span,
+                from,
+                to,
+                stats.totalExpenseCents(),
+                stats.totalIncomeCents(),
+                stats.totalCount(),
+                stats.categoryRanking(),
+                stats.incomeCategoryRanking(),
+                stats.daily());
     }
 
     // -----------------------------------------------------------------------
@@ -670,40 +306,35 @@ public class LedgerServiceImpl implements LedgerService {
     // -----------------------------------------------------------------------
 
     @Override
-    public Map<String, Object> listAliases(String userId) {
+    public LedgerAliasPage listAliases(String userId) {
         UUID uid = UUID.fromString(userId);
-        List<LedgerAliases> aliases = aliasesMapper.selectList(
-                new LambdaQueryWrapper<LedgerAliases>()
+        List<LedgerAliasDto> items = aliasesMapper
+                .selectList(new LambdaQueryWrapper<LedgerAliases>()
                         .eq(LedgerAliases::getUserId, uid)
-                        .orderByAsc(LedgerAliases::getAlias));
-
-        List<Map<String, Object>> items = aliases.stream().map(a -> {
-            Map<String, Object> item = new LinkedHashMap<>();
-            item.put("alias", a.getAlias());
-            item.put("category", a.getCategory());
-            return item;
-        }).toList();
-        return Map.of("items", items, "total", items.size());
+                        .orderByAsc(LedgerAliases::getAlias))
+                .stream()
+                .map(a -> new LedgerAliasDto(a.getAlias(), a.getCategory()))
+                .toList();
+        return new LedgerAliasPage(items, items.size());
     }
 
     @Override
-    public Map<String, Object> upsertAlias(String userId, UpsertLedgerAliasRequest req) {
+    @Transactional
+    public LedgerAliasDto upsertAlias(String userId, UpsertLedgerAliasRequest req) {
         UUID uid = UUID.fromString(userId);
         String alias = req.alias().trim();
         validateCategory(req.category());
         aliasesMapper.upsert(uid, alias, req.category());
-        return Map.of("alias", alias, "category", req.category());
+        return new LedgerAliasDto(alias, req.category());
     }
 
     @Override
     @Transactional
     public void deleteAlias(String userId, String alias) {
         UUID uid = UUID.fromString(userId);
-        String value = alias.trim();
-        int deleted = aliasesMapper.delete(
-                new LambdaQueryWrapper<LedgerAliases>()
-                        .eq(LedgerAliases::getUserId, uid)
-                        .eq(LedgerAliases::getAlias, value));
+        int deleted = aliasesMapper.delete(new LambdaQueryWrapper<LedgerAliases>()
+                .eq(LedgerAliases::getUserId, uid)
+                .eq(LedgerAliases::getAlias, alias.trim()));
         if (deleted == 0) {
             throw BizException.notFound("别名不存在");
         }
@@ -711,39 +342,43 @@ public class LedgerServiceImpl implements LedgerService {
 
     @Override
     public List<String> categories() {
-        return CATEGORIES;
+        return LedgerCategories.ALL;
     }
 
     // -----------------------------------------------------------------------
-    // 内部工具
+    // 内部
     // -----------------------------------------------------------------------
 
     private Map<String, String> loadAliases(UUID userId) {
-        return aliasesMapper.selectList(
-                new LambdaQueryWrapper<LedgerAliases>()
-                        .eq(LedgerAliases::getUserId, userId))
+        return aliasesMapper
+                .selectList(new LambdaQueryWrapper<LedgerAliases>().eq(LedgerAliases::getUserId, userId))
                 .stream()
-                .collect(Collectors.toMap(
-                        LedgerAliases::getAlias,
-                        LedgerAliases::getCategory,
-                        (first, second) -> second));
+                .collect(java.util.stream.Collectors.toMap(
+                        LedgerAliases::getAlias, LedgerAliases::getCategory, (first, second) -> second));
     }
 
-    private void upsertAliasFromNote(UUID userId, String note, String category) {
-        if (!hasText(note) || "未分类".equals(category)) {
+    /**
+     * 人工归类后学习别名。
+     * <p>
+     * 只在备注首个词不是内置分类、长度合理、且分类不是「未分类」时学习，
+     * 避免把「午饭 食堂」里的无关词或超长备注写进别名表。
+     */
+    private void learnAliasFromNote(UUID userId, String note, String category) {
+        if (!hasText(note) || LedgerTextParser.UNCATEGORIZED.equals(category)) {
             return;
         }
-        String token = firstToken(note);
-        if (!hasText(token) || token.length() > 64 || CATEGORY_SET.contains(token)) {
+        String token = classifier.firstTokenOf(note);
+        if (!hasText(token) || token.length() > MAX_ALIAS_LENGTH || LedgerCategories.ALL_SET.contains(token)) {
             return;
         }
         aliasesMapper.upsert(userId, token, category);
     }
 
-    private LambdaQueryWrapper<LedgerEntries> filtered(UUID userId, String type, String category,
-            OffsetDateTime from, OffsetDateTime to) {
-        LambdaQueryWrapper<LedgerEntries> wrapper = new LambdaQueryWrapper<LedgerEntries>()
-                .eq(LedgerEntries::getUserId, userId);
+    /** 构造查询条件：用户 + 可选方向 / 分类 / 时间区间。 */
+    private LambdaQueryWrapper<LedgerEntries> filtered(
+            UUID userId, String type, String category, OffsetDateTime from, OffsetDateTime to) {
+        LambdaQueryWrapper<LedgerEntries> wrapper =
+                new LambdaQueryWrapper<LedgerEntries>().eq(LedgerEntries::getUserId, userId);
         if (hasText(type)) {
             wrapper.eq(LedgerEntries::getType, type);
         }
@@ -759,33 +394,30 @@ public class LedgerServiceImpl implements LedgerService {
         return wrapper;
     }
 
-    private Map<String, Object> buildBatchResult(UUID userId, String batchId, Boolean created) {
-        LedgerBatches batch = batchesMapper.selectOne(
-                new LambdaQueryWrapper<LedgerBatches>()
-                        .eq(LedgerBatches::getUserId, userId)
-                        .eq(LedgerBatches::getBatchId, batchId));
+    private LedgerBatchDto buildBatchDto(UUID userId, String batchId, Boolean created) {
+        LedgerBatches batch = batchesMapper.selectOne(new LambdaQueryWrapper<LedgerBatches>()
+                .eq(LedgerBatches::getUserId, userId)
+                .eq(LedgerBatches::getBatchId, batchId));
         if (batch == null) {
             throw BizException.notFound("记账批次不存在");
         }
 
-        List<LedgerEntries> entries = entriesMapper.selectList(
-                new LambdaQueryWrapper<LedgerEntries>()
+        List<LedgerEntryDto> items = entriesMapper
+                .selectList(new LambdaQueryWrapper<LedgerEntries>()
                         .eq(LedgerEntries::getUserId, userId)
                         .eq(LedgerEntries::getBatchId, batchId)
-                        .orderByAsc(LedgerEntries::getCreatedAt));
+                        .orderByAsc(LedgerEntries::getCreatedAt))
+                .stream()
+                .map(this::toEntryDto)
+                .toList();
 
-        List<Map<String, Object>> items = entries.stream().map(this::toEntryMap).toList();
-
-        Map<String, Object> result = new LinkedHashMap<>();
-        if (created != null) {
-            result.put("created", created);
-        }
-        result.put("batch_id", batch.getBatchId());
-        result.put("raw_text", batch.getRawText());
-        result.put("created_at", batch.getCreatedAt());
-        result.put("items", items);
-        result.put("total", items.size());
-        return result;
+        return new LedgerBatchDto(
+                Boolean.TRUE.equals(created),
+                batch.getBatchId(),
+                batch.getRawText(),
+                batch.getCreatedAt(),
+                items,
+                items.size());
     }
 
     private LedgerEntries getOwned(UUID userId, UUID entryId) {
@@ -797,7 +429,7 @@ public class LedgerServiceImpl implements LedgerService {
     }
 
     private void validateEntry(CreateLedgerEntryRequest item) {
-        if (!TYPES.contains(item.type())) {
+        if (!LedgerTypes.ALL.contains(item.type())) {
             throw BizException.validation("type 只能是 expense 或 income");
         }
         if (item.amountCents() == null || item.amountCents() <= 0) {
@@ -807,7 +439,7 @@ public class LedgerServiceImpl implements LedgerService {
     }
 
     private void validateCategory(String category) {
-        if (!CATEGORY_SET.contains(category)) {
+        if (!LedgerCategories.ALL_SET.contains(category)) {
             throw BizException.validation("不支持的分类：" + category);
         }
     }
@@ -818,49 +450,34 @@ public class LedgerServiceImpl implements LedgerService {
         }
     }
 
-    private Map<String, Object> toEntryMap(LedgerEntries entry) {
-        Map<String, Object> item = new LinkedHashMap<>();
-        item.put("id", entry.getId().toString());
-        item.put("type", entry.getType());
-        item.put("amount_cents", entry.getAmountCents());
-        item.put("category", entry.getCategory());
-        item.put("note", entry.getNote());
-        item.put("occurred_at", entry.getOccurredAt());
-        item.put("batch_id", entry.getBatchId());
-        item.put("created_at", entry.getCreatedAt());
-        return item;
+    private LedgerEntryDto toEntryDto(LedgerEntries entry) {
+        return new LedgerEntryDto(
+                entry.getId(),
+                entry.getType(),
+                entry.getAmountCents(),
+                entry.getCategory(),
+                entry.getNote(),
+                entry.getOccurredAt(),
+                entry.getBatchId(),
+                entry.getCreatedAt());
     }
 
-    private boolean containsIncomeKeyword(String text) {
-        return INCOME_KEYWORDS.stream().anyMatch(text::contains);
-    }
-
-    private int firstWhitespace(String value) {
-        for (int i = 0; i < value.length(); i++) {
-            char c = value.charAt(i);
-            if (Character.isWhitespace(c) || c == '\u3000') {
-                return i;
-            }
+    private YearMonth parseMonth(String month) {
+        if (!hasText(month)) {
+            return YearMonth.now(clock);
         }
-        return -1;
-    }
-
-    private String firstToken(String value) {
-        int split = firstWhitespace(value);
-        return split >= 0 ? value.substring(0, split) : value;
-    }
-
-    private String join(String first, String second) {
-        if (!hasText(second)) {
-            return first;
+        try {
+            return YearMonth.parse(month.trim());
+        } catch (DateTimeParseException e) {
+            throw BizException.validation("month 格式必须为 YYYY-MM");
         }
-        return first + " " + second;
     }
 
-    private boolean hasText(String value) {
+    private static int clampLimit(int limit) {
+        return Math.clamp(limit, 1, MAX_PAGE_SIZE);
+    }
+
+    private static boolean hasText(String value) {
         return value != null && !value.isBlank();
-    }
-
-    private record AmountMatch(long amountCents, String remaining) {
     }
 }

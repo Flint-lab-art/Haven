@@ -3,15 +3,14 @@ package com.haven.backend.ledger.entity;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.haven.backend.typehandler.UuidTypeHandler;
-import lombok.Getter;
-import lombok.Setter;
-import lombok.ToString;
-import lombok.experimental.Accessors;
-
 import java.io.Serial;
 import java.io.Serializable;
 import java.time.OffsetDateTime;
 import java.util.UUID;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.ToString;
+import lombok.experimental.Accessors;
 
 /**
  * 记账批次，用于支撑 batch_id 幂等。
@@ -21,7 +20,7 @@ import java.util.UUID;
  */
 @Getter
 @Setter
-@ToString
+@ToString(exclude = {"rawText"})
 @TableName("ledger_batches")
 @Accessors(chain = true)
 public class LedgerBatches implements Serializable {
