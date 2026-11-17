@@ -64,3 +64,13 @@ export function noteDropPosition(
 export function isInteractiveDragTarget(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest('button, input, .tree-menu') !== null
 }
+
+/**
+ * 图标值是不是图片路径。
+ *
+ * 文件夹图标有三种形态：Emoji（`🍀`）、品牌 key（`go`）、图片 URL（`/uploads/...`），
+ * 以 `/` 开头的一律当图片渲染。
+ */
+export function isImageIcon(icon: string | null | undefined): boolean {
+  return Boolean(icon && icon.startsWith('/'))
+}
