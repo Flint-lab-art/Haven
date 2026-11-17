@@ -186,6 +186,37 @@ pnpm test:watch     # 监听
 - `__tests__/*.test.ts` 按模块组织
 - 组件测试用 `@vue/test-utils`，避免断言具体 DOM 结构
 
+## 4.1 请求体契约测试（重要）
+
+项目用 **Jackson 3**（`tools.jackson`），`spring.jackson.property-naming-strategy=SNAKE_CASE`
+在**反序列化时同样生效**：DTO 只认 `snake_case`，收到 `camelCase` 会被**静默忽略**。
+
+后果分两档：
+
+| 字段类型 | 表现 |
+| --- | --- |
+| 必填（`@NotBlank`） | 400「不能为空」——容易发现 |
+| 可空（`Boolean` / `Integer`） | **静默变成 `null`**——功能失效但界面正常 |
+
+这类问题类型检查、单元测试、手点主流程都可能漏掉。曾经真的发生过：
+前端加了 `snake_case → camelCase` 转换，196 个前端测试 + 121 个后端测试全绿，
+但登录、改密、Token 创建全部失效，登录页「信任这台设备」静默不生效。
+
+### 两侧各有一道闸
+
+| 位置 | 文件 | 作用 |
+| --- | --- | --- |
+| 后端 | `contract/RequestBodyContractTest` | 用**容器里的** `ObjectMapper` 把"前端实际会发的 JSON"反序列化成 DTO，断言字段绑上了值 |
+| 前端 | `__tests__/request-body-contract.test.ts` | 拦截 `fetch`，断言 `client.ts` 发出的 body 键名保持 `snake_case` |
+
+两处都做过反证：故意让 DTO 字段名不一致、或在前端加回键名转换，测试都会立刻失败。
+
+### 新增 `@RequestBody` DTO 时
+
+1. 在 `RequestBodyContractTest` 加一个用例，**固定前端会发的 JSON**
+2. 断言所有**可空字段**也被绑定（`assertNotNull` / `assertEquals(Boolean.TRUE, ...)`）
+3. 不要自己 `new ObjectMapper()`——必须注入容器里的那个，否则测不到命名策略
+
 ## 5. 测试清单（新增功能时）
 
 - [ ] 新端点：状态码 + 错误响应体（Web 层测试）
@@ -195,6 +226,7 @@ pnpm test:watch     # 监听
 - [ ] 涉及金额：断言分，不断言元
 - [ ] 涉及分类/枚举：与常量表一致性测试
 - [ ] 新增迁移：能在空库跑通（测试会自动验证）
+- [ ] 新增/修改 `@RequestBody` DTO：在 `RequestBodyContractTest` 固定一份实际请求 JSON
 
 ## 6. 已知缺口
 
