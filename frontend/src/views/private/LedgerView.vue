@@ -7,8 +7,9 @@
  * 2. 快速记一笔：多行文本 → 解析预览 → 确认写入（batch_id 幂等）；
  * 3. 明细：按月 / 分类筛选，改分类即自动记忆别名，可改金额与时间、删除。
  */
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import LedgerEditDialog from '@/components/ledger/LedgerEditDialog.vue'
 import LedgerDonutChart from '@/components/LedgerDonutChart.vue'
 import LedgerTrendChart from '@/components/LedgerTrendChart.vue'
 import { ApiError } from '@/api/client'
@@ -31,10 +32,7 @@ import {
   currentMonth,
   formatSignedYuan,
   formatYuan,
-  fromLocalDateTimeInput,
-  parseYuanToCents,
   shiftMonth,
-  toLocalDateTimeInput,
 } from '@/utils/ledger'
 
 const month = ref(currentMonth())
@@ -67,14 +65,9 @@ const parsing = ref(false)
 const saving = ref(false)
 const parseResult = ref<QuickParseResult | null>(null)
 
-const editing = ref<LedgerEntry | null>(null)
-const editError = ref('')
-const editSaving = ref(false)
-const editForm = reactive({
-  category: '未分类' as LedgerCategory,
-  amount: '',
-  occurredAt: '',
-})
+const editTarget = ref<LedgerEntry | null>(null)
+/** 编辑弹窗是否打开；与 editTarget 分开，关闭时保留 target 避免退场动画期间内容闪空。 */
+const editDialogOpen = ref(false)
 
 const deleting = ref<LedgerEntry | null>(null)
 const deletingBusy = ref(false)
@@ -94,9 +87,6 @@ const dailyPoints = computed(() => summary.value?.daily ?? [])
 const donutLabel = computed(() => (rankType.value === 'income' ? '收入' : '支出'))
 const maxRankAmount = computed(() =>
   Math.max(1, ...ranking.value.map((item) => item.amount_cents)),
-)
-const editCategories = computed(() =>
-  categoriesForType(editing.value?.type ?? 'expense', editing.value?.category),
 )
 const monthLabel = computed(() => {
   const [year, mon] = month.value.split('-')
@@ -212,60 +202,15 @@ async function onCategoryChange(entry: LedgerEntry, event: Event): Promise<void>
 }
 
 function openEdit(entry: LedgerEntry): void {
-  editing.value = entry
-  editForm.category = entry.category
-  editForm.amount = (entry.amount_cents / 100).toString()
-  editForm.occurredAt = toLocalDateTimeInput(entry.occurred_at)
-  editError.value = ''
+  editTarget.value = entry
+  editDialogOpen.value = true
 }
 
-function closeEdit(): void {
-  if (editSaving.value) return
-  editing.value = null
-}
-
-async function saveEdit(): Promise<void> {
-  const entry = editing.value
-  if (!entry || editSaving.value) return
-
-  const cents = parseYuanToCents(editForm.amount)
-  if (cents === null || cents <= 0) {
-    editError.value = '金额需为大于 0 的数字，最多两位小数'
-    return
-  }
-  const occurredAt = fromLocalDateTimeInput(editForm.occurredAt)
-  if (!occurredAt) {
-    editError.value = '时间格式不正确'
-    return
-  }
-
-  const patch: {
-    category?: LedgerCategory
-    amount_cents?: number
-    occurred_at?: string
-  } = {}
-  if (editForm.category !== entry.category) patch.category = editForm.category
-  if (cents !== entry.amount_cents) patch.amount_cents = cents
-  if (occurredAt !== entry.occurred_at) patch.occurred_at = occurredAt
-
-  if (Object.keys(patch).length === 0) {
-    editing.value = null
-    return
-  }
-
-  editSaving.value = true
-  editError.value = ''
-  try {
-    const updated = await updateLedgerEntry(entry.id, patch)
-    applyEntry(updated)
-    editing.value = null
-    notify('已保存')
-    await reload()
-  } catch (err) {
-    editError.value = messageOf(err, '保存失败')
-  } finally {
-    editSaving.value = false
-  }
+/** 弹窗保存成功：把服务端返回的新值同步进列表，再刷新汇总。 */
+async function onEditSaved(updated: LedgerEntry): Promise<void> {
+  applyEntry(updated)
+  notify('已保存')
+  await reload()
 }
 
 async function confirmDelete(): Promise<void> {
@@ -570,49 +515,11 @@ onBeforeUnmount(() => {
       </div>
     </section>
 
-    <div v-if="editing" class="modal-backdrop" role="presentation" @click.self="closeEdit">
-      <section class="modal ledger-edit" role="dialog" aria-modal="true" aria-label="编辑记账">
-        <header class="modal__head">
-          <div>
-            <h2 class="modal__title">编辑这一笔</h2>
-            <p class="modal__sub">{{ editing.note || '（无备注）' }}</p>
-          </div>
-          <button class="icon-btn" type="button" aria-label="关闭" @click="closeEdit">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
-              <path d="M6 6l12 12M18 6 6 18" />
-            </svg>
-          </button>
-        </header>
-
-        <p v-if="editError" class="notice notice--error">{{ editError }}</p>
-
-        <label class="field">
-          <span class="field__label">分类</span>
-          <select v-model="editForm.category" class="select">
-            <option v-for="category in editCategories" :key="category" :value="category">
-              {{ category }}
-            </option>
-          </select>
-        </label>
-
-        <label class="field">
-          <span class="field__label">金额（元）</span>
-          <input v-model="editForm.amount" class="input" inputmode="decimal" autocomplete="off" />
-        </label>
-
-        <label class="field">
-          <span class="field__label">发生时间</span>
-          <input v-model="editForm.occurredAt" class="input" type="datetime-local" />
-        </label>
-
-        <div class="modal__actions">
-          <button class="btn" type="button" :disabled="editSaving" @click="closeEdit">取消</button>
-          <button class="btn btn--primary" type="button" :disabled="editSaving" @click="saveEdit">
-            {{ editSaving ? '保存中…' : '保存' }}
-          </button>
-        </div>
-      </section>
-    </div>
+    <LedgerEditDialog
+      v-model:open="editDialogOpen"
+      :entry="editTarget"
+      @saved="onEditSaved"
+    />
 
     <ConfirmDialog
       :open="deleting !== null"

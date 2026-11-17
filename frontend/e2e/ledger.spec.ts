@@ -135,6 +135,55 @@ test('解析失败的行给出逐行错误，且不写入', async ({ authedPage:
   expect((await api.ledgerEntries()).items).toHaveLength(0)
 })
 
+test('编辑弹窗可改金额与分类，保存后列表与汇总同步', async ({ authedPage: page }) => {
+  const api = createApi(page.request)
+  await api.quickCommit('晚饭 40')
+
+  await page.goto('/ledger')
+  const row = page.locator('.ledger-entry').filter({ hasText: '晚饭' }).first()
+  await expect(row).toBeVisible()
+
+  // 打开编辑弹窗
+  await row.getByRole('button', { name: '编辑金额与时间' }).click()
+  const dialog = page.getByRole('dialog', { name: '编辑记账' })
+  await expect(dialog).toBeVisible()
+
+  // 分类与金额都能改
+  await dialog.locator('select').selectOption('娱乐')
+  await dialog.locator('input[inputmode="decimal"]').fill('60')
+  await dialog.getByRole('button', { name: '保存' }).click()
+
+  // 弹窗关闭，列表显示新值
+  await expect(dialog).toBeHidden()
+  await expect(page.locator('.ledger-entry__amount').first()).toContainText('60')
+
+  // 汇总同步到 60
+  await expect(page.locator('.ledger-total__value')).toContainText('60')
+
+  // 落库确认
+  const { items } = await api.ledgerEntries()
+  expect(items[0]).toMatchObject({ amount_cents: 6000, category: '娱乐' })
+})
+
+test('编辑弹窗金额非法时给出提示且不关闭', async ({ authedPage: page }) => {
+  const api = createApi(page.request)
+  await api.quickCommit('测试非法 10')
+
+  await page.goto('/ledger')
+  await page.locator('.ledger-entry').first().getByRole('button', { name: '编辑金额与时间' }).click()
+
+  const dialog = page.getByRole('dialog', { name: '编辑记账' })
+  await dialog.locator('input[inputmode="decimal"]').fill('0')
+  await dialog.getByRole('button', { name: '保存' }).click()
+
+  await expect(dialog.getByText(/金额需为大于 0/)).toBeVisible()
+  await expect(dialog).toBeVisible()
+
+  // 数据没被改动
+  const { items } = await api.ledgerEntries()
+  expect(items[0].amount_cents).toBe(1000)
+})
+
 test('重复提交同一批次不会重复写入（幂等）', async ({ authedPage: page }) => {
   const batchId = 'e2e-idempotent-batch'
   const payload = {
