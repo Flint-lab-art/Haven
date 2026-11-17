@@ -1,14 +1,18 @@
 package com.haven.backend.typehandler;
 
+import java.sql.Array;
+import java.sql.CallableStatement;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
 import org.apache.ibatis.type.BaseTypeHandler;
 import org.apache.ibatis.type.JdbcType;
 import org.apache.ibatis.type.MappedJdbcTypes;
 import org.apache.ibatis.type.MappedTypes;
-
-import java.sql.*;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
 
 /**
  * MyBatis TypeHandler：Java List<UUID> ↔ PostgreSQL uuid[]。
@@ -42,13 +46,20 @@ public class UuidListTypeHandler extends BaseTypeHandler<List<UUID>> {
     }
 
     private List<UUID> toList(Array pgArray) throws SQLException {
-        if (pgArray == null) return null;
+        if (pgArray == null) {
+            return null;
+        }
         Object[] javaArr = (Object[]) pgArray.getArray();
         List<UUID> list = new ArrayList<>(javaArr.length);
         for (Object o : javaArr) {
-            if (o == null) continue;
-            if (o instanceof UUID u) list.add(u);
-            else list.add(UUID.fromString(o.toString()));
+            if (o == null) {
+                continue;
+            }
+            if (o instanceof UUID u) {
+                list.add(u);
+            } else {
+                list.add(UUID.fromString(o.toString()));
+            }
         }
         return list;
     }
