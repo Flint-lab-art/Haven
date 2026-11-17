@@ -5,8 +5,8 @@ import { useRoute } from 'vue-router'
 
 const route = useRoute()
 
-const title = computed(() => String(route.meta.emptyTitle ?? '选择一篇笔记'))
-const text = computed(() => String(route.meta.emptyText ?? '从左侧列表选择，或新建一篇。'))
+const title = computed(() => route.meta.emptyTitle ?? '选择一篇笔记')
+const text = computed(() => route.meta.emptyText ?? '从左侧列表选择，或新建一篇。')
 </script>
 
 <template>

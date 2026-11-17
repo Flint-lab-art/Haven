@@ -5,6 +5,8 @@ import {
   type Router,
 } from 'vue-router'
 import { detectDomain } from './domain'
+// 副作用导入：注册 RouteMeta 的类型扩展，让 meta 字段有具体类型
+import './meta'
 import { useAuthStore } from '@/stores/auth'
 
 /** 公开域路由（docs/frontend/frontend.md 第三节）：全部匿名可访问，无写入口。 */
@@ -285,7 +287,7 @@ export function createHavenRouter(hostname = window.location.hostname): Router {
       await auth.refresh()
     }
 
-    if (to.meta.public) {
+    if (to.meta.public === true) {
       // 已登录访问登录页：进目标页（没有 redirect 就进工作台）
       if (to.name === 'login' && auth.isLoggedIn) {
         const redirect = to.query.redirect
@@ -304,7 +306,7 @@ export function createHavenRouter(hostname = window.location.hostname): Router {
   })
 
   router.afterEach((to) => {
-    const title = typeof to.meta.title === 'string' ? to.meta.title : '笔记'
+    const title = to.meta.title ?? '笔记'
     document.title = `${title} · Haven`
   })
 

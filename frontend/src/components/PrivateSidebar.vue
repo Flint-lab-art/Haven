@@ -19,7 +19,7 @@ const ui = useUiStore()
 const route = useRoute()
 const router = useRouter()
 
-const section = computed(() => (typeof route.meta.section === 'string' ? route.meta.section : ''))
+const section = computed(() => route.meta.section ?? '')
 const initial = computed(() => (auth.username ?? 'H').slice(0, 1).toUpperCase())
 const mini = computed(() => ui.sidebarMini)
 
