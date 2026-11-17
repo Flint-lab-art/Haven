@@ -1,6 +1,7 @@
 package com.haven.backend.note.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.haven.backend.audit.AuditEventType;
 import com.haven.backend.audit.AuditRecorder;
 import com.haven.backend.audit.AuditTargetType;
@@ -153,8 +154,7 @@ public class NotesServiceImpl implements NotesService {
             setTags(uid, note.getId(), tagIds);
         }
 
-        // 创建版本快照
-        saveVersion(note, uid);
+        // 创建时不存快照：此时没有「之前」的内容，存下来只会得到一个与当前一致的冗余版本。
         return buildNoteDetail(note, uid);
     }
 
@@ -176,13 +176,34 @@ public class NotesServiceImpl implements NotesService {
         }
 
         boolean changed = false;
+        // 严格判断是否有实际变化：无变化的 PATCH（自动保存常发）不该产生版本，否则历史里全是重复项
+        if (title != null && !title.equals(note.getTitle())) {
+            changed = true;
+        }
+        if (content != null && !content.equals(note.getContent())) {
+            changed = true;
+        }
+        if (folderId != null && !folderId.equals(note.getFolderId())) {
+            changed = true;
+        }
+        if (clearFolder && note.getFolderId() != null) {
+            changed = true;
+        }
+        if (sortOrder != null && !sortOrder.equals(note.getSortOrder())) {
+            changed = true;
+        }
+
+        // 先把「修改前」的状态存成快照，再写新值。
+        // 顺序不能反：存修改后的值会让历史里最早一版退化成当前内容，用户永远回不到过去。
+        if (changed) {
+            saveVersion(note, uid);
+        }
+
         if (title != null) {
             note.setTitle(title);
-            changed = true;
         }
         if (content != null) {
             note.setContent(content);
-            changed = true;
         }
         if (folderId != null) {
             Folders f = foldersMapper.selectById(folderId);
@@ -190,28 +211,24 @@ public class NotesServiceImpl implements NotesService {
                 throw BizException.notFound("文件夹不存在");
             }
             note.setFolderId(folderId);
-            changed = true;
         } else if (clearFolder) {
-            // 同理：setFolderId(null) + updateById 不会写库，用 UpdateWrapper 显式清空
+            // updateById 跳过 null，必须用 UpdateWrapper 显式清空
             notesMapper.update(
                     new Notes(),
-                    new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<Notes>()
+                    new LambdaUpdateWrapper<Notes>()
                             .eq(Notes::getId, noteId)
                             .eq(Notes::getUserId, uid)
                             .set(Notes::getFolderId, null));
             note.setFolderId(null);
-            changed = true;
         }
         if (sortOrder != null) {
             note.setSortOrder(sortOrder);
-            changed = true;
         }
 
         if (changed) {
             note.setSearchText(buildSearchText(note.getTitle(), note.getContent()));
             note.setUpdatedAt(OffsetDateTime.now(clock));
             notesMapper.updateById(note);
-            saveVersion(note, uid);
         }
         if (tagIds != null) {
             setTags(uid, note.getId(), tagIds);
@@ -390,6 +407,9 @@ public class NotesServiceImpl implements NotesService {
             throw BizException.notFound("版本不存在");
         }
 
+        // 还原前先存当前内容，否则「还原」这一步本身无法撤销
+        saveVersion(note, uid);
+
         note.setTitle(v.getTitle());
         note.setContent(v.getContent());
         note.setFolderId(v.getFolderId());
@@ -405,7 +425,6 @@ public class NotesServiceImpl implements NotesService {
             noteTagsMapper.delete(new LambdaQueryWrapper<NoteTags>().eq(NoteTags::getNoteId, noteId));
         }
 
-        saveVersion(note, uid);
         return buildNoteDetail(note, uid);
     }
 
@@ -513,6 +532,16 @@ public class NotesServiceImpl implements NotesService {
         return null;
     }
 
+    /**
+     * 保存一个历史版本快照。
+     * <p>
+     * **调用时机必须在写入新内容之前**：快照保存的是「修改前」的状态，
+     * 这样历史里每条都对应一个真实存在过的过去版本。
+     * <p>
+     * 5 分钟窗口内的多次修改合并成一条：内容是窗口起点那一刻的样子，
+     * 避免自动保存刷出大量近乎相同的版本。窗口锚点用 window_started_at
+     * （不会被刷新），不能用 created_at，否则窗口会无限滑动、永远合并不出第二条。
+     */
     private void saveVersion(Notes note, UUID userId) {
         // 5 分钟合并窗口；窗口锚点用空窗起点，不能用会被刷新的 created_at，否则窗口无限滑动
         OffsetDateTime now = OffsetDateTime.now(clock);
