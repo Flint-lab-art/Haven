@@ -193,9 +193,9 @@ VITE_PRIVATE_HOST=note.example.com,www.example.com
 所有请求走 `src/api/client.ts`：
 
 - 路径一律使用相对 `/api/...`，不写死域名
-- **请求体自动转 camelCase**：`toCamelCaseKeys` 递归转换后再 `JSON.stringify`
-  （`{ tag_ids: [] }` → `{ tagIds: [] }`），所以 `api/*.ts` 里仍按 `snake_case` 书写
-- 响应是 `snake_case`（后端 Jackson 策略），类型定义按 `snake_case` 写
+- 请求与响应**都是 `snake_case`**：后端 Jackson 3 的 `SNAKE_CASE` 策略双向生效，
+  请求体原样序列化即可，`api/*.ts` 一律按 `snake_case` 书写
+- 不要在前端做键名转换：`tempToken` 这类 camelCase 字段后端**接收不到**
 - 返回 204 时为 `undefined`
 - 非 2xx 统一抛 `ApiError`，包含 `status`、`code`、`message`、`fields`
 - 401 默认触发全局登出回调；登录接口通过 `skipUnauthorizedHandler` 跳过

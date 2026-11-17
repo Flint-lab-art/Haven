@@ -119,16 +119,15 @@ public class AuthServiceImpl implements AuthService {
     @Transactional(readOnly = true)
     public LoginPrecheck loginPrecheck(LoginRequest req, String ip, String ua, String trustedDeviceToken) {
         String attemptKey =
-                LoginAttemptLimiter.LOGIN_PREFIX + req.getUsername().trim().toLowerCase(Locale.ROOT);
+                LoginAttemptLimiter.LOGIN_PREFIX + req.username().trim().toLowerCase(Locale.ROOT);
         attemptLimiter.requireLeft(attemptKey);
 
-        Users user = findUserByUsername(req.getUsername());
-        if (user == null
-                || !BCrypt.verifyer().verify(req.getPassword().toCharArray(), user.getPasswordHash()).verified) {
+        Users user = findUserByUsername(req.username());
+        if (user == null || !BCrypt.verifyer().verify(req.password().toCharArray(), user.getPasswordHash()).verified) {
             attemptLimiter.recordFailure(attemptKey);
             auditRecorder.record(
                     user != null ? user.getId() : null,
-                    req.getUsername(),
+                    req.username(),
                     AuditEventType.LOGIN_FAILURE,
                     null,
                     null,
@@ -144,7 +143,7 @@ public class AuthServiceImpl implements AuthService {
         boolean totpRequired = totpEnabled && !trustedDevice;
 
         LoginResponse body = new LoginResponse(userBrief(user), totpRequired, null);
-        return new LoginPrecheck(userId, body, totpRequired, Boolean.TRUE.equals(req.getTrustDevice()));
+        return new LoginPrecheck(userId, body, totpRequired, Boolean.TRUE.equals(req.trustDevice()));
     }
 
     /** 写入待验证 TOTP 记录，并清理该用户已过期的旧记录。 */
@@ -179,7 +178,7 @@ public class AuthServiceImpl implements AuthService {
 
     /** 第二步校验动态码；失败会计数，达到上限时作废临时令牌。 */
     public TotpPrecheck totpPrecheck(LoginTotpRequest req) {
-        String tokenHash = ApiTokenUtil.hash(req.getTempToken());
+        String tokenHash = ApiTokenUtil.hash(req.tempToken());
         PendingTotp pending = pendingTotpMapper.selectOne(new LambdaQueryWrapper<PendingTotp>()
                 .eq(PendingTotp::getToken, tokenHash)
                 .gt(PendingTotp::getExpiresAt, OffsetDateTime.now(clock)));
@@ -193,7 +192,7 @@ public class AuthServiceImpl implements AuthService {
         }
         String attemptKey = LoginAttemptLimiter.TOTP_PREFIX + user.getId();
         attemptLimiter.requireLeft(attemptKey);
-        if (!TotpUtil.verify(user.getTotpSecret(), req.getCode(), clock)) {
+        if (!TotpUtil.verify(user.getTotpSecret(), req.code(), clock)) {
             if (attemptLimiter.recordFailure(attemptKey) >= attemptLimiter.totpMaxAttempts()) {
                 pendingTotpMapper.deleteById(pending.getId());
             }
@@ -271,10 +270,10 @@ public class AuthServiceImpl implements AuthService {
         if (Boolean.TRUE.equals(user.getTotpEnabled())) {
             throw BizException.conflict("已启用 TOTP");
         }
-        if (!TotpUtil.verify(req.getSecret(), req.getCode(), clock)) {
+        if (!TotpUtil.verify(req.secret(), req.code(), clock)) {
             throw BizException.validation("动态码错误");
         }
-        user.setTotpSecret(req.getSecret());
+        user.setTotpSecret(req.secret());
         user.setTotpEnabled(true);
         user.setUpdatedAt(OffsetDateTime.now(clock));
         usersMapper.updateById(user);
@@ -298,7 +297,7 @@ public class AuthServiceImpl implements AuthService {
         if (!Boolean.TRUE.equals(user.getTotpEnabled())) {
             throw BizException.validation("尚未启用 TOTP");
         }
-        if (!TotpUtil.verify(user.getTotpSecret(), req.getCode(), clock)) {
+        if (!TotpUtil.verify(user.getTotpSecret(), req.code(), clock)) {
             throw BizException.unauthorized("动态码错误");
         }
         user.setTotpSecret(null);
@@ -337,25 +336,25 @@ public class AuthServiceImpl implements AuthService {
         }
 
         // 校验旧密码
-        if (!BCrypt.verifyer().verify(req.getOldPassword().toCharArray(), user.getPasswordHash()).verified) {
+        if (!BCrypt.verifyer().verify(req.oldPassword().toCharArray(), user.getPasswordHash()).verified) {
             throw BizException.unauthorized("用户名或密码错误");
         }
 
         // 启用 TOTP 时还需校验动态码
         if (Boolean.TRUE.equals(user.getTotpEnabled())) {
-            if (req.getTotpCode() == null || !TotpUtil.verify(user.getTotpSecret(), req.getTotpCode(), clock)) {
+            if (req.totpCode() == null || !TotpUtil.verify(user.getTotpSecret(), req.totpCode(), clock)) {
                 throw BizException.unauthorized("动态码错误");
             }
         }
 
         // 新旧密码不能相同
-        if (req.getOldPassword().equals(req.getNewPassword())) {
+        if (req.oldPassword().equals(req.newPassword())) {
             throw BizException.validation("新密码不能与旧密码相同");
         }
 
         // 更新密码
         String newHash = BCrypt.withDefaults()
-                .hashToString(BCRYPT_COST, req.getNewPassword().toCharArray());
+                .hashToString(BCRYPT_COST, req.newPassword().toCharArray());
         user.setPasswordHash(newHash);
         user.setUpdatedAt(OffsetDateTime.now(clock));
         usersMapper.updateById(user);

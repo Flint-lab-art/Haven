@@ -60,18 +60,18 @@ public class ApiTokenServiceImpl implements ApiTokenService {
     @Override
     @Transactional
     public ApiTokenCreated createToken(String userId, CreateTokenRequest req) {
-        String[] tokenAndPrefix = ApiTokenUtil.generate(req.getScope());
+        String[] tokenAndPrefix = ApiTokenUtil.generate(req.scope());
         String token = tokenAndPrefix[0];
         String prefix = tokenAndPrefix[1];
 
         Tokens entity = new Tokens();
         entity.setId(UUID.randomUUID());
         entity.setUserId(UUID.fromString(userId));
-        entity.setName(req.getName());
+        entity.setName(req.name());
         entity.setTokenHash(ApiTokenUtil.hash(token));
         entity.setTokenPrefix(prefix);
-        entity.setScope(req.getScope());
-        entity.setExpiresAt(req.getExpiresAt());
+        entity.setScope(req.scope());
+        entity.setExpiresAt(req.expiresAt());
         entity.setCreatedAt(OffsetDateTime.now(clock));
         tokensMapper.insert(entity);
 

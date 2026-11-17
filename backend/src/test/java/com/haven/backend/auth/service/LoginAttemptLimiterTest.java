@@ -109,9 +109,6 @@ class LoginAttemptLimiterTest {
     }
 
     private LoginRequest loginRequest(String username, String password) {
-        LoginRequest req = new LoginRequest();
-        req.setUsername(username);
-        req.setPassword(password);
-        return req;
+        return new LoginRequest(username, password, false);
     }
 }

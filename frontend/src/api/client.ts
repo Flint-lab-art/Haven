@@ -52,7 +52,12 @@ export function setUnauthorizedHandler(handler: UnauthorizedHandler | null): voi
 
 export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'DELETE'
-  /** 请求体；传下划线命名的对象时，发送前会转成后端期望的 camelCase（见 toCamelCaseKeys）。 */
+  /**
+   * 请求体，原样 JSON 序列化。
+   * <p>
+   * 后端 Jackson 配了 SNAKE_CASE 命名策略（Jackson 3 下双向生效），
+   * 所以这里必须按 snake_case 书写，不要转成 camelCase。
+   */
   body?: unknown
   query?: Record<string, string | number | boolean | undefined | null>
   /** 调用方自行处理 401（如登录接口），不触发全局登出。 */
@@ -74,23 +79,6 @@ function buildUrl(path: string, query?: RequestOptions['query']): string {
 }
 
 /**
- * 把请求体里的 snake_case 键递归转成 camelCase。
- * <p>
- * 后端 DTO 使用 record 组件名（camelCase），但项目 REST 层对外统一 snake_case；
- * 因此请求体只需要在这里转换一次，各处 API 定义仍然按 snake_case 书写。
- */
-export function toCamelCaseKeys(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(toCamelCaseKeys)
-  if (value === null || typeof value !== 'object') return value
-  const out: Record<string, unknown> = {}
-  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-    const camel = key.replace(/_([a-z0-9])/g, (_, c: string) => c.toUpperCase())
-    out[camel] = toCamelCaseKeys(item)
-  }
-  return out
-}
-
-/**
  * 发请求并解析响应。
  *
  * - 204 返回 undefined；
@@ -108,7 +96,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
 
   if (body !== undefined) {
     init.headers = { 'Content-Type': 'application/json' }
-    init.body = JSON.stringify(toCamelCaseKeys(body))
+    init.body = JSON.stringify(body)
   }
 
   // 超时用 AbortController 实现：没有传 timeoutMs 时不创建，保持原有行为

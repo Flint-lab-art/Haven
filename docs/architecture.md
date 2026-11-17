@@ -124,16 +124,21 @@ GET /api/app-config → { version, private_hosts: ["note.example.com"] }
 
 这样不用打两份包，也不用维护两套部署。
 
-### 请求体命名转换
+### 请求体命名
 
-后端 DTO 是 record（camelCase），对外 JSON 是 `snake_case`。响应由 Jackson 的 `SNAKE_CASE` 策略生成；**请求体由前端统一转换**：
+后端配置 `spring.jackson.property-naming-strategy: SNAKE_CASE`，项目用的是
+**Jackson 3**（`tools.jackson:jackson-databind:3.x`）。Jackson 3 下该策略**双向生效**：
+响应输出 `snake_case`，请求体也只接受 `snake_case`。
 
 ```ts
-// api/client.ts
-JSON.stringify(toCamelCaseKeys(body))   // { tag_ids: [] } → { tagIds: [] }
+// api/client.ts —— 原样序列化，不做键名转换
+JSON.stringify(body)   // { tag_ids: [] } 原样发出
 ```
 
-所以前端各 `api/*.ts` 里仍然按 `snake_case` 写，读起来与后端文档一致。
+所以前端各 `api/*.ts` 按 `snake_case` 写，与后端文档一致。
+
+> 早期曾在前端做 `snake_case → camelCase` 的转换，那会导致所有请求体字段绑定失败
+> （`@NotBlank` 报"不能为空"，或 Boolean 字段静默为 null）。已移除。
 
 ## 5. 关键设计决策
 

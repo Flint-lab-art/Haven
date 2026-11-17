@@ -11,18 +11,27 @@
 | 时间 | ISO-8601 带时区偏移，如 `2026-11-17T10:30:00+08:00` |
 | ID | UUID 字符串 |
 
-### 请求体是 camelCase，响应是 snake_case
+### 请求与响应都是 snake_case
 
-后端 DTO 用 record（组件名 camelCase），Jackson 把**响应**序列化成 `snake_case`；**请求体**由前端 `api/client.ts` 的 `toCamelCaseKeys` 递归转换后发送。
+后端配置了 `spring.jackson.property-naming-strategy: SNAKE_CASE`，且项目用的是
+**Jackson 3**（`tools.jackson`）。Jackson 3 的命名策略**双向生效**：
+
+| 方向 | 行为 |
+| --- | --- |
+| 序列化（后端 → 前端） | `tempToken` → `temp_token` |
+| 反序列化（前端 → 后端） | **只认 `temp_token`**，`tempToken` 会被忽略 |
+
+因此前端 `api/*.ts` 里的请求体必须按 `snake_case` 书写，`client.ts` 原样序列化即可：
 
 ```ts
-// 前端照常写 snake_case
 updateNote(id, { tag_ids: [], clear_folder: true })
 // 实际发送
-{ "tagIds": [], "clearFolder": true }
+{ "tag_ids": [], "clear_folder": true }
 ```
 
-外部调用方（如 iOS 快捷指令）需要**直接发送 camelCase**：
+> 这一点在 record 与 `@Data` class 上表现一致——不要以为 DTO 是 record 就可以发 camelCase。
+
+外部调用方（如 iOS 快捷指令）同样按 `snake_case` 发送：
 
 ```bash
 curl -X POST http://127.0.0.1:8080/api/ledger/entries/quick \
