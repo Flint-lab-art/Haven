@@ -210,6 +210,37 @@ test('「Token」是内置支出分类，并能用别名快捷记账', async ({ 
   expect(options).toContain('Token')
 })
 
+test('「订阅」是内置支出分类，与 Token 并存且互不干扰', async ({ authedPage: page }) => {
+  const res = await page.request.get('/api/ledger/categories')
+  const body = (await res.json()) as { items: string[] }
+  expect(body.items).toContain('订阅')
+  expect(body.items).toContain('Token')
+
+  // 默认别名只灌注给开发账号，E2E 账号自己建
+  for (const [alias, category] of [
+    ['icloud', '订阅'],
+    ['claude', 'Token'],
+  ]) {
+    const r = await page.request.post('/api/ledger/aliases', { data: { alias, category } })
+    expect(r.ok(), await r.text()).toBeTruthy()
+  }
+
+  const api = createApi(page.request)
+  const rows = await api.quickCommit('icloud 25\nclaude 20')
+  // 返回顺序是录入顺序，不是文本行序，所以按集合断言
+  expect(rows.map((r) => r.category).sort()).toEqual(['Token', '订阅'].sort())
+  expect(rows.every((r) => r.type === 'expense')).toBe(true)
+
+  // 界面下拉里两个分类都能选
+  await page.goto('/ledger')
+  const row = page.locator('.ledger-entry').filter({ hasText: 'icloud' }).first()
+  await expect(row).toBeVisible()
+  await expect(row.locator('select.ledger-entry__cat option').first()).toBeAttached()
+  const options = await row.locator('select.ledger-entry__cat option').allTextContents()
+  expect(options).toContain('订阅')
+  expect(options).toContain('Token')
+})
+
 test('重复提交同一批次不会重复写入（幂等）', async ({ authedPage: page }) => {
   const batchId = 'e2e-idempotent-batch'
   const payload = {

@@ -13,6 +13,7 @@ export type LedgerCategory =
   | '娱乐'
   | '医疗'
   | '还款'
+  | '订阅'
   | 'Token'
   | '未分类'
   | '工资'

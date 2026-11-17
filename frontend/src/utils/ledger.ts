@@ -10,6 +10,7 @@ export const EXPENSE_CATEGORIES: LedgerCategory[] = [
   '娱乐',
   '医疗',
   '还款',
+  '订阅',
   'Token',
   '未分类',
 ]
@@ -53,6 +54,7 @@ const CATEGORY_TONE: Record<LedgerCategory, string> = {
   娱乐: 'fun',
   医疗: 'health',
   还款: 'repay',
+  订阅: 'sub',
   Token: 'token',
   未分类: 'other',
   工资: 'salary',
@@ -81,6 +83,7 @@ const CATEGORY_COLOR: Record<LedgerCategory, string> = {
   娱乐: '#af52de',
   医疗: 'var(--danger)',
   还款: '#8e8e93',
+  订阅: '#ff9500',
   Token: '#5856d6',
   未分类: 'var(--label-3)',
   工资: 'var(--success)',
