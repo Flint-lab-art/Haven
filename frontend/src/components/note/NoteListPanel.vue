@@ -15,6 +15,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import FolderTreeNode from './FolderTreeNode.vue'
+import NoteTreeItem from './NoteTreeItem.vue'
 import { ApiError } from '@/api/client'
 import {
   createFolder,
@@ -33,7 +34,6 @@ import {
   isFolderDescendant,
   isInteractiveDragTarget,
   noteDropPosition,
-  noteIndent,
 } from '@/utils/tree'
 
 /** 分页上限 100，内部循环取完所有笔记。 */
@@ -1055,66 +1055,28 @@ onBeforeUnmount(() => {
         </template>
 
         <!-- 笔记行 -->
-        <div
+        <NoteTreeItem
           v-else
-          class="tree-row tree-row--note"
-          :class="{
-            'tree-row--active': row.note.id === currentNoteId,
-            'tree-row--dragging': isDragging('note', row.note.id),
-            'tree-row--drop-before': isDrop('note', row.note.id, 'before'),
-            'tree-row--drop-after': isDrop('note', row.note.id, 'after'),
-          }"
-          role="treeitem"
-          tabindex="0"
-          draggable="true"
-          :style="{ paddingLeft: noteIndent(row.depth) }"
-          @click="router.push(noteTarget(row.note))"
-          @keydown.enter.self.prevent="router.push(noteTarget(row.note))"
+          :note="row.note"
+          :depth="row.depth"
+          :active="row.note.id === currentNoteId"
+          :dragging="isDragging('note', row.note.id)"
+          :drop-position="
+            isDrop('note', row.note.id, 'before')
+              ? 'before'
+              : isDrop('note', row.note.id, 'after')
+                ? 'after'
+                : null
+          "
+          :busy="busyNoteId === row.note.id"
+          @open="router.push(noteTarget(row.note))"
+          @toggle-visibility="toggleNoteVisibility(row.note)"
+          @remove="removeNote(row.note)"
           @dragstart="startNoteDrag($event, row.note)"
-          @dragover.prevent="onNoteDragOver($event, row.note)"
-          @drop.prevent="onNoteDrop(row.note)"
+          @dragover="onNoteDragOver($event, row.note)"
+          @drop="onNoteDrop(row.note)"
           @dragend="clearDrag"
-        >
-          <svg class="tree-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true">
-            <path d="M6 3h7l5 5v13H6z" />
-            <path d="M13 3v5h5" />
-          </svg>
-          <span class="tree-name">{{ row.note.title }}</span>
-
-          <button
-            class="icon-btn tree-action"
-            type="button"
-            :title="row.note.visibility === 'public' ? '撤回为私有' : '公开'"
-            :aria-label="row.note.visibility === 'public' ? '撤回为私有' : '公开'"
-            :disabled="busyNoteId === row.note.id"
-            @click.stop="toggleNoteVisibility(row.note)"
-          >
-            <svg v-if="row.note.visibility === 'public'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <rect x="5" y="10" width="14" height="10" rx="2" />
-              <path d="M8 10V7a4 4 0 0 1 8 0v3" />
-            </svg>
-            <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
-              <circle cx="12" cy="12" r="9" />
-              <path d="M3 12h18M12 3c2.5 2.4 3.8 5.6 3.8 9S14.5 18.6 12 21c-2.5-2.4-3.8-5.6-3.8-9S9.5 5.4 12 3z" />
-            </svg>
-          </button>
-
-          <button
-            class="icon-btn tree-action tree-action--danger"
-            type="button"
-            title="删除笔记"
-            aria-label="删除笔记"
-            :disabled="busyNoteId === row.note.id"
-            @click.stop="removeNote(row.note)"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M4 7h16" />
-              <path d="M9 7V4h6v3" />
-              <path d="M6 7l1 13h10l1-13" />
-              <path d="M10 11v6M14 11v6" />
-            </svg>
-          </button>
-        </div>
+        />
       </template>
 
       <!-- 拖到树的最下方：文件夹回根目录，笔记进收件箱 -->
