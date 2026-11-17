@@ -4,8 +4,23 @@
 
 | 类型 | 数量 | 说明 |
 | --- | ---: | --- |
-| 后端测试 | 121（23 个测试类） | JUnit 5 + Mockito + Spring Boot Test |
-| 前端测试 | 167（22 个文件） | Vitest + jsdom |
+| 后端测试 | 158（25 个测试类） | JUnit 5 + Mockito + Spring Boot Test |
+| 前端测试 | 232（30 个文件） | Vitest + jsdom |
+| 端到端测试 | 66（9 个 spec） | Playwright + Chromium，跑打包后的真实产物 |
+
+### 为什么还要 E2E
+
+这轮重构中出现了 4 个「类型检查与单元测试全绿、功能却不可用」的 bug：
+
+| # | bug | 为什么单测测不到 |
+| --- | --- | --- |
+| 1 | Jackson 3 命名策略 | 字段静默丢失，接口返回 200 |
+| 2 | `updateById` 跳过 null | 字段没改，接口返回 200 |
+| 3 | 漏 `import IconPicker` | 组件渲染为空，无报错 |
+| 4 | 图标面板挂错 DOM 层级 | 状态正确但被 `overflow` 裁掉不可见 |
+
+jsdom **不做布局计算**，所以第 3、4 类只有真实浏览器能发现。
+E2E 就是补这一层：它测的是「用户点下去会看到什么」，而不是「函数返回什么」。
 
 ### 后端测试分布
 
@@ -217,7 +232,73 @@ pnpm test:watch     # 监听
 2. 断言所有**可空字段**也被绑定（`assertNotNull` / `assertEquals(Boolean.TRUE, ...)`）
 3. 不要自己 `new ObjectMapper()`——必须注入容器里的那个，否则测不到命名策略
 
-## 5. 测试清单（新增功能时）
+## 5. 端到端测试（Playwright）
+
+```bash
+pnpm --dir frontend exec playwright install chromium   # 首次：下载浏览器（走 npmmirror 镜像）
+./scripts/test.sh e2e        # 构建产物 + 跑全部 E2E
+./scripts/test.sh frontend   # 类型检查 + vitest + E2E
+pnpm --dir frontend e2e:ui   # 可视化调试
+```
+
+### 跑的是什么
+
+E2E **不连开发库，也不连 Vite dev server**：
+
+| 项 | 做法 | 原因 |
+| --- | --- | --- |
+| 被测应用 | `java -jar` 起打包后的后端（自带前端静态资源） | 测真实部署形态：同源、无代理、静态托管一致 |
+| 数据隔离 | 独立 schema `haven_e2e`，每次运行 DROP 重建 | 不需要 CREATE DATABASE 权限，且与 `dev_db` 完全隔离 |
+| 数据库 | 默认 `127.0.0.1:5432` / `dev` / `123456` | 用 `E2E_DB_*` 覆盖 |
+| 端口 | `18099` | 用 `E2E_PORT` 覆盖 |
+| 浏览器来源 | `.npmrc` 里 `PLAYWRIGHT_DOWNLOAD_HOST` 指向 npmmirror | 官方 CDN 在国内经常超时 |
+
+`e2e/start-server.mjs` 负责建 schema 并拉起后端，由 Playwright 的 `webServer` 自动管理生命周期。
+`e2e/fixtures.ts` 在每个用例前清空业务表并重建测试账号（`e2e-user` / `e2e-password-123`，BCrypt cost 4）。
+
+### 公开域与私有域
+
+同一份构建按 hostname 切路由表，E2E 同时覆盖两侧：
+
+| 地址 | 域 | 覆盖内容 |
+| --- | --- | --- |
+| `http://localhost:18099` | 私有域 | 工作台、设置、登录 |
+| `http://127.0.0.1:18099` | 公开域 | 公开首页、笔记、搜索、作品集 |
+
+`start-server.mjs` 把 `HAVEN_PRIVATE_HOSTS` 设为 `localhost`，所以 `127.0.0.1` 派生出公开路由表。
+**不要统一成 `127.0.0.1`**：那样私有域用例会全部落到公开页，表现为「登录后仍被当成匿名」。
+
+### 用例组织
+
+| 文件 | 覆盖 |
+| --- | --- |
+| `auth.spec.ts` | 登录、错误提示、redirect 回跳、登出、`/api/me` |
+| `notes.spec.ts` | 新建、自动保存落库、正文可搜索、删除/还原/永久删除、历史版本、公开与撤回、移动文件夹 |
+| `note-versions.spec.ts` | 版本快照语义（存「修改前」）、还原、无变化不产生版本 |
+| `folders-tags.spec.ts` | 文件夹增删改、嵌套层级、**图标面板可见性**、删除文件夹时笔记回收件箱、标签 |
+| `ledger.spec.ts` | 解析预览、确认写入、小数精度、收入识别、切月份、改分类、删除、幂等、逐行错误 |
+| `portfolio.spec.ts` | 新建/编辑、公开开关、仓库链接增删、删除作品 |
+| `issues.spec.ts` | 新建、状态流转、按状态过滤、时间线、编辑、删除 |
+| `settings.spec.ts` | 概览、主题持久化、账号安全、会话、授信设备、Token（含只读 Token 不能写） |
+| `public.spec.ts` | 公开首页/列表/详情/搜索/作品集、无后台入口、私密内容不可见、匿名 401 |
+
+### 写用例的两条约定
+
+1. **造数据走 API，验证行为走界面**。`e2e/api.ts` 提供 `createApi(request)`；
+   每一步都点界面会让用例长到没人愿意读，失败时也分不清是造数据错了还是被测行为错了。
+2. **断言用户能看到的结果，不重复断言接口**。涉及「接口返回 200 但数据没改」的场景，
+   要么重新加载页面再断言，要么另写一条纯 API 契约用例（如 `note-versions.spec.ts`）。
+
+### 常见坑
+
+| 现象 | 原因 |
+| --- | --- |
+| 私有域用例全落到公开页 | 用了 `127.0.0.1` 而不是 `localhost` |
+| 找不到笔记树里的笔记 | `POST /api/notes` 不传 `folder_id` 时笔记不属于任何文件夹，界面不展示 |
+| `getByRole('dialog')` 匹配不到确认框 | `ConfirmDialog` 用的是 `alertdialog` |
+| 严格模式报「resolved to 2 elements」 | 页面上有同名按钮（如列表栏「添加」与表单提交「添加」），需收窄到容器 |
+
+## 6. 测试清单（新增功能时）
 
 - [ ] 新端点：状态码 + 错误响应体（Web 层测试）
 - [ ] 新业务规则：正常路径 + 边界 + 非法输入
@@ -227,12 +308,13 @@ pnpm test:watch     # 监听
 - [ ] 涉及分类/枚举：与常量表一致性测试
 - [ ] 新增迁移：能在空库跑通（测试会自动验证）
 - [ ] 新增/修改 `@RequestBody` DTO：在 `RequestBodyContractTest` 固定一份实际请求 JSON
+- [ ] 新页面或新交互：在 `frontend/e2e/` 加一条对应用例（造数据走 `e2e/api.ts`，断言走界面）
 
-## 6. 已知缺口
+## 7. 已知缺口
 
 | 缺口 | 影响 |
 | --- | --- |
-| 没有端到端（E2E）测试 | 前后端契约靠类型与手工验证 |
+| TOTP 绑定 / 关闭的完整流程没有 E2E | 需要真实动态码，靠手工验收；目前只覆盖了「未绑定时可用 Token」 |
 | 部分 Controller 没有 Web 层测试 | 主要覆盖了 Notes / Tags |
 | 没有并发测试 | 幂等、乐观锁靠代码审查 |
 | 上传的真实文件大小限制只测了边界 | 大文件流式读取只做了单元级验证 |

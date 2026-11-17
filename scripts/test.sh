@@ -5,11 +5,16 @@
 # 用法：
 #   ./scripts/test.sh all        # 前后端都跑
 #   ./scripts/test.sh backend    # 只跑后端（含 spotless / checkstyle）
-#   ./scripts/test.sh frontend   # 只跑前端（vue-tsc + vitest）
+#   ./scripts/test.sh frontend   # 只跑前端（vue-tsc + vitest + Playwright E2E）
+#   ./scripts/test.sh e2e        # 只跑 Playwright E2E（会自动构建 jar）
 #
 # 后端测试不读写开发库：默认在本地 PostgreSQL 上建临时 schema，
 # 详见 docs/testing.md。需要容器时：
 #   HAVEN_TEST_MODE=container ./scripts/test.sh backend
+#
+# E2E 需要先构建产物（会自动执行 build.sh all），并在独立 schema `haven_e2e` 上跑，
+# 同样不碰开发库。首次运行需要下载浏览器：
+#   pnpm --dir frontend exec playwright install chromium
 
 set -euo pipefail
 
@@ -35,7 +40,7 @@ usage() {
 
 TARGET="${1:-}"
 case "$TARGET" in
-  all|backend|frontend) ;;
+  all|backend|frontend|e2e) ;;
   ""|-h|--help) usage; exit 0 ;;
   *)
     err "未知参数：$TARGET"
@@ -91,6 +96,31 @@ run_frontend() {
 
   info "运行前端测试（vitest）"
   pnpm test || EXIT_CODE=1
+
+  info "运行端到端测试（Playwright）"
+  run_e2e || EXIT_CODE=1
+}
+
+# E2E 跑在打包后的真实产物上（不是 Vite dev server），
+# 所以必须先有 jar。webServer 由 Playwright 配置自己拉起和关闭。
+run_e2e() {
+  require_pnpm() {
+    command -v pnpm >/dev/null 2>&1 || { err "缺少命令：pnpm"; return 1; }
+  }
+  require_pnpm || return 1
+  [ -d "$FRONTEND_DIR" ] || { err "找不到 frontend 目录"; return 1; }
+
+  info "准备 E2E 产物（后端 jar + 前端 dist）"
+  "$ROOT_DIR/scripts/build.sh" all || { err "构建失败，E2E 无法运行"; return 1; }
+
+  cd "$FRONTEND_DIR"
+  if [ ! -d node_modules ]; then
+    info "node_modules 不存在，先安装依赖"
+    pnpm install || { err "依赖安装失败"; return 1; }
+  fi
+
+  info "运行 Playwright（独立 schema haven_e2e，不影响开发库）"
+  pnpm e2e || return 1
 }
 
 case "$TARGET" in
@@ -100,6 +130,7 @@ case "$TARGET" in
     ;;
   backend)  run_backend ;;
   frontend) run_frontend ;;
+  e2e)      run_e2e || EXIT_CODE=1 ;;
 esac
 
 echo
