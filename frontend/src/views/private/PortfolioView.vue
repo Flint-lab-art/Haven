@@ -60,24 +60,25 @@ async function syncDraft(item: PortfolioItem | null): Promise<void> {
   if (!item) return
   // 保存过程中列表会重新加载，此时不要把草稿覆盖回服务端旧值
   if (busy.value) return
-  draft.title = item.title
-  draft.description = item.description
-  draft.sort_order = item.sort_order
-  draft.content = item.content ?? ''
-  draft.is_public = item.is_public
+  applyDraft(item)
 
   try {
     const detail = await getPortfolioItem(item.id)
     // 期间用户可能已切到别的作品，避免把旧请求的结果写进来
     if (ui.selectedPortfolioId !== item.id) return
-    draft.title = detail.title
-    draft.description = detail.description
-    draft.content = detail.content ?? ''
-    draft.sort_order = detail.sort_order
-    draft.is_public = detail.is_public
+    applyDraft(detail)
   } catch {
     // 拉详情失败时保留列表里的字段，正文留空不报错
   }
+}
+
+/** 把作品字段写进草稿；列表接口不返回 content，缺省时按空串处理。 */
+function applyDraft(item: PortfolioItem): void {
+  draft.title = item.title
+  draft.description = item.description
+  draft.sort_order = item.sort_order
+  draft.content = item.content ?? ''
+  draft.is_public = item.is_public
 }
 
 function handleError(err: unknown): void {
