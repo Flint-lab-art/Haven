@@ -11,6 +11,4 @@ import com.haven.backend.note.entity.Folders;
  * @author Kairo
  * @since 2026-11-08
  */
-public interface FoldersMapper extends BaseMapper<Folders> {
-
-}
+public interface FoldersMapper extends BaseMapper<Folders> {}

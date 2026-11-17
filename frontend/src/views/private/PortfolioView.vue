@@ -4,7 +4,7 @@
  * 列表在中间栏，选中项与「正在新建」由 ui store 维护。
  */
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { ApiError } from '@/api/client'
 import {
   addRepo,
@@ -12,7 +12,7 @@ import {
   getPortfolioItem,
   deleteItem,
   deleteRepo,
-  listPortfolio,
+  listMyPortfolio,
   updateItem,
   type PortfolioItem,
   type PortfolioRepo,
@@ -30,8 +30,8 @@ const error = ref('')
 const pendingItem = ref<PortfolioItem | null>(null)
 const deleting = ref(false)
 
-const draft = reactive({ title: '', description: '', content: '', sort_order: 0 })
-const newItem = reactive({ title: '', description: '', content: '', sort_order: 0 })
+const draft = reactive({ title: '', description: '', content: '', sort_order: 0, is_public: false })
+const newItem = reactive({ title: '', description: '', content: '', sort_order: 0, is_public: false })
 const repoDraft = reactive({ url: '', title: '', is_primary: false })
 
 const selected = computed(() => items.value.find((item) => item.id === ui.selectedPortfolioId) ?? null)
@@ -39,7 +39,7 @@ const selected = computed(() => items.value.find((item) => item.id === ui.select
 async function load(): Promise<void> {
   loading.value = true
   try {
-    items.value = (await listPortfolio()).items
+    items.value = (await listMyPortfolio()).items
     if (ui.selectedPortfolioId && !items.value.some((item) => item.id === ui.selectedPortfolioId)) {
       ui.selectPortfolio(null)
     }
@@ -60,22 +60,25 @@ async function syncDraft(item: PortfolioItem | null): Promise<void> {
   if (!item) return
   // 保存过程中列表会重新加载，此时不要把草稿覆盖回服务端旧值
   if (busy.value) return
-  draft.title = item.title
-  draft.description = item.description
-  draft.sort_order = item.sort_order
-  draft.content = item.content ?? ''
+  applyDraft(item)
 
   try {
     const detail = await getPortfolioItem(item.id)
     // 期间用户可能已切到别的作品，避免把旧请求的结果写进来
     if (ui.selectedPortfolioId !== item.id) return
-    draft.title = detail.title
-    draft.description = detail.description
-    draft.content = detail.content ?? ''
-    draft.sort_order = detail.sort_order
+    applyDraft(detail)
   } catch {
     // 拉详情失败时保留列表里的字段，正文留空不报错
   }
+}
+
+/** 把作品字段写进草稿；列表接口不返回 content，缺省时按空串处理。 */
+function applyDraft(item: PortfolioItem): void {
+  draft.title = item.title
+  draft.description = item.description
+  draft.sort_order = item.sort_order
+  draft.content = item.content ?? ''
+  draft.is_public = item.is_public
 }
 
 function handleError(err: unknown): void {
@@ -98,11 +101,13 @@ async function create(): Promise<void> {
       description: newItem.description,
       content: newItem.content,
       sort_order: Number(newItem.sort_order) || 0,
+      is_public: newItem.is_public,
     })
     newItem.title = ''
     newItem.description = ''
     newItem.content = ''
     newItem.sort_order = 0
+    newItem.is_public = false
     ui.selectPortfolio(created.id)
     ui.portfolioChanged()
     await load()
@@ -124,6 +129,7 @@ async function save(): Promise<void> {
       description: draft.description,
       content: draft.content,
       sort_order: Number(draft.sort_order) || 0,
+      is_public: draft.is_public,
     })
     ui.portfolioChanged()
     await load()
@@ -257,6 +263,10 @@ onMounted(load)
         <label class="field__label" for="item-order">排序（小的在前）</label>
         <input id="item-order" v-model.number="newItem.sort_order" class="input" type="number" />
       </div>
+      <label class="row" style="margin-top: 12px; gap: 8px; align-items: center">
+        <input id="item-public" v-model="newItem.is_public" type="checkbox" />
+        <span class="field__label">在公开作品集页展示</span>
+      </label>
 
       <div class="row" style="justify-content: flex-end; margin-top: 16px">
         <button class="btn" type="button" @click="ui.selectPortfolio(null)">取消</button>
@@ -298,6 +308,10 @@ onMounted(load)
           <label class="field__label" for="edit-order">排序</label>
           <input id="edit-order" v-model.number="draft.sort_order" class="input" type="number" />
         </div>
+        <label class="row" style="margin-top: 12px; gap: 8px; align-items: center">
+          <input id="edit-public" v-model="draft.is_public" type="checkbox" />
+          <span class="field__label">在公开作品集页展示</span>
+        </label>
 
         <div class="row" style="justify-content: space-between; margin-top: 16px">
           <button class="btn btn--danger btn--sm" type="button" @click="remove(selected)">删除作品</button>

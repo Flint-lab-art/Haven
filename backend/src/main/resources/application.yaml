@@ -1,10 +1,27 @@
 spring:
   application:
     name: Haven
+  # 默认 dev 便于本地启动；部署时用 SPRING_PROFILES_ACTIVE 覆盖，例如 SPRING_PROFILES_ACTIVE=prod
   profiles:
     active:
-      - dev
+      - ${SPRING_PROFILES_ACTIVE:dev}
   jackson:
     property-naming-strategy: SNAKE_CASE
 app:
   version: '@project.version@'
+
+# ---- Sa-Token 会话配置（与环境无关，避免切换 profile 后整块丢失） ----
+sa-token:
+  token-name: havenToken
+  timeout: 604800          # 会话有效期 7 天（秒）
+  active-timeout: 86400    # 无操作超时（秒）
+  is-concurrent: true      # 允许多端登录
+  is-share: false          # 每次登录生成新 token
+  token-style: uuid
+  is-log: true
+  # 会话 Cookie 安全属性：按生产标准开启；本地 http 开发在 dev profile 覆盖 secure
+  cookie:
+    http-only: true
+    secure: true
+    same-site: Lax
+    path: /

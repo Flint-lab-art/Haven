@@ -6,7 +6,7 @@
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
-import PublicEmpty from '@/components/PublicEmpty.vue'
+import PublicEmpty from '@/components/layout/PublicEmpty.vue'
 import { getPublicPortfolioItem, type PortfolioItem } from '@/api/portfolio'
 import { repoLabel } from '@/utils/portfolio'
 import { renderMarkdown } from '@/utils/markdown'

@@ -11,6 +11,4 @@ import com.haven.backend.auth.entity.PendingTotp;
  * @author Kairo
  * @since 2026-11-08
  */
-public interface PendingTotpMapper extends BaseMapper<PendingTotp> {
-
-}
+public interface PendingTotpMapper extends BaseMapper<PendingTotp> {}

@@ -2,9 +2,9 @@
 /** 公开搜索：只搜已公开笔记。 */
 import { ref, watch } from 'vue'
 import { useRoute, RouterLink } from 'vue-router'
-import SearchBar from '@/components/SearchBar.vue'
-import PublicEmpty from '@/components/PublicEmpty.vue'
-import PublicNoteRow from '@/components/PublicNoteRow.vue'
+import SearchBar from '@/components/note/SearchBar.vue'
+import PublicEmpty from '@/components/layout/PublicEmpty.vue'
+import PublicNoteRow from '@/components/layout/PublicNoteRow.vue'
 import { searchPublic, type SearchNoteHit } from '@/api/search'
 
 const route = useRoute()

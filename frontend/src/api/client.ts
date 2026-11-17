@@ -52,10 +52,18 @@ export function setUnauthorizedHandler(handler: UnauthorizedHandler | null): voi
 
 export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'DELETE'
+  /**
+   * 请求体，原样 JSON 序列化。
+   * <p>
+   * 后端 Jackson 配了 SNAKE_CASE 命名策略（Jackson 3 下双向生效），
+   * 所以这里必须按 snake_case 书写，不要转成 camelCase。
+   */
   body?: unknown
-  query?: Record<string, string | number | undefined | null>
+  query?: Record<string, string | number | boolean | undefined | null>
   /** 调用方自行处理 401（如登录接口），不触发全局登出。 */
   skipUnauthorizedHandler?: boolean
+  /** 超时毫秒数；超时抛 status=0 的 ApiError。默认不超时。 */
+  timeoutMs?: number
 }
 
 function buildUrl(path: string, query?: RequestOptions['query']): string {
@@ -78,7 +86,7 @@ function buildUrl(path: string, query?: RequestOptions['query']): string {
  * - 401 默认触发全局登出回调。
  */
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { method = 'GET', body, query, skipUnauthorizedHandler } = options
+  const { method = 'GET', body, query, skipUnauthorizedHandler, timeoutMs } = options
 
   const init: RequestInit = {
     method,
@@ -91,11 +99,25 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     init.body = JSON.stringify(body)
   }
 
+  // 超时用 AbortController 实现：没有传 timeoutMs 时不创建，保持原有行为
+  let timer: ReturnType<typeof setTimeout> | undefined
+  if (timeoutMs !== undefined && timeoutMs > 0) {
+    const controller = new AbortController()
+    timer = setTimeout(() => controller.abort(), timeoutMs)
+    init.signal = controller.signal
+  }
+
   let response: Response
   try {
     response = await fetch(buildUrl(path, query), init)
-  } catch {
+  } catch (err) {
+    // abort 与网络失败区分开，便于调用方决定是否提示
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new ApiError(0, { error: 'timeout', message: `请求超时（${timeoutMs}ms）` })
+    }
     throw new ApiError(0, { error: 'network_error', message: '网络连接失败，请检查网络后重试' })
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
   }
 
   if (response.status === 204) {

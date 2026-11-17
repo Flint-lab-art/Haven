@@ -11,6 +11,8 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * <p>
  * AuthInterceptor 覆盖 /api/**，对需要认证的路走 Session + API Token 双通道；
  * 公开路由 excludePathPatterns 放行。
+ * <p>
+ * {@code /api/me} 不走排除列表：它由拦截器按「可选认证」处理，以便带 API Token 的请求也能识别身份。
  */
 @Configuration
 @RequiredArgsConstructor
@@ -28,12 +30,9 @@ public class SaTokenConfigure implements WebMvcConfigurer {
                         // 登录两步（无需认证）
                         "/api/auth/login",
                         "/api/auth/login/totp",
-                        // 当前身份（匿名也返回结果）
-                        "/api/me",
-                        // 运行时前端配置（决定当前域名是公开域还是私有域）
+                        // 运行时前端配置：只下发私有域域名与版本号，不含主机名/环境变量
                         "/api/app-config",
                         // 公开侧接口
-                        "/api/public/**"
-                );
+                        "/api/public/**");
     }
 }

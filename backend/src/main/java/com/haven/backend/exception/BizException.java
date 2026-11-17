@@ -3,7 +3,7 @@ package com.haven.backend.exception;
 import lombok.Getter;
 
 /**
- * 业务异常，由 GlobalExceptionHandler 统一捕获并转为 ApiResponse。
+ * 业务异常：携带 HTTP 状态码，由 {@link GlobalExceptionHandler} 统一转成 {@code {error,message}}。
  */
 @Getter
 public class BizException extends RuntimeException {

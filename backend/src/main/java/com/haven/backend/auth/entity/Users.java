@@ -3,17 +3,16 @@ package com.haven.backend.auth.entity;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import java.io.Serializable;
+import java.time.OffsetDateTime;
+import java.util.UUID;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.ToString;
 
-import java.io.Serializable;
-import java.time.OffsetDateTime;
-import java.util.UUID;
-
 /**
  * <p>
- * 
+ *
  * </p>
  *
  * @author Kairo
@@ -21,7 +20,7 @@ import java.util.UUID;
  */
 @Getter
 @Setter
-@ToString
+@ToString(exclude = {"passwordHash", "totpSecret"})
 @TableName("users")
 public class Users implements Serializable {
 

@@ -33,7 +33,14 @@ export interface IssueStatusEvent {
   created_at: string
 }
 
+/** 详情页使用的扁平形状：Issue 字段 + 状态流转历史。 */
 export interface IssueDetail extends Issue {
+  status_events: IssueStatusEvent[]
+}
+
+/** 后端 GET /api/issues/{id} 的原始响应。 */
+export interface IssueDetailPayload {
+  issue: Issue
   status_events: IssueStatusEvent[]
 }
 
@@ -67,8 +74,10 @@ export function createIssue(input: CreateIssueInput): Promise<Issue> {
   return request('/api/issues', { method: 'POST', body: input })
 }
 
-export function getIssue(id: string): Promise<IssueDetail> {
-  return request(`/api/issues/${id}`)
+/** 拉取详情，并把后端的 {issue, status_events} 摊平成页面直接可用的结构。 */
+export async function getIssue(id: string): Promise<IssueDetail> {
+  const payload = await request<IssueDetailPayload>(`/api/issues/${id}`)
+  return { ...payload.issue, status_events: payload.status_events }
 }
 
 export function updateIssue(id: string, input: UpdateIssueInput): Promise<Issue> {

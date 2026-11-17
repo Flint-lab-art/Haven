@@ -4,13 +4,12 @@ import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.haven.backend.typehandler.UuidTypeHandler;
-import lombok.Getter;
-import lombok.Setter;
-import lombok.ToString;
-
 import java.io.Serializable;
 import java.time.OffsetDateTime;
 import java.util.UUID;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.ToString;
 
 @Getter
 @Setter

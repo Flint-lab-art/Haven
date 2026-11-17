@@ -12,6 +12,8 @@ export type LedgerCategory =
   | '居家'
   | '娱乐'
   | '医疗'
+  | '还款'
+  | 'Token'
   | '未分类'
   | '工资'
   | '奖金'

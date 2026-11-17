@@ -4,7 +4,7 @@
  */
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import HavenMark from '@/components/HavenMark.vue'
+import HavenMark from '@/components/common/HavenMark.vue'
 import LoginForm from '@/components/LoginForm.vue'
 import TotpForm from '@/components/TotpForm.vue'
 import { useAuthStore } from '@/stores/auth'

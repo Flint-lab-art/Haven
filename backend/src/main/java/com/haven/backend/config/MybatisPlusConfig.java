@@ -2,10 +2,9 @@ package com.haven.backend.config;
 
 import com.haven.backend.typehandler.UuidTypeHandler;
 import jakarta.annotation.PostConstruct;
+import java.util.UUID;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.springframework.context.annotation.Configuration;
-
-import java.util.UUID;
 
 /**
  * MyBatis-Plus 配置：注册自定义 TypeHandler。

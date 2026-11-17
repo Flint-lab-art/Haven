@@ -8,9 +8,9 @@
  */
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import PublicNoteRow from '@/components/PublicNoteRow.vue'
+import PublicNoteRow from '@/components/layout/PublicNoteRow.vue'
 import { listPublicNotes, type PublicNoteSummary } from '@/api/notes'
-import { listPortfolio, type PortfolioItem } from '@/api/portfolio'
+import { listPublicPortfolio, type PortfolioItem } from '@/api/portfolio'
 import { repoLabel } from '@/utils/portfolio'
 
 /**
@@ -44,7 +44,7 @@ async function load(): Promise<void> {
   try {
     // 两块互不阻塞：任一失败不影响另一块展示
     const [portfolio, notesResult] = await Promise.allSettled([
-      listPortfolio(),
+      listPublicPortfolio(),
       listPublicNotes(HOME_NOTE_LIMIT, 0),
     ])
 

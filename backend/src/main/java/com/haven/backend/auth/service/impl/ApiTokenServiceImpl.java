@@ -1,18 +1,26 @@
 package com.haven.backend.auth.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.haven.backend.audit.AuditEventType;
+import com.haven.backend.audit.AuditRecorder;
+import com.haven.backend.audit.AuditTargetType;
+import com.haven.backend.auth.dto.AuthDtos.ApiTokenCreated;
+import com.haven.backend.auth.dto.AuthDtos.ApiTokenList;
+import com.haven.backend.auth.dto.AuthDtos.ApiTokenSummary;
 import com.haven.backend.auth.dto.CreateTokenRequest;
 import com.haven.backend.auth.entity.Tokens;
-import com.haven.backend.exception.BizException;
 import com.haven.backend.auth.mapper.TokensMapper;
 import com.haven.backend.auth.service.ApiTokenService;
 import com.haven.backend.auth.util.ApiTokenUtil;
+import com.haven.backend.exception.BizException;
+import java.time.Clock;
+import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.time.OffsetDateTime;
-import java.util.*;
 
 /**
  * API Token 管理服务实现。
@@ -25,82 +33,100 @@ import java.util.*;
 public class ApiTokenServiceImpl implements ApiTokenService {
 
     private final TokensMapper tokensMapper;
+    private final AuditRecorder auditRecorder;
+    private final Clock clock;
 
     @Override
-    public List<Map<String, Object>> listTokens(String userId) {
-        List<Tokens> tokens = tokensMapper.selectList(
-                new LambdaQueryWrapper<Tokens>()
-                        .eq(Tokens::getUserId, UUID.fromString(userId))
-                        .orderByDesc(Tokens::getCreatedAt));
+    public ApiTokenList listTokens(String userId) {
+        List<Tokens> tokens = tokensMapper.selectList(new LambdaQueryWrapper<Tokens>()
+                .eq(Tokens::getUserId, UUID.fromString(userId))
+                .orderByDesc(Tokens::getCreatedAt));
 
-        List<Map<String, Object>> result = new ArrayList<>();
+        List<ApiTokenSummary> result = new ArrayList<>();
         for (Tokens t : tokens) {
-            Map<String, Object> item = new LinkedHashMap<>();
-            item.put("id", t.getId().toString());
-            item.put("name", t.getName());
-            item.put("token_prefix", t.getTokenPrefix());
-            item.put("scope", t.getScope());
-            item.put("expires_at", t.getExpiresAt());
-            item.put("last_used_at", t.getLastUsedAt());
-            item.put("revoked_at", t.getRevokedAt());
-            item.put("created_at", t.getCreatedAt());
-            result.add(item);
+            result.add(new ApiTokenSummary(
+                    t.getId(),
+                    t.getName(),
+                    t.getTokenPrefix(),
+                    t.getScope(),
+                    t.getExpiresAt(),
+                    t.getLastUsedAt(),
+                    t.getRevokedAt(),
+                    t.getCreatedAt()));
         }
-        return result;
+        return new ApiTokenList(result, result.size());
     }
 
     @Override
     @Transactional
-    public Map<String, Object> createToken(String userId, CreateTokenRequest req) {
-        String[] tokenAndPrefix = ApiTokenUtil.generate(req.getScope());
+    public ApiTokenCreated createToken(String userId, CreateTokenRequest req) {
+        String[] tokenAndPrefix = ApiTokenUtil.generate(req.scope());
         String token = tokenAndPrefix[0];
         String prefix = tokenAndPrefix[1];
 
         Tokens entity = new Tokens();
         entity.setId(UUID.randomUUID());
         entity.setUserId(UUID.fromString(userId));
-        entity.setName(req.getName());
+        entity.setName(req.name());
         entity.setTokenHash(ApiTokenUtil.hash(token));
         entity.setTokenPrefix(prefix);
-        entity.setScope(req.getScope());
-        entity.setExpiresAt(req.getExpiresAt());
-        entity.setCreatedAt(OffsetDateTime.now());
+        entity.setScope(req.scope());
+        entity.setExpiresAt(req.expiresAt());
+        entity.setCreatedAt(OffsetDateTime.now(clock));
         tokensMapper.insert(entity);
 
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("id", entity.getId().toString());
-        result.put("name", entity.getName());
-        result.put("token_prefix", prefix);
-        result.put("scope", entity.getScope());
-        result.put("expires_at", entity.getExpiresAt());
-        result.put("last_used_at", null);
-        result.put("revoked_at", null);
-        result.put("created_at", entity.getCreatedAt());
+        auditRecorder.record(
+                entity.getUserId(),
+                null, // 调用方已在会话中完成身份确认，这里只记录操作者 ID
+                AuditEventType.TOKEN_CREATED,
+                AuditTargetType.TOKEN,
+                entity.getId(),
+                null,
+                null);
         // 明文只在这里返回一次
-        result.put("token", token);
-        return result;
+        return new ApiTokenCreated(
+                entity.getId(),
+                entity.getName(),
+                prefix,
+                entity.getScope(),
+                entity.getExpiresAt(),
+                entity.getCreatedAt(),
+                token);
     }
 
     @Override
     @Transactional
-    public void revokeToken(String userId, String tokenId) {
-        UUID id;
-        try {
-            id = UUID.fromString(tokenId);
-        } catch (IllegalArgumentException e) {
-            throw BizException.notFound("Token 不存在");
-        }
-        Tokens token = tokensMapper.selectOne(
-                new LambdaQueryWrapper<Tokens>()
-                        .eq(Tokens::getId, id)
-                        .eq(Tokens::getUserId, UUID.fromString(userId)));
+    public void revokeToken(String userId, UUID tokenId) {
+        Tokens token = tokensMapper.selectOne(new LambdaQueryWrapper<Tokens>()
+                .eq(Tokens::getId, tokenId)
+                .eq(Tokens::getUserId, UUID.fromString(userId)));
         if (token == null) {
             throw BizException.notFound("Token 不存在");
         }
         if (token.getRevokedAt() != null) {
             throw BizException.validation("Token 已撤销");
         }
-        token.setRevokedAt(OffsetDateTime.now());
+        token.setRevokedAt(OffsetDateTime.now(clock));
         tokensMapper.updateById(token);
+        auditRecorder.record(
+                UUID.fromString(userId),
+                null,
+                AuditEventType.TOKEN_REVOKED,
+                AuditTargetType.TOKEN,
+                token.getId(),
+                null,
+                null);
+    }
+
+    @Override
+    @Transactional
+    public void revokeAllForUser(String userId) {
+        Tokens patch = new Tokens();
+        patch.setRevokedAt(OffsetDateTime.now(clock));
+        tokensMapper.update(
+                patch,
+                new LambdaQueryWrapper<Tokens>()
+                        .eq(Tokens::getUserId, UUID.fromString(userId))
+                        .isNull(Tokens::getRevokedAt));
     }
 }

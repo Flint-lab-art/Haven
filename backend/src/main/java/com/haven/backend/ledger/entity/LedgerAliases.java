@@ -3,14 +3,13 @@ package com.haven.backend.ledger.entity;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.haven.backend.typehandler.UuidTypeHandler;
+import java.io.Serial;
+import java.io.Serializable;
+import java.util.UUID;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.ToString;
 import lombok.experimental.Accessors;
-
-import java.io.Serial;
-import java.io.Serializable;
-import java.util.UUID;
 
 /**
  * 分类别名，例如“奶茶” -> “餐饮”。

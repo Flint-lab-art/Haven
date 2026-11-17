@@ -1,16 +1,30 @@
 package com.haven.backend.note.controller;
 
 import com.haven.backend.auth.interceptor.AuthInterceptor;
+import com.haven.backend.note.dto.CreateNoteRequest;
+import com.haven.backend.note.dto.NoteDtos.NoteDetail;
+import com.haven.backend.note.dto.NoteDtos.NotePage;
+import com.haven.backend.note.dto.NoteDtos.NoteVersionDetail;
+import com.haven.backend.note.dto.NoteDtos.NoteVersionPage;
+import com.haven.backend.note.dto.NoteDtos.PublicNoteDetail;
+import com.haven.backend.note.dto.NoteDtos.PublicNotePage;
+import com.haven.backend.note.dto.NoteDtos.TrashNotePage;
+import com.haven.backend.note.dto.UpdateNoteRequest;
 import com.haven.backend.note.service.NotesService;
-
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
-import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequiredArgsConstructor
@@ -21,22 +35,20 @@ public class NotesController {
     // ---- 需要登录的笔记接口 ----
 
     @GetMapping("/api/notes")
-    public Map<String, Object> list(
+    public NotePage list(
             @RequestParam(defaultValue = "20") int limit,
             @RequestParam(defaultValue = "0") int offset,
             @RequestParam(required = false) String visibility,
-            @RequestParam(required = false) String tag_id,
-            @RequestParam(required = false) String folder_id,
-            @RequestParam(required = false, defaultValue = "false") boolean include_trash,
+            @RequestParam(required = false) UUID tagId,
+            @RequestParam(required = false) UUID folderId,
+            @RequestParam(required = false, defaultValue = "false") boolean includeTrash,
             HttpServletRequest request) {
         String userId = AuthInterceptor.requireUserId(request);
-        UUID tagId = tag_id != null ? UUID.fromString(tag_id) : null;
-        UUID folderId = folder_id != null ? UUID.fromString(folder_id) : null;
-        return notesService.listNotes(userId, limit, offset, visibility, tagId, folderId, include_trash);
+        return notesService.listNotes(userId, limit, offset, visibility, tagId, folderId, includeTrash);
     }
 
     @GetMapping("/api/notes/trash")
-    public Map<String, Object> listTrash(
+    public TrashNotePage listTrash(
             @RequestParam(defaultValue = "20") int limit,
             @RequestParam(defaultValue = "0") int offset,
             HttpServletRequest request) {
@@ -45,48 +57,34 @@ public class NotesController {
     }
 
     @GetMapping("/api/notes/{id}")
-    public Map<String, Object> get(@PathVariable String id, HttpServletRequest request) {
+    public NoteDetail get(@PathVariable UUID id, HttpServletRequest request) {
         String userId = AuthInterceptor.requireUserId(request);
-        return notesService.getNote(userId, UUID.fromString(id));
+        return notesService.getNote(userId, id);
     }
 
     @PostMapping("/api/notes")
     @ResponseStatus(HttpStatus.CREATED)
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> create(@RequestBody Map<String, Object> body, HttpServletRequest request) {
+    public NoteDetail create(@Valid @RequestBody CreateNoteRequest req, HttpServletRequest request) {
         String userId = AuthInterceptor.requireUserId(request);
-        String title = (String) body.get("title");
-        String content = (String) body.get("content");
-        List<UUID> tagIds = body.get("tag_ids") != null
-                ? ((List<String>) body.get("tag_ids")).stream().map(UUID::fromString).toList()
-                : null;
-        UUID folderId = body.get("folder_id") != null ? UUID.fromString(body.get("folder_id").toString()) : null;
-        return notesService.createNote(userId, title, content, tagIds, folderId);
+        return notesService.createNote(userId, req.title(), req.content(), req.tagIds(), req.folderId());
     }
 
     @PatchMapping("/api/notes/{id}")
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> update(@PathVariable String id, @RequestBody Map<String, Object> body,
-            HttpServletRequest request) {
+    public NoteDetail update(
+            @PathVariable UUID id, @Valid @RequestBody UpdateNoteRequest req, HttpServletRequest request) {
         String userId = AuthInterceptor.requireUserId(request);
-        UUID noteId = UUID.fromString(id);
-        String title = body.containsKey("title") ? (String) body.get("title") : null;
-        String content = body.containsKey("content") ? (String) body.get("content") : null;
-        List<UUID> tagIds = body.containsKey("tag_ids")
-                ? ((List<String>) body.get("tag_ids")).stream().map(UUID::fromString).toList()
-                : null;
-        UUID folderId = body.containsKey("folder_id") && body.get("folder_id") != null
-                ? UUID.fromString(body.get("folder_id").toString())
-                : null;
-        Integer sortOrder = body.containsKey("sort_order") ? ((Number) body.get("sort_order")).intValue() : null;
-        return notesService.updateNote(userId, noteId, title, content, tagIds, folderId, sortOrder);
+        // clearFolder=true 表示显式移到根目录；否则 folderId 为 null 即「不修改」
+        UUID folderId = Boolean.TRUE.equals(req.clearFolder()) ? null : req.folderId();
+        boolean clearFolder = Boolean.TRUE.equals(req.clearFolder());
+        return notesService.updateNote(
+                userId, id, req.title(), req.content(), req.tagIds(), folderId, clearFolder, req.sortOrder());
     }
 
     @DeleteMapping("/api/notes/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable String id, HttpServletRequest request) {
+    public void delete(@PathVariable UUID id, HttpServletRequest request) {
         String userId = AuthInterceptor.requireUserId(request);
-        notesService.deleteNote(userId, UUID.fromString(id));
+        notesService.deleteNote(userId, id);
     }
 
     @DeleteMapping("/api/notes/trash")
@@ -97,64 +95,63 @@ public class NotesController {
     }
 
     @PostMapping("/api/notes/{id}/restore")
-    public Map<String, Object> restore(@PathVariable String id, HttpServletRequest request) {
+    public NoteDetail restore(@PathVariable UUID id, HttpServletRequest request) {
         String userId = AuthInterceptor.requireUserId(request);
-        return notesService.restoreNote(userId, UUID.fromString(id));
+        return notesService.restoreNote(userId, id);
     }
 
     @DeleteMapping("/api/notes/{id}/purge")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void purge(@PathVariable String id, HttpServletRequest request) {
+    public void purge(@PathVariable UUID id, HttpServletRequest request) {
         String userId = AuthInterceptor.requireUserId(request);
-        notesService.purgeNote(userId, UUID.fromString(id));
+        notesService.purgeNote(userId, id);
     }
 
     @PostMapping("/api/notes/{id}/publish")
-    public Map<String, Object> publish(@PathVariable String id, HttpServletRequest request) {
+    public NoteDetail publish(@PathVariable UUID id, HttpServletRequest request) {
         String userId = AuthInterceptor.requireUserId(request);
-        return notesService.publishNote(userId, UUID.fromString(id));
+        return notesService.publishNote(userId, id);
     }
 
     @PostMapping("/api/notes/{id}/unpublish")
-    public Map<String, Object> unpublish(@PathVariable String id, HttpServletRequest request) {
+    public NoteDetail unpublish(@PathVariable UUID id, HttpServletRequest request) {
         String userId = AuthInterceptor.requireUserId(request);
-        return notesService.unpublishNote(userId, UUID.fromString(id));
+        return notesService.unpublishNote(userId, id);
     }
 
     @GetMapping("/api/notes/{id}/versions")
-    public Map<String, Object> listVersions(@PathVariable String id,
+    public NoteVersionPage listVersions(
+            @PathVariable UUID id,
             @RequestParam(defaultValue = "20") int limit,
             @RequestParam(defaultValue = "0") int offset,
             HttpServletRequest request) {
         String userId = AuthInterceptor.requireUserId(request);
-        return notesService.listVersions(userId, UUID.fromString(id), limit, offset);
+        return notesService.listVersions(userId, id, limit, offset);
     }
 
     @GetMapping("/api/notes/{id}/versions/{versionId}")
-    public Map<String, Object> getVersion(@PathVariable String id, @PathVariable String versionId,
-            HttpServletRequest request) {
+    public NoteVersionDetail getVersion(
+            @PathVariable UUID id, @PathVariable UUID versionId, HttpServletRequest request) {
         String userId = AuthInterceptor.requireUserId(request);
-        return notesService.getVersion(userId, UUID.fromString(id), UUID.fromString(versionId));
+        return notesService.getVersion(userId, id, versionId);
     }
 
     @PostMapping("/api/notes/{id}/versions/{versionId}/restore")
-    public Map<String, Object> restoreVersion(@PathVariable String id, @PathVariable String versionId,
-            HttpServletRequest request) {
+    public NoteDetail restoreVersion(@PathVariable UUID id, @PathVariable UUID versionId, HttpServletRequest request) {
         String userId = AuthInterceptor.requireUserId(request);
-        return notesService.restoreVersion(userId, UUID.fromString(id), UUID.fromString(versionId));
+        return notesService.restoreVersion(userId, id, versionId);
     }
 
     // ---- 公开笔记接口（匿名可访问） ----
 
     @GetMapping("/api/public/notes")
-    public Map<String, Object> listPublic(
-            @RequestParam(defaultValue = "20") int limit,
-            @RequestParam(defaultValue = "0") int offset) {
+    public PublicNotePage listPublic(
+            @RequestParam(defaultValue = "20") int limit, @RequestParam(defaultValue = "0") int offset) {
         return notesService.listPublicNotes(limit, offset);
     }
 
     @GetMapping("/api/public/notes/{id}")
-    public Map<String, Object> getPublic(@PathVariable String id) {
-        return notesService.getPublicNote(UUID.fromString(id));
+    public PublicNoteDetail getPublic(@PathVariable UUID id) {
+        return notesService.getPublicNote(id);
     }
 }

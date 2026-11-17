@@ -10,21 +10,34 @@
     </parent>
     <groupId>com.haven</groupId>
     <artifactId>backend</artifactId>
-    <version>2.0.0</version>
+    <!-- 版本号唯一来源：仓库根目录的 VERSION 文件，由 flatten-maven-plugin 读取，不要手改这里 -->
+    <version>${revision}</version>
     <name>Haven</name>
     <description>Haven</description>
 
     <properties>
         <java.version>21</java.version>
+        <!-- 版本号唯一来源：仓库根目录的 VERSION 文件（见 build.sh / test.sh 的校验） -->
+        <revision>2.1.1</revision>
         <logback.version>1.6.3</logback.version>
         <jackson-2-bom.version>2.22.4</jackson-2-bom.version>
         <jackson-bom.version>3.1.8</jackson-bom.version>
         <json-smart.version>2.6.1</json-smart.version>
         <asm.version>9.11.1</asm.version>
+        <!-- Testcontainers 由 BOM 统一管理版本，避免与 Spring Boot 管理的版本冲突 -->
+        <testcontainers.version>1.21.4</testcontainers.version>
     </properties>
 
     <dependencyManagement>
         <dependencies>
+            <!-- Testcontainers BOM：仅在 -Dhaven.test.mode=container 时使用 -->
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>testcontainers-bom</artifactId>
+                <version>${testcontainers.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
             <!-- 强制 json-smart 使用安全版本 -->
             <dependency>
                 <groupId>net.minidev</groupId>
@@ -90,6 +103,16 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-flyway</artifactId>
         </dependency>
@@ -108,17 +131,6 @@
             <artifactId>mybatis-plus-spring-boot4-starter</artifactId>
             <version>3.5.18</version>
         </dependency>
-<!--        <dependency>-->
-<!--            <groupId>com.baomidou</groupId>-->
-<!--            <artifactId>mybatis-plus-generator</artifactId>-->
-<!--            <version>3.5.18</version>-->
-<!--        </dependency>-->
-<!--        <dependency>-->
-<!--            <groupId>org.freemarker</groupId>-->
-<!--            <artifactId>freemarker</artifactId>-->
-<!--            <version>2.3.35</version>-->
-<!--            <scope>compile</scope>-->
-<!--        </dependency>-->
 
         <dependency>
             <groupId>cn.dev33</groupId>
@@ -144,6 +156,62 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>com.diffplug.spotless</groupId>
+                <artifactId>spotless-maven-plugin</artifactId>
+                <version>3.11.0</version>
+                <configuration>
+                    <java>
+                        <includes>
+                            <include>src/main/java/**/*.java</include>
+                            <include>src/test/java/**/*.java</include>
+                        </includes>
+                        <removeUnusedImports/>
+                        <palantirJavaFormat>
+                            <version>2.103.0</version>
+                        </palantirJavaFormat>
+                        <trimTrailingWhitespace/>
+                        <endWithNewline/>
+                    </java>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>spotless-check</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-checkstyle-plugin</artifactId>
+                <version>3.6.0</version>
+                <dependencies>
+                    <dependency>
+                        <groupId>com.puppycrawl.tools</groupId>
+                        <artifactId>checkstyle</artifactId>
+                        <version>10.21.4</version>
+                    </dependency>
+                </dependencies>
+                <configuration>
+                    <configLocation>config/checkstyle/checkstyle.xml</configLocation>
+                    <consoleOutput>true</consoleOutput>
+                    <failOnViolation>true</failOnViolation>
+                    <violationSeverity>error</violationSeverity>
+                    <includeTestSourceDirectory>true</includeTestSourceDirectory>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>checkstyle-check</id>
+                        <phase>validate</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

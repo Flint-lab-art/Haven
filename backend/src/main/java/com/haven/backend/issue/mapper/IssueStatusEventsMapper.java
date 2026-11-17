@@ -11,6 +11,4 @@ import com.haven.backend.issue.entity.IssueStatusEvents;
  * @author Kairo
  * @since 2026-11-08
  */
-public interface IssueStatusEventsMapper extends BaseMapper<IssueStatusEvents> {
-
-}
+public interface IssueStatusEventsMapper extends BaseMapper<IssueStatusEvents> {}

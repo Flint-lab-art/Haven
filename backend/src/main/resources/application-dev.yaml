@@ -1,8 +1,9 @@
 spring:
   datasource:
-    url: jdbc:postgresql://127.0.0.1:5432/dev_db
-    username: dev
-    password: 123456
+    # 仅本地开发的默认值；共享/生产环境通过环境变量覆盖
+    url: ${DB_URL:jdbc:postgresql://127.0.0.1:5432/dev_db}
+    username: ${DB_USERNAME:dev}
+    password: ${DB_PASSWORD:123456}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 10
@@ -32,19 +33,22 @@ management:
     env:
       enabled: true
 
-# ---- Sa-Token 会话配置 ----
+# ---- Sa-Token ----
+# 公共配置在 application.yaml；本地 http 开发不能要求 Secure Cookie，否则浏览器不回传
 sa-token:
-  token-name: havenToken
-  timeout: 604800          # 会话有效期 7 天（秒）
-  active-timeout: 86400      # 不做滑动续期
-  is-concurrent: true      # 允许多端登录
-  is-share: false          # 每次登录生成新 token
-  token-style: uuid
-  is-log: true
+  cookie:
+    secure: false
 
 # ---- 业务配置 ----
 haven:
   totp:
     issuer: Haven
+  # 业务时区：留空取 JVM 时区。配置后热力图日界、月度汇总、YearMonth 都按该时区计算
+  time-zone: ${HAVEN_TIME_ZONE:}
   upload-dir: uploads
   private-hosts: ${HAVEN_PRIVATE_HOSTS:localhost}
+  # 登录密码 / TOTP 动态码的失败尝试限制（防暴力破解）
+  auth:
+    login-max-attempts: 5
+    login-window-minutes: 15
+    totp-max-attempts: 5

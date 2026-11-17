@@ -11,6 +11,4 @@ import com.haven.backend.portfolio.entity.PortfolioRepos;
  * @author Kairo
  * @since 2026-11-08
  */
-public interface PortfolioReposMapper extends BaseMapper<PortfolioRepos> {
-
-}
+public interface PortfolioReposMapper extends BaseMapper<PortfolioRepos> {}

@@ -4,17 +4,16 @@ import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.haven.backend.typehandler.UuidTypeHandler;
+import java.io.Serializable;
+import java.time.OffsetDateTime;
+import java.util.UUID;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.ToString;
 
-import java.io.Serializable;
-import java.time.OffsetDateTime;
-import java.util.UUID;
-
 @Getter
 @Setter
-@ToString
+@ToString(exclude = {"content"})
 @TableName("portfolio_items")
 public class PortfolioItems implements Serializable {
 
@@ -40,4 +39,8 @@ public class PortfolioItems implements Serializable {
 
     @TableField("content")
     private String content;
+
+    /** 是否出现在匿名作品集接口；默认 false，未公开即为草稿。 */
+    @TableField("is_public")
+    private Boolean isPublic;
 }

@@ -1,7 +1,6 @@
 package com.haven.backend.auth.service;
 
-import java.util.List;
-import java.util.Map;
+import com.haven.backend.auth.dto.AuthDtos.TrustedDeviceList;
 import java.util.UUID;
 
 /**
@@ -26,7 +25,7 @@ public interface TrustedDeviceService {
     String create(String userId, String userAgent);
 
     /** 列出用户未过期的授信设备（含明文以外的全部字段）。 */
-    List<Map<String, Object>> listDevices(String userId);
+    TrustedDeviceList listDevices(String userId);
 
     /** 撤销（删除）指定授信设备。 */
     void revoke(String userId, UUID deviceId);

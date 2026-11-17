@@ -1,0 +1,53 @@
+# 测试专用配置。
+#
+# 目标：
+# 1. 不依赖开发库 dev_db，避免测试互相污染、也避免擦掉本地数据；
+# 2. 不想装 Docker 时也能跑：默认使用 PostgreSQL 的临时 schema（同一实例、独立 schema）；
+# 3. 优先使用 Testcontainers：类路径上存在 testcontainers 且能找到容器运行时，则自动用真实容器。
+#
+# 切换方式（任选其一）：
+# - 默认：临时 schema（见 TestDatabaseInitializer）
+# - 容器：用 -Dhaven.test.mode=container 或设置环境变量 HAVEN_TEST_MODE=container
+
+spring:
+  datasource:
+    # 实际值由 TestDatabaseInitializer 在上下文启动前注入（见 support 包），这里的占位值只用于配置解析
+    url: jdbc:postgresql://127.0.0.1:5432/postgres
+    username: ${DB_USERNAME:dev}
+    password: ${DB_PASSWORD:123456}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 1
+      pool-name: HavenTestPool
+  flyway:
+    # 每个测试上下文都从空库开始，保证迁移脚本可重复执行
+    clean-disabled: false
+    locations: classpath:db/migration
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 11MB
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+
+sa-token:
+  is-log: false
+
+haven:
+  totp:
+    issuer: Haven
+  upload-dir: ${java.io.tmpdir}/haven-test-uploads
+  private-hosts: localhost
+  auth:
+    login-max-attempts: 5
+    login-window-minutes: 15
+    totp-max-attempts: 5
+
+logging:
+  level:
+    org.flywaydb: INFO

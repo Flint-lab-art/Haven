@@ -7,7 +7,7 @@
  */
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import TagNotesDialog from '@/components/TagNotesDialog.vue'
+import TagNotesDialog from '@/components/note/TagNotesDialog.vue'
 import { listTags, type Tag } from '@/api/tags'
 
 /**

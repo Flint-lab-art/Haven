@@ -2,9 +2,9 @@
 /** 公开笔记详情：Markdown 渲染 + 居中阅读列 + 宽屏大纲。 */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
-import NoteOutline from '@/components/NoteOutline.vue'
-import PublicEmpty from '@/components/PublicEmpty.vue'
-import TagBadge from '@/components/TagBadge.vue'
+import NoteOutline from '@/components/note/NoteOutline.vue'
+import PublicEmpty from '@/components/layout/PublicEmpty.vue'
+import TagBadge from '@/components/note/TagBadge.vue'
 import { getPublicNote, type PublicNote } from '@/api/notes'
 import { renderHtml } from '@/utils/markdown'
 import { extractHeadings } from '@/utils/markdown-headings'

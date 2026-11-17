@@ -5,18 +5,17 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.haven.backend.typehandler.UuidListTypeHandler;
 import com.haven.backend.typehandler.UuidTypeHandler;
-import lombok.Getter;
-import lombok.Setter;
-import lombok.ToString;
-
 import java.io.Serializable;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.ToString;
 
 @Getter
 @Setter
-@ToString
+@ToString(exclude = {"content"})
 @TableName("note_versions")
 public class NoteVersions implements Serializable {
 
@@ -45,4 +44,12 @@ public class NoteVersions implements Serializable {
 
     @TableField("created_at")
     private OffsetDateTime createdAt;
+
+    /** 最近一次合并写入时间；不改写 created_at。 */
+    @TableField("updated_at")
+    private OffsetDateTime updatedAt;
+
+    /** 合并窗口起点；窗口内编辑只合并内容，不移动该时间点。 */
+    @TableField("window_started_at")
+    private OffsetDateTime windowStartedAt;
 }

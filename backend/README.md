@@ -1,70 +1,65 @@
 # Haven Backend
 
-Haven 的后端：Spring Boot REST API、PostgreSQL 持久化、Flyway 数据库迁移，以及前端单页应用的静态托管。
+Haven 的后端：Spring Boot REST API、PostgreSQL 持久化、Flyway 迁移，以及前端单页应用的静态托管。
 
-- 统一前缀 `/api`，JSON 字段使用 `snake_case`
+**设计文档在 [`../docs/`](../docs/README.md)**——本文件只讲怎么跑、怎么配、有哪些接口。
+
+- 统一前缀 `/api`，JSON 字段 `snake_case`
 - 浏览器会话（Sa-Token）与 API Token（`Bearer`）双通道认证
-- 支持 TOTP 两步验证、授信设备、会话管理、API Token 管理
-- 同一份返回结构：列表 `{ items, total }`，错误 `{ error, message, fields? }`
-- 生产环境与前端同源部署，非 API 路径回退到 `index.html`
+- 列表 `{ items, total }`，错误 `{ error, message, fields? }`
+- 生产环境与前端同源部署，非 API 路径回退 `index.html`
+
+> **版本号规则与标准 SemVer 不同**：只有新增"全新功能领域"才升 MAJOR。
+> 见 [`../docs/versioning.md`](../docs/versioning.md)。版本号以根目录 `VERSION` 文件为准。
 
 ## 技术栈
 
-| 组件 | 版本 / 说明 |
-| --- | --- |
-| Java | 21 |
-| Spring Boot | 4.1.2（Web MVC、JDBC、Validation、Actuator、Devtools） |
-| MyBatis-Plus | 3.5.18 |
-| PostgreSQL | 主数据库，搜索依赖 `pg_trgm` |
-| Flyway | 启动时自动迁移 `src/main/resources/db/migration` |
-| Sa-Token | 1.46.0，会话持久化到 `sa_token` 表 |
-| BCrypt | `at.favre.lib:bcrypt`，cost = 12 |
-| Lombok | 简化实体与构造器注入 |
+| 组件 | 版本 | 说明 |
+| --- | --- | --- |
+| Java | 21 | record、模式匹配、`Math.clamp` |
+| Spring Boot | 4.1.2 | Web MVC、JDBC、Validation、Actuator |
+| MyBatis-Plus | 3.5.18 | 单表 CRUD + 自定义聚合 SQL |
+| PostgreSQL | 14+ | 搜索依赖 `pg_trgm` |
+| Flyway | 随 Boot | 迁移脚本 `src/main/resources/db/migration` |
+| Sa-Token | 1.46.0 | **会话存内存**（见下方"已知限制"） |
+| BCrypt | `at.favre.lib` | cost = 12 |
+| Testcontainers | 1.21.4 | 可选，仅在 `-Dhaven.test.mode=container` 时使用 |
 
 ## 目录结构
 
 ```text
 src/main/java/com/haven/backend/
-├── BackendApplication.java   # 启动类（统一注册各领域 mapper）
-├── auth/                     # 认证与授权
-│   ├── config/               # Sa-Token 拦截器注册
-│   ├── controller/           # 登录、TOTP、会话、API Token、授信设备
-│   ├── dto/                  # 认证相关请求 / 响应对象
-│   ├── entity/               # 用户、会话、Token、授信设备、审计事件
-│   ├── interceptor/          # Session + API Token 双通道认证
-│   ├── mapper/               # 认证相关 Mapper
-│   ├── service/ + impl/      # 认证业务
-│   └── util/                 # TOTP、Token 哈希等工具
-├── note/                     # 笔记领域
-│   ├── controller/           # 笔记、版本、文件夹、标签、上传、搜索
-│   ├── entity/               # 笔记、版本、文件夹、标签
-│   ├── mapper/               # 笔记相关 Mapper
-│   └── service/ + impl/      # 笔记业务
-├── issue/                    # Issue 领域
+├── BackendApplication.java       # 启动类，@MapperScan 注册各领域 mapper
+├── audit/                        # 审计事件（AuditRecorder + 事件枚举）
+├── auth/
+│   ├── config/                   # AuthInterceptor 注册
+│   ├── controller/               # 登录、TOTP、会话、授信设备、API Token
+│   ├── dto/                      # AuthDtos + 各请求 record
+│   ├── entity/                   # Users、Tokens、SaToken、PendingTotp、TrustedDevices、AuditEvents
+│   ├── interceptor/              # AuthInterceptor + RequiredAccess + @RequireAccess
+│   ├── mapper/
+│   ├── service/ + impl/          # AuthService、AuthSessionOpener、LoginAttemptLimiter 等
+│   └── util/                     # ApiTokenUtil、TotpUtil
+├── config/                       # ClockConfig、WebConfig、MybatisPlusConfig
+├── dto/                          # ApiError、PageResponse
+├── exception/                    # BizException、GlobalExceptionHandler
+├── issue/                        # controller / dto / entity / mapper / service
+├── ledger/
 │   ├── controller/
-│   ├── entity/
+│   ├── dto/                      # LedgerDtos（含全部响应 record）
+│   ├── entity/                   # LedgerEntries、LedgerTypes、LedgerCategories
+│   ├── mapper/
+│   └── service/                  # LedgerTextParser、LedgerClassifier、LedgerStatsCalculator
+├── note/
+│   ├── controller/               # 笔记、版本、文件夹、标签、搜索、上传
+│   ├── dto/                      # NoteDtos、FolderDtos、各请求 record
+│   ├── entity/                   # Notes、NoteVersions、Folders、Tags、NoteTags、NoteVisibility
 │   ├── mapper/
 │   └── service/ + impl/
-├── ledger/                   # 记账领域
-│   ├── controller/
-│   ├── dto/
-│   ├── entity/
-│   ├── mapper/
-│   └── service/ + impl/
-├── portfolio/                # 作品集领域
-│   ├── controller/
-│   ├── entity/
-│   ├── mapper/
-│   └── service/ + impl/
-├── stats/                    # 统计概览
-│   ├── controller/
-│   └── service/ + impl/
-├── system/                   # 健康检查、运行时配置
-│   └── controller/
-├── config/                   # Web / MyBatis-Plus 等全局配置
-├── dto/                      # 跨领域通用响应对象
-├── exception/                # 业务异常与全局错误处理
-└── typehandler/              # PostgreSQL uuid / uuid[] 映射
+├── portfolio/                    # controller / dto / entity / mapper / service
+├── stats/                        # controller / dto / service（只读聚合）
+├── system/                       # 健康检查、运行时前端配置
+└── typehandler/                  # UuidTypeHandler、UuidListTypeHandler
 ```
 
 ## 快速开始
@@ -72,11 +67,11 @@ src/main/java/com/haven/backend/
 ### 环境要求
 
 - JDK 21+
-- PostgreSQL 14+，可创建 `pg_trgm` 扩展
+- PostgreSQL 14+，账号需有 `CREATE EXTENSION pg_trgm` 权限
 
 ### 1. 准备数据库
 
-默认开发连接见 `src/main/resources/application-dev.yaml`：
+`application-dev.yaml` 的默认值：
 
 ```text
 jdbc:postgresql://127.0.0.1:5432/dev_db
@@ -90,318 +85,315 @@ psql -U postgres -c "CREATE DATABASE dev_db OWNER dev;"
 psql -U postgres -d dev_db -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
 ```
 
-也可以通过环境变量覆盖数据源：
+这些默认值只是**本地开发**用，可被 `DB_URL` / `DB_USERNAME` / `DB_PASSWORD` 覆盖：
 
 ```bash
-SPRING_DATASOURCE_URL=jdbc:postgresql://127.0.0.1:5432/dev_db \
-SPRING_DATASOURCE_USERNAME=dev \
-SPRING_DATASOURCE_PASSWORD=123456 \
+DB_URL=jdbc:postgresql://127.0.0.1:5432/dev_db \
+DB_USERNAME=dev DB_PASSWORD=123456 \
 ./mvnw spring-boot:run
 ```
 
 ### 2. 启动
+
+推荐用仓库根目录的脚本（会检查静态资源是否就绪）：
+
+```bash
+./scripts/run.sh
+```
+
+或手动：
 
 ```bash
 cd backend
 ./mvnw spring-boot:run
 ```
 
-默认监听 `8080`。首次启动时 Flyway 会执行 `V1`、`V2` 迁移。
-
-健康检查：
+默认监听 `8080`，首次启动 Flyway 会执行 V1–V10 全部迁移。
 
 ```bash
 curl http://127.0.0.1:8080/api/health
-# {"status":"ok","version":"0.1.0-java"}
+# {"status":"ok","version":"<版本>"}
 ```
 
 ### 3. 创建用户
 
-项目不提供注册接口。需要直接写入用户，密码为 BCrypt（cost = 12）哈希。
-
-示例：用户名 `admin`，密码 `changeme`（仅本地开发，登录后请立即修改）。
+不提供注册接口，直接写库。密码是 BCrypt（cost 12）哈希，可以用 `at.favre.lib.crypto.bcrypt.BCrypt` 生成。
 
 ```sql
 INSERT INTO users (username, password_hash)
-VALUES ('admin', '$2a$12$6aVoi9rTYyuC043ykOD0gua8bxwGXvZg07UgpVakcVZkSg6xECNAO');
+VALUES ('admin', '$2a$12$...');
 ```
 
 ## 配置
 
-`application.yaml` 默认激活 `dev` profile：
+### profile 与文件
 
-```yaml
-spring:
-  profiles:
-    active:
-      - dev
-```
+| 文件 | 内容 |
+| --- | --- |
+| `application.yaml` | 公共配置（含 Sa-Token 与 Cookie 安全属性），profile 由 `SPRING_PROFILES_ACTIVE` 决定，默认 `dev` |
+| `application-dev.yaml` | 数据源默认值、上传、Actuator 详情、登录限流阈值 |
+| `application-prod.yaml` | 生产模板，全部走环境变量 |
 
-主要配置项：
+### 主要配置项
 
-| 配置 | 默认值 | 说明 |
+| 配置 | 默认 | 说明 |
 | --- | --- | --- |
-| `spring.datasource.*` | 见 `application-dev.yaml` | PostgreSQL 连接与 Hikari 连接池 |
-| `spring.servlet.multipart.max-file-size` | `10MB` | 单文件上传上限 |
-| `haven.private-hosts` | `note.vorin.icu` | 私有域主机名，逗号分隔；由 `GET /api/app-config` 下发 |
-| `haven.totp.issuer` | `Haven` | 动态码发行方名称 |
-| `haven.upload-dir` | `uploads` | 上传文件根目录 |
+| `spring.datasource.url/username/password` | `${DB_URL:...}` / `${DB_USERNAME:dev}` / `${DB_PASSWORD:123456}` | dev 有默认值，prod 无默认值（缺失即启动失败） |
+| `spring.servlet.multipart.max-file-size` | `10MB` | 单文件上限 |
+| `haven.private-hosts` | `${HAVEN_PRIVATE_HOSTS:localhost}` | 私有域域名，逗号分隔，由 `/api/app-config` 下发 |
+| `haven.totp.issuer` | `Haven` | 动态码发行方 |
+| `haven.upload-dir` | `uploads` | 上传根目录 |
+| `haven.time-zone` | 空（取 JVM 时区） | 业务时区，影响热力图日界与月度汇总 |
+| `haven.auth.login-max-attempts` | `5` | 密码失败上限 |
+| `haven.auth.login-window-minutes` | `15` | 失败计数窗口 |
+| `haven.auth.totp-max-attempts` | `5` | 动态码失败上限 |
 | `sa-token.token-name` | `havenToken` | 会话 Cookie 名 |
-| `sa-token.timeout` | `604800` | 会话有效期（秒，7 天） |
-| `sa-token.active-timeout` | `86400` | 非滑动续期配置 |
-| `management.endpoints.web.exposure.include` | `health,info` | Actuator 暴露范围 |
+| `sa-token.timeout` | `604800` | 会话有效期（秒） |
+| `sa-token.active-timeout` | `86400` | 无操作超时（秒） |
+| `sa-token.cookie.http-only` | `true` | 禁止 JS 读取 |
+| `sa-token.cookie.secure` | `true`（dev 覆盖为 `false`） | 仅 HTTPS 传输 |
+| `sa-token.cookie.same-site` | `Lax` | CSRF 缓解 |
+| `management.endpoint.health.show-details` | dev `always` / prod `never` | Actuator 详情 |
 
-常用环境变量：
+### 环境变量
 
-```bash
-SPRING_PROFILES_ACTIVE=prod
-SPRING_DATASOURCE_URL=jdbc:postgresql://db:5432/haven
-SPRING_DATASOURCE_USERNAME=haven
-SPRING_DATASOURCE_PASSWORD=******
-HAVEN_PRIVATE_HOSTS=note.example.com
-HAVEN_UPLOAD_DIR=/var/lib/haven/uploads
-HAVEN_TOTP_ISSUER=Haven
-```
+| 变量 | 说明 |
+| --- | --- |
+| `SPRING_PROFILES_ACTIVE` | `dev` / `prod` |
+| `DB_URL` / `DB_USERNAME` / `DB_PASSWORD` | 数据源 |
+| `HAVEN_PRIVATE_HOSTS` | 私有域，逗号分隔 |
+| `HAVEN_UPLOAD_DIR` | 上传目录 |
+| `HAVEN_TOTP_ISSUER` | 动态码发行方 |
+| `HAVEN_TIME_ZONE` | 业务时区（如 `Asia/Shanghai`） |
+| `HAVEN_AUTH_LOGIN_MAX_ATTEMPTS` / `..._WINDOW_MINUTES` / `HAVEN_AUTH_TOTP_MAX_ATTEMPTS` | 限流阈值 |
+| `LOG_PATH` | prod 日志目录 |
 
-> `application-dev.yaml` 里除了数据源，还包含 Sa-Token、上传大小、Actuator 等配置。切换到 `prod` 前，请把这些配置迁移到 `application.yaml`，或新增 `application-prod.yaml`，否则会回落到框架默认值。
+> Sa-Token 配置放在 `application.yaml`（不在 dev 里），切换 profile 不会丢。
 
 ## 认证与安全
 
-### 两种身份通道
+### 双通道
 
 `AuthInterceptor` 拦截 `/api/**`：
 
-1. 请求带 `Authorization: Bearer <token>` 时，按 API Token 认证，校验哈希、撤销状态与过期时间，并刷新 `last_used_at`
-2. 否则回退到 Sa-Token 会话（Cookie `havenToken`）
+1. `Authorization: Bearer haven_ro_xxx` / `haven_rw_xxx` → 校验哈希、撤销状态、过期时间，节流刷新 `last_used_at`
+2. 否则回退 Sa-Token 会话（Cookie `havenToken`）
 
-认证通过后，用户 ID、scope、认证类型会写入 request attribute，控制器通过 `AuthInterceptor.requireUserId(request)` 读取当前用户。该方法同时适用于会话与 API Token，避免控制器直接依赖 Sa-Token 的 `StpUtil.checkLogin()`。
+认证后把 `auth_userId` / `auth_scope` / `auth_type` / `auth_totpVerified` 写进 request attribute，
+Controller 用 `AuthInterceptor.requireUserId(request)` 读取。
 
-只读 Token（`scope=read`）只能执行 `GET` / `HEAD` / `OPTIONS`，其他方法会直接返回 403；需要写入时请创建 `read_write` Token。
+### 授权级别（端点声明）
+
+```java
+@RequireAccess(RequiredAccess.WRITE)
+```
+
+| 级别 | 含义 |
+| --- | --- |
+| `READ` | 有身份即可（GET 默认） |
+| `WRITE` | 需要 `read_write` Token 或会话（非 GET 默认） |
+| `SESSION` | 仅浏览器会话，API Token 403 |
+| `SESSION_TOTP` | 会话且已过动态码 |
+
+注解优先，没有注解时按 HTTP 方法兜底。**不要**靠"GET 就安全"来设计——会写数据的 GET 必须显式标 `WRITE`。
 
 ### 登录流程
 
-1. `POST /api/auth/login` 校验用户名和密码
-2. 未启用 TOTP，或当前设备已授信：直接建立会话，返回 `totp_required: false`
-3. 启用了 TOTP 且设备未授信：返回 `totp_required: true` 和 `temp_token`
-4. 前端用 `POST /api/auth/login/totp` 提交动态码，校验通过后建立会话
-5. 勾选「信任这台设备」时，创建 30 天有效的授信设备，并写入 HttpOnly Cookie
+1. `POST /api/auth/login` 校验账密；失败计数 +1，超限 429
+2. 未启用 TOTP 或设备已授信 → 直接建会话，`totpRequired: false`
+3. 启用 TOTP 且设备未授信 → 写 `pending_totp`（5 分钟），返回 `totpRequired: true` + `tempToken`
+4. `POST /api/auth/login/totp` 校验动态码，通过后建会话
+5. 勾选信任设备 → 写 30 天 HttpOnly Cookie
 
-安全相关行为：
+### 改密的影响面
 
-- 密码使用 BCrypt cost 12；修改密码需要旧密码，启用 TOTP 时还需要动态码
-- 修改密码后撤销该用户全部会话与授信设备
-- 关闭 TOTP 后撤销全部授信设备
-- 会话管理接口只允许浏览器会话访问，当前会话不能通过该接口踢出自己
-- API Token 管理接口要求会话已通过 TOTP；Token 明文只在创建时返回一次
-- 上传文件按真实 MIME 校验，只接受 png / jpeg / gif / webp，单文件不超过 10 MiB
+`POST /api/auth/password`（要求 `SESSION_TOTP`）成功后：
 
-默认放行（无需登录）的接口：
+- 撤销全部授信设备
+- 撤销全部 API Token（写 `revoked_at`）
+- 踢掉全部 Sa-Token 会话（事务提交后执行）
 
-- `/api/health`
-- `/api/auth/login`、`/api/auth/login/totp`
-- `/api/me`（匿名时返回 `{ "anonymous": true }`）
-- `/api/app-config`
-- `/api/public/**`
-- `/uploads/**`（公开笔记里的图片需要匿名可访问）
+### 匿名可访问的路径
+
+```
+/api/health
+/api/auth/login
+/api/auth/login/totp
+/api/app-config
+/api/public/**
+/api/me          ← 在拦截器里按"可选认证"处理，无凭证返回 anonymous
+/uploads/**      ← 不在 /api 前缀下，由 UploadsStaticController 直接托管
+```
 
 ## 数据库
 
-Flyway 脚本：
+### 迁移
 
-- `V1__init.sql`：用户、Sa-Token、待验证 TOTP、API Token、审计事件、文件夹、笔记、标签、作品集、历史版本、Issue
-- `V2__trusted_devices.sql`：授信设备，以及登录时是否勾选信任设备的标记
-- `V3__del_issues_parentId.sql`：移除 Issue 的父子层级字段
-- `V4__add_ledger_tables.sql`：记账批次、条目、别名
-- `V5__ledger_default_aliases.sql`：为 `kairo` 初始化默认分类别名
-- `V6__ledger_income_categories.sql`：新增收入分类（工资 / 奖金 / 报销 / 退款 / 红包 / 其他收入）与收入别名
+| 版本 | 内容 |
+| --- | --- |
+| V1 | 全部基础表 |
+| V2 | 授信设备 |
+| V3 | 删除 `issues.parent_id` |
+| V4 | 记账三表 |
+| V5 | 支出默认别名（仅开发账号） |
+| V6 | 收入分类白名单 |
+| V7 | `folders.parent_id` 级联改 `SET NULL` |
+| V8 | 版本表加 `updated_at` / `window_started_at` |
+| V9 | `portfolio_items.is_public`（默认 false） |
+| V10 | 支出新增「还款」分类 |
 
-主要表：
+已执行的迁移**不再修改**，修正一律新增版本。
+
+### 表
 
 | 表 | 用途 |
 | --- | --- |
-| `users` | 用户名、BCrypt 密码哈希、TOTP 密钥与开关 |
-| `sa_token` | Sa-Token 会话持久化 |
-| `pending_totp` | 密码通过、等待动态码校验的临时记录（5 分钟） |
-| `tokens` | API Token（只存哈希与前缀） |
-| `trusted_devices` | 授信设备（只存哈希，30 天有效） |
-| `folders` / `notes` / `tags` / `note_tags` | 笔记、目录与标签 |
-| `note_versions` | 笔记历史快照 |
-| `portfolio_items` / `portfolio_repos` | 作品集与仓库链接 |
-| `issues` / `issue_status_events` | Issue 与状态变更事件 |
-| `ledger_batches` / `ledger_entries` | 记账批次与记账条目 |
-| `ledger_aliases` | 分类别名，例如“奶茶” -> “餐饮” |
-| `audit_events` | 审计事件表（结构已建，供后续业务写入） |
+| `users` | 用户名（小写唯一索引）、BCrypt 哈希、TOTP 密钥与开关 |
+| `pending_totp` | 等待动态码的临时记录（只存 token 哈希，5 分钟） |
+| `tokens` | API Token（只存 SHA-256 + 展示前缀） |
+| `trusted_devices` | 授信设备（只存哈希，30 天） |
+| `sa_token` | Sa-Token 的表结构；**当前未启用 JDBC 存储，实际会话在内存** |
+| `audit_events` | 安全审计（已接入 12 类事件） |
+| `folders` / `notes` / `tags` / `note_tags` | 笔记、目录、标签 |
+| `note_versions` | 版本快照（含合并窗口锚点） |
+| `portfolio_items` / `portfolio_repos` | 作品集与链接 |
+| `issues` / `issue_status_events` | Issue 与状态事件 |
+| `ledger_batches` / `ledger_entries` / `ledger_aliases` | 记账 |
 
-搜索使用 `pg_trgm` 与 GIN 索引，支持标题 / 正文的模糊匹配。
+搜索用 `pg_trgm` + GIN 索引（标题、正文、标签名）。金额统一 `amount_cents bigint`（单位：分）。
 
 ## API 一览
 
-### 认证
+完整契约见 [`../docs/api-conventions.md`](../docs/api-conventions.md)。
+
+### 认证 `/api/auth`
+
+| 方法 | 路径 | 权限 |
+| --- | --- | --- |
+| POST | `/api/auth/login` | 匿名 |
+| POST | `/api/auth/login/totp` | 匿名 |
+| POST | `/api/auth/logout` | 登录 |
+| GET | `/api/me` | 匿名可用 |
+| POST | `/api/auth/totp/setup` | SESSION |
+| POST | `/api/auth/totp/verify` | SESSION |
+| POST | `/api/auth/totp/disable` | SESSION |
+| POST | `/api/auth/password` | SESSION_TOTP |
+
+### 会话 / 授信设备 / Token
+
+| 方法 | 路径 | 权限 |
+| --- | --- | --- |
+| GET | `/api/sessions` | SESSION |
+| DELETE | `/api/sessions/{id}` | SESSION |
+| GET | `/api/trusted-devices` | SESSION |
+| DELETE | `/api/trusted-devices/{id}` | SESSION |
+| GET | `/api/tokens` | SESSION_TOTP |
+| POST | `/api/tokens` | SESSION_TOTP |
+| DELETE | `/api/tokens/{id}` | SESSION_TOTP |
+
+### 笔记 `/api/notes`
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| POST | `/api/auth/login` | 用户名密码登录 |
-| POST | `/api/auth/login/totp` | 动态码第二步登录 |
-| POST | `/api/auth/logout` | 退出当前会话 |
-| GET | `/api/me` | 当前身份（匿名可用） |
-| POST | `/api/auth/totp/setup` | 生成 TOTP 密钥与 otpauth URI |
-| POST | `/api/auth/totp/verify` | 校验并启用 TOTP |
-| POST | `/api/auth/totp/disable` | 关闭 TOTP |
-| POST | `/api/auth/password` | 修改密码 |
-
-### 会话、授信设备、API Token
-
-| 方法 | 路径 | 说明 |
-| --- | --- | --- |
-| GET | `/api/sessions` | 当前用户的会话列表 |
-| DELETE | `/api/sessions/{id}` | 踢出指定会话（仅会话） |
-| GET | `/api/trusted-devices` | 授信设备列表（仅会话） |
-| DELETE | `/api/trusted-devices/{id}` | 撤销授信设备（仅会话） |
-| GET | `/api/tokens` | Token 列表（会话 + TOTP） |
-| POST | `/api/tokens` | 创建 Token（明文只返回一次） |
-| DELETE | `/api/tokens/{id}` | 撤销 Token |
-
-### 笔记、目录、标签
-
-| 方法 | 路径 | 说明 |
-| --- | --- | --- |
-| GET | `/api/notes` | 笔记列表，支持 `visibility` / `tag_id` / `folder_id` / `include_trash` |
+| GET | `/api/notes` | 列表，`visibility` / `tagId` / `folderId` / `includeTrash` / `limit` / `offset` |
 | GET | `/api/notes/trash` | 回收站 |
-| GET | `/api/notes/{id}` | 笔记详情 |
-| POST | `/api/notes` | 创建笔记 |
-| PATCH | `/api/notes/{id}` | 更新标题、正文、标签、文件夹、排序 |
-| DELETE | `/api/notes/{id}` | 软删除（移入回收站） |
+| GET | `/api/notes/{id}` | 详情 |
+| POST | `/api/notes` | 新建 |
+| PATCH | `/api/notes/{id}` | 更新；`clearFolder: true` 表示移到根目录 |
+| DELETE | `/api/notes/{id}` | 软删除 |
 | DELETE | `/api/notes/trash` | 清空回收站 |
-| POST | `/api/notes/{id}/restore` | 从回收站还原 |
+| POST | `/api/notes/{id}/restore` | 还原 |
 | DELETE | `/api/notes/{id}/purge` | 永久删除 |
-| POST | `/api/notes/{id}/publish` | 发布到公开域 |
-| POST | `/api/notes/{id}/unpublish` | 撤回发布 |
-| GET | `/api/notes/{id}/versions` | 历史版本列表 |
-| GET | `/api/notes/{id}/versions/{versionId}` | 历史版本详情 |
-| POST | `/api/notes/{id}/versions/{versionId}/restore` | 还原历史版本 |
-| GET | `/api/folders` | 文件夹列表 |
-| POST | `/api/folders` | 新建文件夹 |
-| PATCH | `/api/folders/{id}` | 重命名 / 移动 / 修改图标 |
-| DELETE | `/api/folders/{id}` | 删除文件夹 |
-| GET | `/api/tags` | 标签列表 |
-| POST | `/api/tags` | 新建标签 |
-| DELETE | `/api/tags/{id}` | 删除标签 |
-| GET | `/api/tags/{id}/notes` | 某个标签下的笔记 |
+| POST | `/api/notes/{id}/publish` | 发布 |
+| POST | `/api/notes/{id}/unpublish` | 撤回 |
+| GET | `/api/notes/{id}/versions` | 版本列表 |
+| GET | `/api/notes/{id}/versions/{versionId}` | 版本详情 |
+| POST | `/api/notes/{id}/versions/{versionId}/restore` | 还原版本 |
 
-### 搜索、作品集、Issue、统计
+### 文件夹 / 标签
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/search?q=` | 私有域搜索，支持 `type` / `limit` / `offset` |
+| GET | `/api/folders` | 列表 |
+| POST | `/api/folders` | 新建 |
+| PATCH | `/api/folders/{id}` | 改名 / 移动（`clearParent: true` 移到根）/ 图标 / 排序 |
+| DELETE | `/api/folders/{id}` | 删除（笔记迁到收件箱） |
+| GET | `/api/tags` | 标签列表（**只读，不删任何数据**） |
+| POST | `/api/tags` | 新建 |
+| DELETE | `/api/tags/{id}` | 删除 |
+| GET | `/api/tags/{id}/notes` | 标签下的笔记 |
+
+### 搜索 / 作品集 / Issue / 统计
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/search` | 私有搜索，`q` / `type` / 分页 |
 | GET | `/api/portfolio/{id}` | 作品详情 |
 | POST | `/api/portfolio` | 新建作品 |
 | PATCH | `/api/portfolio/{id}` | 更新作品 |
 | DELETE | `/api/portfolio/{id}` | 删除作品 |
-| POST | `/api/portfolio/{id}/repos` | 添加作品链接 |
-| PATCH | `/api/portfolio/{id}/repos/{repoId}` | 更新作品链接 |
-| DELETE | `/api/portfolio/{id}/repos/{repoId}` | 删除作品链接 |
-| GET | `/api/issues` | Issue 列表，可按 `status` 过滤 |
-| GET | `/api/issues/{id}` | Issue 详情 |
-| POST | `/api/issues` | 新建 Issue |
-| PATCH | `/api/issues/{id}` | 更新 Issue（含状态流转） |
-| DELETE | `/api/issues/{id}` | 删除 Issue |
-| GET | `/api/stats` | 仪表盘统计 |
+| POST | `/api/portfolio/{id}/repos` | 添加链接 |
+| PATCH | `/api/portfolio/{id}/repos/{repoId}` | 更新链接 |
+| DELETE | `/api/portfolio/{id}/repos/{repoId}` | 删除链接 |
+| GET | `/api/issues` | Issue 列表，可按 `status` |
+| GET | `/api/issues/{id}` | 详情（`{ issue, status_events }`） |
+| POST | `/api/issues` | 新建 |
+| PATCH | `/api/issues/{id}` | 更新（含状态流转） |
+| DELETE | `/api/issues/{id}` | 删除 |
+| GET | `/api/stats` | 仪表盘快照 |
 
-### 记账
+### 记账 `/api/ledger`
+
+细节见 [`../docs/ledger.md`](../docs/ledger.md)。
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| POST | `/api/ledger/quick` | 只解析不落库，返回 `items` 与逐行 `errors` |
-| POST | `/api/ledger/entries/quick` | 一步记账：解析并直接写入（快捷指令用），支持 `batch_id` 幂等 |
-| POST | `/api/ledger/entries/batch` | 确认写入，`batch_id` 相同只写一次（`/batches` 为兼容别名） |
-| GET | `/api/ledger/batches/{batchId}` | 查看批次及条目 |
-| GET | `/api/ledger/entries` | 条目列表，支持 `from` / `to` / `category` / `type` / 分页 |
-| GET | `/api/ledger/entries/{id}` | 条目详情 |
-| PATCH | `/api/ledger/entries/{id}` | 修改分类 / 金额 / 发生时间 |
-| DELETE | `/api/ledger/entries/{id}` | 删除条目 |
-| GET | `/api/ledger/recent` | 最近录入条目，默认 3 笔（按 `created_at`） |
-| GET | `/api/ledger/summary?month=YYYY-MM` | 月度总额 + 支出 / 收入分类排行 + 按天走势 + 最近 3 笔 |
-| GET | `/api/ledger/trend?days=7` | 最近 N 天（默认 7，最多 90）的总额、分类排行与按天走势 |
-| GET | `/api/ledger/categories` | 支持的分类列表 |
+| POST | `/api/ledger/quick` | 只解析不落库 |
+| POST | `/api/ledger/entries/quick` | 解析并写入（快捷指令用） |
+| POST | `/api/ledger/entries/batch` | 确认写入（`/batches` 为别名） |
+| GET | `/api/ledger/batches/{batchId}` | 批次及条目 |
+| GET | `/api/ledger/entries` | 列表，`from` / `to` / `category` / `type` / 分页 |
+| GET | `/api/ledger/entries/{id}` | 详情 |
+| PATCH | `/api/ledger/entries/{id}` | 改分类 / 金额 / 时间 |
+| DELETE | `/api/ledger/entries/{id}` | 删除 |
+| GET | `/api/ledger/recent` | 最近录入（默认 3 条） |
+| GET | `/api/ledger/summary` | 月度汇总，`month=YYYY-MM` |
+| GET | `/api/ledger/trend` | 最近 N 天（默认 7，上限 90） |
+| GET | `/api/ledger/categories` | 分类清单 |
 | GET | `/api/ledger/aliases` | 别名列表 |
-| POST | `/api/ledger/aliases` | 新增或更新别名 |
+| POST | `/api/ledger/aliases` | 新增 / 更新别名 |
 | DELETE | `/api/ledger/aliases/{alias}` | 删除别名 |
 
-输入格式为一行一条：`分类 [备注…] 金额`。
+输入格式：`[日期] 分类 [备注…] 金额`。
 
 ```text
 午饭12
-晚饭 20
-网购 零食 100
-房租 水电 2200
+11月16 午餐 16
+昨天 打车 25
 工资 8000
 ```
 
-解析规则：
+支出分类：`餐饮 / 购物 / 交通 / 居家 / 娱乐 / 医疗 / 还款 / 未分类`；
+收入分类：`工资 / 奖金 / 报销 / 退款 / 红包 / 其他收入`。
 
-1. 行末抽取金额，支持 `12`、`12.5`、`32元`、`¥32`、`二十五块`
-2. 剩余文本按第一个空格切分，第一段查别名表或大类，其余作为备注
-3. 分类命中收入大类（工资 / 奖金 / 报销 / 退款 / 红包 / 其他收入），或文本含对应关键词时判为收入，否则为支出
-4. 别名命中时取大类并把原词并入备注；都不是则落 `未分类`，原词保留在备注中
-
-支出大类：`餐饮 / 购物 / 交通 / 居家 / 娱乐 / 医疗 / 未分类`；
-收入大类：`工资 / 奖金 / 报销 / 退款 / 红包 / 其他收入`。
-
-`quick` 示例：
-
-```json
-{
-  "text": "午饭12\n网购 零食 100"
-}
-```
-
-快捷指令一步记账：
-
-```http
-POST /api/ledger/entries/quick
-Authorization: Bearer <API Token>
-Content-Type: application/json
-
-{ "text": "午饭12\n工资 8000" }
-```
-
-解析成功返回 `201`，`items` 是本次写入的条目；`batch_id` 不传时由服务端生成，传入相同值可安全重试：
+#### 响应示例
 
 ```json
 {
   "created": true,
   "batch_id": "0f7c…",
   "raw_text": "午饭12\n工资 8000",
-  "items": [ { "id": "…", "type": "expense", "amount_cents": 1200, "category": "餐饮" } ],
-  "total": 2,
-  "errors": []
+  "created_at": "2026-11-17T10:30:00+08:00",
+  "items": [
+    { "id": "…", "type": "expense", "amount_cents": 1200, "category": "餐饮", "note": "午饭" }
+  ],
+  "total": 2
 }
 ```
 
-一行都没解析出来时返回 `200`、`created: false`、`total: 0`，原因在 `errors` 里，不会写入空批次。
+`quickCommit` 在外层再包一层：`{ "batch": {…}, "errors": [] }`。
 
-`summary` 返回：
-
-```json
-{
-  "month": "2026-11",
-  "total_expense_cents": 128600,
-  "total_income_cents": 0,
-  "total_count": 3,
-  "category_ranking": [
-    { "category": "餐饮", "amount_cents": 3200, "count": 2 }
-  ],
-  "income_category_ranking": [
-    { "category": "工资", "amount_cents": 800000, "count": 1 }
-  ],
-  "daily": [
-    { "date": "2026-11-01", "expense_cents": 1200, "income_cents": 0, "count": 1 }
-  ],
-  "recent": [
-    { "id": "...", "type": "expense", "amount_cents": 1200, "category": "餐饮", "note": "午饭" }
-  ]
-}
-```
+一行都没解析出来时返回 `200`、`created: false`、`total: 0`，原因在 `errors` 里，不写空批次。
 
 ### 公开接口
 
@@ -409,77 +401,107 @@ Content-Type: application/json
 | --- | --- | --- |
 | GET | `/api/public/notes` | 已发布笔记列表 |
 | GET | `/api/public/notes/{id}` | 已发布笔记详情 |
-| GET | `/api/public/search?q=` | 公开站内搜索 |
-| GET | `/api/public/portfolio` | 作品列表 |
-| GET | `/api/public/portfolio/{id}` | 作品详情 |
-| GET | `/api/app-config` | 前端运行时配置（私有域名单） |
+| GET | `/api/public/search` | 公开搜索 |
+| GET | `/api/public/portfolio` | **仅 `is_public=true`** 的作品 |
+| GET | `/api/public/portfolio/{id}` | 公开作品详情（未公开返回 404） |
+| GET | `/api/app-config` | 运行时配置 `{ version, private_hosts }` |
 | GET | `/api/health` | 健康检查 |
 
-### 上传与静态资源
+### 上传
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| POST | `/api/uploads` | 上传图片（multipart `file`，`kind` 为 `note` 或 `icon`） |
-| GET | `/api/uploads` | 图标文件列表 |
-| GET | `/uploads/**` | 上传文件静态托管（匿名、长缓存） |
+| POST | `/api/uploads` | 图片上传（multipart `file`，`kind=note\|icon`） |
+| GET | `/api/uploads` | 图标列表 |
+| GET | `/uploads/**` | 静态托管（匿名，长缓存，规范化后校验在上传根目录内） |
 
 ## 错误响应
 
-全局异常处理统一输出：
-
 ```json
-{
-  "error": "validation_failed",
-  "message": "请求参数校验失败",
-  "fields": {
-    "title": "标题不能为空"
-  }
-}
+{ "error": "validation_failed", "message": "请求参数校验失败", "fields": { "title": "标题不能为空" } }
 ```
-
-常见错误码：
 
 | HTTP | `error` | 场景 |
 | --- | --- | --- |
-| 400 | `bad_request` / `validation_failed` | 参数错误 |
-| 401 | `unauthorized` | 未登录、密码或动态码错误、Token 无效 / 过期 |
-| 403 | `forbidden` | 权限不足，或 Token 调用了仅限会话的接口 |
-| 404 | `not_found` | 资源不存在 |
-| 409 | `conflict` | 状态冲突，如重复启用 TOTP |
+| 400 | `bad_request` | 参数格式错误、非法 UUID、缺参数、坏 JSON |
+| 401 | `unauthorized` | 未登录、账密错误、Token 无效 / 过期 |
+| 403 | `forbidden` | 只读 Token 写数据、Token 调会话接口、未过 TOTP |
+| 404 | `not_found` | 资源不存在**或不属于当前用户** |
+| 409 | `conflict` | 唯一约束冲突、重复启用 TOTP |
 | 413 | `payload_too_large` | 文件超过 10 MiB |
 | 415 | `unsupported_media_type` | 非 png / jpeg / gif / webp |
+| 422 | `validation_failed` | `BizException.validation` |
+| 429 | `too_many_requests` | 登录 / 动态码失败超限 |
+| 500 | `internal_error` | 未捕获异常（详情只在服务端日志） |
 
 ## 构建与部署
 
 ```bash
-cd backend
-./mvnw clean package
-java -jar target/backend-1.0.2.jar
+./scripts/build.sh all           # 前端 → static → 打包 jar
+java -jar backend/target/haven-2.1.0.jar
 ```
 
-可执行 jar 会：
+也可以单独执行：
+
+```bash
+./scripts/build.sh frontend      # 只更新 static/ 里的前端产物
+./scripts/build.sh backend       # 只打包 jar（保留现有 static）
+```
+
+手动等价命令：
+
+```bash
+cd backend
+./mvnw clean package -DskipTests
+```
+
+jar 会：
 
 - 托管 `src/main/resources/static/` 下的前端产物
-- 对 `/api/**` 与 `/uploads/**` 以外的未知路径回退到 `index.html`
-- 从 `haven.upload-dir`（默认当前目录下的 `uploads/`）读写上传文件
+- 对 `/api/**`、`/uploads/**` 之外的未知路径回退 `index.html`
+- 从 `haven.upload-dir` 读写上传文件
 
 生产建议：
 
-1. 用反向代理（Nginx / Caddy）终止 TLS，并把域名转发到 `8080`
-2. 将 `uploads/` 挂载为持久卷
-3. 设置 `SPRING_PROFILES_ACTIVE=prod`，使用独立的 `application-prod.yaml` 或环境变量提供数据源
-4. 通过 `HAVEN_PRIVATE_HOSTS` 配置私有域；公开域不需要额外配置
-5. 生产环境把 Actuator 健康详情改为 `when-authorized`，避免公网暴露组件信息
+1. 反向代理（Nginx / Caddy）终止 TLS，转发到 `8080`
+2. `uploads/` 挂持久卷
+3. `SPRING_PROFILES_ACTIVE=prod` + 环境变量提供数据源
+4. **用网关限制 `/actuator/**`**——应用内拦截器只覆盖 `/api/**`
+5. 多实例部署前先解决"会话在内存"与"登录计数在内存"两个问题
 
-`prod` profile 下日志会同时写入控制台和 `${logging.file.path}`（默认 `./logs`）：
-
-- `<app>.log`：按天 + 10 MB 滚动，保留 30 天
-- `<app>-error.log`：仅 ERROR 级别
+prod 下日志同时写控制台和 `${LOG_PATH}`（默认 `./logs`）：`<app>.log` 按天 + 10 MB 滚动保留 30 天，`<app>-error.log` 只记 ERROR。
 
 ## 测试
+
+```bash
+./scripts/test.sh backend        # spotless + checkstyle + 测试
+./scripts/test.sh all            # 连前端一起测
+```
+
+或手动：
 
 ```bash
 ./mvnw test
 ```
 
-当前测试是 Spring Boot 上下文加载测试，需要可连接的 PostgreSQL 与已配置的数据源。
+**不读写开发库的业务表**。默认在同一 PostgreSQL 实例建临时 schema（`haven_test_<随机>`），
+JVM 退出时自动 `DROP`；也可用 `-Dhaven.test.mode=container` 走 Testcontainers。
+
+可用 `TEST_DB_URL` / `TEST_DB_USERNAME` / `TEST_DB_PASSWORD` 指定实例。详见
+[`../docs/testing.md`](../docs/testing.md)。
+
+```bash
+./mvnw spotless:check     # 格式
+./mvnw checkstyle:check   # 静态检查
+```
+
+## 已知限制
+
+| 限制 | 影响 |
+| --- | --- |
+| Sa-Token 会话在内存 | 重启掉线，多实例不共享（`sa_token` 表是死资产） |
+| 登录失败计数在内存 | 多实例下有效上限 = 实例数 × 配置值 |
+| 单用户设计 | 无注册接口，账号靠 SQL 创建 |
+| 部分写路径缺乐观锁 | 并发更新可能丢更新（标签、排序、条目） |
+| `/actuator/**` 不在拦截器范围 | 生产必须靠网关保护 |
+| 上传文件匿名可读 | 靠随机文件名保密 |

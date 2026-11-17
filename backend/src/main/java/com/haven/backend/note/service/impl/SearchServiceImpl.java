@@ -1,23 +1,33 @@
 package com.haven.backend.note.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.haven.backend.note.dto.NoteDtos.NotePage;
+import com.haven.backend.note.dto.NoteDtos.NoteSummary;
+import com.haven.backend.note.dto.NoteDtos.PublicNotePage;
+import com.haven.backend.note.dto.NoteDtos.PublicNoteSummary;
+import com.haven.backend.note.dto.NoteDtos.SearchResult;
+import com.haven.backend.note.dto.NoteDtos.TagSummary;
 import com.haven.backend.note.entity.NoteTags;
+import com.haven.backend.note.entity.NoteVisibility;
 import com.haven.backend.note.entity.Notes;
 import com.haven.backend.note.entity.Tags;
 import com.haven.backend.note.mapper.NoteTagsMapper;
 import com.haven.backend.note.mapper.NotesMapper;
 import com.haven.backend.note.mapper.TagsMapper;
 import com.haven.backend.note.service.SearchService;
-
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
-
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * 搜索实现。
+ * <p>
+ * 标签与笔记都用一次性批量查询，列表项复用 {@link NotesServiceImpl#toSummary} 的映射，
+ * 避免同一份拼装逻辑散落在多个类里。
+ */
 @Service
 @RequiredArgsConstructor
 public class SearchServiceImpl implements SearchService {
@@ -27,14 +37,14 @@ public class SearchServiceImpl implements SearchService {
     private final NoteTagsMapper noteTagsMapper;
 
     @Override
-    public Map<String, Object> searchPrivate(String userId, String q, int limit, int offset, String type) {
+    @Transactional(readOnly = true)
+    public SearchResult searchPrivate(String userId, String q, int limit, int offset, String type) {
         UUID uid = UUID.fromString(userId);
-        int lim = Math.min(limit, 100);
-        // String pattern = "%" + escapeLike(q) + "%";
+        int lim = Math.clamp(limit, 1, 100);
+        int off = Math.max(offset, 0);
 
-        // 搜索笔记
-        var noteWrapper = new LambdaQueryWrapper<Notes>()
-                .eq(Notes::getUserId, uid).isNull(Notes::getDeletedAt);
+        var noteWrapper =
+                new LambdaQueryWrapper<Notes>().eq(Notes::getUserId, uid).isNull(Notes::getDeletedAt);
         if ("title".equals(type)) {
             noteWrapper.like(Notes::getTitle, q);
         } else {
@@ -42,83 +52,65 @@ public class SearchServiceImpl implements SearchService {
         }
         long noteTotal = notesMapper.selectCount(noteWrapper);
         List<Notes> notes = notesMapper.selectList(
-                noteWrapper.orderByDesc(Notes::getUpdatedAt).last("LIMIT " + lim + " OFFSET " + offset));
+                noteWrapper.orderByDesc(Notes::getUpdatedAt).last("LIMIT " + lim + " OFFSET " + off));
 
-        List<Map<String, Object>> noteItems = notes.stream().map(n -> {
-            Map<String, Object> m = new LinkedHashMap<>();
-            m.put("id", n.getId().toString());
-            m.put("title", n.getTitle());
-            String c = n.getContent() != null ? n.getContent() : "";
-            m.put("content_preview", c.length() > 200 ? c.substring(0, 200) : c);
-            m.put("visibility", n.getVisibility());
-            m.put("published_at", n.getPublishedAt());
-            m.put("updated_at", n.getUpdatedAt());
-            m.put("tags", getNoteTags(n.getId()));
-            return m;
-        }).collect(Collectors.toList());
+        List<NoteSummary> noteItems =
+                notes.stream().map(NotesServiceImpl::toSummary).collect(Collectors.toList());
 
-        // 搜索标签
-        List<Tags> tags = tagsMapper.selectList(
-                new LambdaQueryWrapper<Tags>().eq(Tags::getUserId, uid).like(Tags::getName, q)
-                        .orderByAsc(Tags::getName));
-        List<Map<String, Object>> tagItems = tags.stream().map(t -> {
-            long count = noteTagsMapper
-                    .selectCount(new LambdaQueryWrapper<NoteTags>().eq(NoteTags::getTagId, t.getId()));
-            Map<String, Object> m = new LinkedHashMap<>();
-            m.put("id", t.getId().toString());
-            m.put("name", t.getName());
-            m.put("note_count", count);
-            return m;
-        }).collect(Collectors.toList());
+        List<Tags> tags = tagsMapper.selectList(new LambdaQueryWrapper<Tags>()
+                .eq(Tags::getUserId, uid)
+                .like(Tags::getName, q)
+                .orderByAsc(Tags::getName));
+        List<TagSummary> tagItems = tags.stream()
+                .map(t -> new TagSummary(
+                        t.getId(),
+                        t.getName(),
+                        noteTagsMapper.selectCount(
+                                new LambdaQueryWrapper<NoteTags>().eq(NoteTags::getTagId, t.getId())),
+                        t.getCreatedAt()))
+                .collect(Collectors.toList());
 
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("notes", Map.of("items", noteItems, "total", noteTotal));
-        result.put("tags", Map.of("items", tagItems, "total", tagItems.size()));
-        return result;
+        return new SearchResult(new NotePage(noteItems, noteTotal), tagItems, tagItems.size());
     }
 
     @Override
-    public Map<String, Object> searchPublic(String q, int limit, int offset) {
-        int lim = Math.min(limit, 100);
-        // 先查总数（不带 ORDER BY）
+    @Transactional(readOnly = true)
+    public PublicNotePage searchPublic(String q, int limit, int offset) {
+        int lim = Math.clamp(limit, 1, 100);
+        int off = Math.max(offset, 0);
+
         var countWrapper = new LambdaQueryWrapper<Notes>()
-                .eq(Notes::getVisibility, "public").isNotNull(Notes::getPublishedAt)
-                .isNull(Notes::getDeletedAt).like(Notes::getSearchText, q);
+                .eq(Notes::getVisibility, NoteVisibility.PUBLIC)
+                .isNotNull(Notes::getPublishedAt)
+                .isNull(Notes::getDeletedAt)
+                .like(Notes::getSearchText, q);
         long total = notesMapper.selectCount(countWrapper);
-        // 再查列表（带 ORDER BY 和分页）
+
         var listWrapper = new LambdaQueryWrapper<Notes>()
-                .eq(Notes::getVisibility, "public").isNotNull(Notes::getPublishedAt)
-                .isNull(Notes::getDeletedAt).like(Notes::getSearchText, q)
+                .eq(Notes::getVisibility, NoteVisibility.PUBLIC)
+                .isNotNull(Notes::getPublishedAt)
+                .isNull(Notes::getDeletedAt)
+                .like(Notes::getSearchText, q)
                 .orderByDesc(Notes::getPublishedAt)
-                .last("LIMIT " + lim + " OFFSET " + offset);
+                .last("LIMIT " + lim + " OFFSET " + off);
         List<Notes> notes = notesMapper.selectList(listWrapper);
 
-        List<Map<String, Object>> items = notes.stream().map(n -> {
-            Map<String, Object> m = new LinkedHashMap<>();
-            m.put("id", n.getId().toString());
-            m.put("title", n.getTitle());
-            String c = n.getContent() != null ? n.getContent() : "";
-            m.put("content_preview", c.length() > 200 ? c.substring(0, 200) : c);
-            m.put("published_at", n.getPublishedAt());
-            m.put("updated_at", n.getUpdatedAt());
-            m.put("tags", getNoteTags(n.getId()));
-            return m;
-        }).collect(Collectors.toList());
-        return Map.of("items", items, "total", total);
-    }
-
-    private List<Map<String, String>> getNoteTags(UUID noteId) {
-        List<NoteTags> rels = noteTagsMapper.selectList(
-                new LambdaQueryWrapper<NoteTags>().eq(NoteTags::getNoteId, noteId));
-        if (rels.isEmpty())
-            return List.of();
-        List<UUID> tagIds = rels.stream().map(NoteTags::getTagId).collect(Collectors.toList());
-        return tagsMapper.selectList(new LambdaQueryWrapper<Tags>().in(Tags::getId, tagIds))
-                .stream().map(t -> Map.of("id", t.getId().toString(), "name", t.getName()))
+        List<PublicNoteSummary> items = notes.stream()
+                .map(n -> new PublicNoteSummary(
+                        n.getId(),
+                        n.getTitle(),
+                        preview(n.getContent()),
+                        n.getPublishedAt(),
+                        n.getUpdatedAt(),
+                        List.of()))
                 .collect(Collectors.toList());
+        return new PublicNotePage(items, total);
     }
 
-    // private String escapeLike(String s) {
-    // return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
-    // }
+    private static String preview(String content) {
+        if (content == null) {
+            return "";
+        }
+        return content.length() > 200 ? content.substring(0, 200) : content;
+    }
 }

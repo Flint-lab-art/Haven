@@ -6,8 +6,8 @@
  * 也不提供历史版本入口——那个只在编辑页出现。
  */
 import { computed, ref, watch } from 'vue'
-import ConfirmDialog from '@/components/ConfirmDialog.vue'
-import EmptyDetail from '@/components/EmptyDetail.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import EmptyDetail from '@/components/common/EmptyDetail.vue'
 import { ApiError } from '@/api/client'
 import { listTrash, purgeNote, restoreNote, type TrashItem } from '@/api/notes'
 import { useUiStore } from '@/stores/ui'

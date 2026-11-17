@@ -7044,6 +7044,18 @@ select:focus-visible {
   background-color: var(--danger);
 }
 
+.ledger-dot--repay,
+.ledger-cat--repay {
+  --tone: #8e8e93;
+  background-color: #8e8e93;
+}
+
+.ledger-dot--token,
+.ledger-cat--token {
+  --tone: #5856d6;
+  background-color: #5856d6;
+}
+
 .ledger-dot--other,
 .ledger-cat--other {
   --tone: var(--label-3);
@@ -7057,6 +7069,8 @@ select:focus-visible {
 .ledger-cat--home,
 .ledger-cat--fun,
 .ledger-cat--health,
+.ledger-cat--repay,
+.ledger-cat--token,
 .ledger-cat--other {
   background: color-mix(in srgb, var(--tone) 14%, transparent);
 }
@@ -7127,6 +7141,13 @@ select:focus-visible {
   white-space: nowrap;
   font: var(--text-footnote);
   color: var(--label-2);
+}
+
+.ledger-parse__date {
+  flex: none;
+  font: var(--text-caption);
+  color: var(--label-3);
+  font-variant-numeric: tabular-nums;
 }
 
 .ledger-parse__amount,

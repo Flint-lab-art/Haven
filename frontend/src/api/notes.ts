@@ -58,6 +58,7 @@ export interface ListNotesQuery {
   tag_id?: string
   /** 传空字符串表示收件箱（folder_id IS NULL）；不传表示全部。 */
   folder_id?: string
+  include_trash?: boolean
 }
 
 export interface CreateNoteInput {
@@ -72,6 +73,8 @@ export interface UpdateNoteInput {
   content?: string
   tag_ids?: string[]
   folder_id?: string | null
+  /** 为 true 时把笔记移到根目录（folder_id 被忽略）。 */
+  clear_folder?: boolean
   sort_order?: number
 }
 
@@ -125,6 +128,7 @@ export function emptyTrash(): Promise<void> {
 export interface VersionSummary {
   id: string
   title: string
+  content_preview: string
   created_at: string
   content_size: number
 }
@@ -132,12 +136,12 @@ export interface VersionSummary {
 /** 单个历史版本的完整快照（docs/v2/api.md 3.2）。 */
 export interface VersionDetail {
   id: string
-  note_id: string
   title: string
   content: string
   folder_id: string | null
   tag_ids: string[]
   created_at: string
+  content_size: number
 }
 
 export function listVersions(noteId: string, limit = 50, offset = 0): Promise<ListResult<VersionSummary>> {

@@ -5,8 +5,8 @@
  * 沿用 v1 的「加载更多」分页，不做分页器；行距比首页宽松，字号回到 20px。
  */
 import { onMounted, ref } from 'vue'
-import PublicEmpty from '@/components/PublicEmpty.vue'
-import PublicNoteRow from '@/components/PublicNoteRow.vue'
+import PublicEmpty from '@/components/layout/PublicEmpty.vue'
+import PublicNoteRow from '@/components/layout/PublicNoteRow.vue'
 import { listPublicNotes, type PublicNoteSummary } from '@/api/notes'
 
 const PAGE_SIZE = 20
