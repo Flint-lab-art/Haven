@@ -6878,12 +6878,42 @@ select:focus-visible {
 
 .ledger-summary {
   display: grid;
-  grid-template-columns: minmax(200px, 0.85fr) minmax(0, 1.6fr);
-  gap: var(--sp-6);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-5);
   padding: var(--sp-5);
   border: 1px solid var(--sep);
   border-radius: var(--r-lg);
   background: var(--bg-elevated);
+}
+
+/* 三个数字：支出最大、收入次之、笔数最弱 */
+.ledger-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ledger-stat__label {
+  font: var(--text-caption);
+  color: var(--label-3);
+}
+
+.ledger-stat__value {
+  font: 600 26px/1.15 var(--font-ui);
+  color: var(--label);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ledger-stat__value--income {
+  color: var(--success);
+}
+
+.ledger-stat__skeleton {
+  display: block;
+  width: 96px;
+  height: 28px;
 }
 
 .ledger-total {
@@ -7201,7 +7231,7 @@ select:focus-visible {
 
 .ledger-entry {
   display: grid;
-  grid-template-columns: 46px 96px minmax(0, 1fr) 100px 30px 30px;
+  grid-template-columns: 46px 158px minmax(0, 1fr) 100px 30px 30px;
   align-items: center;
   gap: var(--sp-2);
   min-height: 48px;
@@ -7230,8 +7260,62 @@ select:focus-visible {
   font-variant-numeric: tabular-nums;
 }
 
+.ledger-entry__picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+/*
+ * 收支方向：两枚分段按钮。
+ *
+ * 做成按钮而不是下拉，是为了让「大分类 → 子分类」的主从关系可见：
+ * 左边是固定的两选一（支出/收入），右边才是跟着它变化的具体分类。
+ */
+.ledger-entry__type {
+  flex: none;
+  display: inline-flex;
+  gap: 1px;
+  padding: 2px;
+  background: var(--fill-2);
+  border-radius: 7px;
+}
+
+.ledger-entry__type-btn {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--label-3);
+  font: var(--text-caption);
+  line-height: 1;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.ledger-entry__type-btn:hover {
+  color: var(--label-2);
+}
+
+/* 选中态：支出用中性色、收入用成功色，和金额的正负色呼应 */
+.ledger-entry__type-btn.is-active {
+  background: var(--bg-elevated);
+  color: var(--label);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 10%);
+}
+
+.ledger-entry__type.is-income .ledger-entry__type-btn.is-active {
+  color: var(--success);
+}
+
 .ledger-entry__cat {
-  width: 90px;
+  flex: 1;
+  min-width: 0;
+  width: auto;
   min-height: 28px;
   height: 28px;
   padding: 2px 24px 2px 8px;
@@ -7347,12 +7431,8 @@ select:focus-visible {
   }
 
   .ledger-entry {
-    grid-template-columns: 40px minmax(0, 1fr) auto 28px 28px;
+    grid-template-columns: 40px minmax(0, 118px) minmax(0, 1fr) auto 28px 28px;
     gap: 6px;
-  }
-
-  .ledger-entry__cat {
-    width: 84px;
   }
 
   /* 窄屏放不下两项小计，改为上下堆叠 */
@@ -7856,4 +7936,127 @@ select:focus-visible {
 
 .ledger-quick-modal .field__hint {
   margin-bottom: var(--sp-3);
+}
+
+/* ── 分类占比：三种候选布局（临时预览用）─────────────── */
+.ledger-share {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+/* ① 环形 + 带进度条的排行 */
+.ledger-share__donut {
+  flex: none;
+  width: 132px;
+  height: 132px;
+}
+
+.ledger-share__list {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ledger-share__legend-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font: var(--text-caption);
+  color: var(--label-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 圆点紧挨文字会粘在一起，固定宽度并对齐 */
+.ledger-share__legend-row .ledger-dot {
+  flex: none;
+}
+
+.ledger-share__name {
+  color: var(--label);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ledger-share__pct {
+  margin-left: auto;
+  color: var(--label-3);
+}
+
+.ledger-share__amount {
+  min-width: 68px;
+  text-align: right;
+  color: var(--label);
+  font-weight: 500;
+}
+/* ② 堆叠条 + 图例 */
+/* ③ 环形 + 指标卡片 */
+.ledger-share--cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.ledger-share__cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-2);
+}
+
+.ledger-share__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: var(--sp-3);
+  border-radius: 10px;
+  background: var(--fill-2);
+  min-width: 0;
+}
+
+.ledger-share__stat-label {
+  font: var(--text-caption);
+  color: var(--label-3);
+}
+
+.ledger-share__stat-value {
+  font: var(--text-headline);
+  color: var(--label);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ledger-share__stat-sub {
+  font: var(--text-caption);
+  color: var(--label-3);
+  min-height: 1em;
+}
+
+.ledger-share__cards-main {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+  min-width: 0;
+}
+
+.ledger-share__list--compact {
+  gap: 6px;
+}
+
+@media (max-width: 640px) {
+  .ledger-share__cards-main {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ledger-share__cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

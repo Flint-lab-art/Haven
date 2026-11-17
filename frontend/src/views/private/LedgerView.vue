@@ -11,7 +11,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import LedgerEditDialog from '@/components/ledger/LedgerEditDialog.vue'
 import LedgerQuickDialog from '@/components/ledger/LedgerQuickDialog.vue'
-import LedgerDonutChart from '@/components/LedgerDonutChart.vue'
+import LedgerShareChart from '@/components/ledger/LedgerShareChart.vue'
 import LedgerTrendChart from '@/components/LedgerTrendChart.vue'
 import { ApiError } from '@/api/client'
 import { useLedgerData } from '@/composables/useLedgerData'
@@ -26,6 +26,8 @@ import {
 } from '@/api/ledger'
 import { groupByDay, relativeDayLabel } from '@/utils/ledger-group'
 import {
+  EXPENSE_CATEGORIES,
+  INCOME_CATEGORIES,
   LEDGER_CATEGORIES,
   categoriesForType,
   categoryTone,
@@ -90,9 +92,6 @@ const ranking = computed(() =>
 /** 当月每日走势；后端已按天补零。 */
 const dailyPoints = computed(() => summary.value?.daily ?? [])
 const donutLabel = computed(() => (rankType.value === 'income' ? '收入' : '支出'))
-const maxRankAmount = computed(() =>
-  Math.max(1, ...ranking.value.map((item) => item.amount_cents)),
-)
 const monthLabel = computed(() => {
   const [year, mon] = month.value.split('-')
   return `${year} 年 ${Number(mon)} 月`
@@ -158,6 +157,38 @@ async function onQuickCommit(items: QuickParseResult['items'], done: (ok: boolea
   } catch (err) {
     error.value = messageOf(err, '写入失败')
     done(false)
+  }
+}
+
+/**
+ * 设置收支方向（分段按钮点选）。
+ *
+ * 方向变了但分类还停在旧方向的白名单里（例如「餐饮」配 income），
+ * 后端会拒绝保存，所以这里同时把分类切到新方向下的第一个可选值。
+ */
+async function setEntryType(entry: LedgerEntry, nextType: 'expense' | 'income'): Promise<void> {
+  if (nextType === entry.type) return
+
+  // 注意：不能用 categoriesForType(nextType, entry.category)，它会把当前分类
+  // 当作「历史脏数据」补进列表末尾，导致「餐饮」在收入方向下仍是合法值。
+  // 切换方向时必须是该方向的干净白名单。
+  const allowed: LedgerCategory[] = nextType === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES
+  const nextCategory = allowed.includes(entry.category) ? entry.category : allowed[0]
+  if (!nextCategory) return
+
+  const previousType = entry.type
+  const previousCategory = entry.category
+  entry.type = nextType
+  entry.category = nextCategory
+  try {
+    const updated = await updateLedgerEntry(entry.id, { type: nextType, category: nextCategory })
+    applyEntry(updated)
+    notify(nextType === 'income' ? '已改为收入' : '已改为支出')
+    await loadSummary()
+  } catch (err) {
+    entry.type = previousType
+    entry.category = previousCategory
+    error.value = messageOf(err, '收支方向更新失败')
   }
 }
 
@@ -257,22 +288,46 @@ onBeforeUnmount(() => {
     </p>
     <p v-if="toast" class="notice notice--success ledger-notice">{{ toast }}</p>
 
+    <!--
+      月度汇总只保留三个数字。
+      分类排行原本也在这里，但它与下方「分类占比」展示的是同一份数据，
+      重复且让首屏必须滚动才能看到明细，所以合并进占比卡片。
+    -->
     <section class="ledger-summary" aria-label="月度汇总">
-      <div class="ledger-total">
-        <span class="ledger-total__label">{{ monthLabel }}支出</span>
-        <span v-if="loadingSummary && !summary" class="skeleton skeleton--title ledger-total__skeleton"></span>
-        <span v-else class="ledger-total__value">{{ formatYuan(summary?.total_expense_cents ?? 0) }}</span>
-        <span class="ledger-total__meta">
-          收入 {{ formatYuan(summary?.total_income_cents ?? 0) }}
-          <span aria-hidden="true">·</span>
-          {{ summary?.total_count ?? 0 }} 笔
+      <div class="ledger-stat">
+        <span class="ledger-stat__label">{{ monthLabel }}支出</span>
+        <span v-if="loadingSummary && !summary" class="skeleton skeleton--title ledger-stat__skeleton"></span>
+        <span v-else class="ledger-stat__value">{{ formatYuan(summary?.total_expense_cents ?? 0) }}</span>
+      </div>
+      <div class="ledger-stat">
+        <span class="ledger-stat__label">收入</span>
+        <span v-if="loadingSummary && !summary" class="skeleton skeleton--title ledger-stat__skeleton"></span>
+        <span v-else class="ledger-stat__value ledger-stat__value--income">
+          {{ formatYuan(summary?.total_income_cents ?? 0) }}
         </span>
       </div>
+      <div class="ledger-stat">
+        <span class="ledger-stat__label">笔数</span>
+        <span v-if="loadingSummary && !summary" class="skeleton skeleton--title ledger-stat__skeleton"></span>
+        <span v-else class="ledger-stat__value">{{ summary?.total_count ?? 0 }}</span>
+      </div>
+    </section>
 
-      <div class="ledger-ranking">
+    <!-- 统计图表：与上方汇总共用同一份数据，不再额外请求 -->
+    <section class="ledger-charts" aria-label="记账统计">
+      <div class="ledger-card">
         <div class="ledger-card-head">
-          <h2 class="ledger-card__title">分类排行</h2>
-          <div class="ledger-rank-toggle" role="tablist" aria-label="排行方向">
+          <h2 class="ledger-card__title">每日走势</h2>
+          <span class="muted">{{ monthLabel }}</span>
+        </div>
+        <p v-if="!dailyPoints.length" class="ledger-muted">这个月还没有记录。</p>
+        <LedgerTrendChart v-else :points="dailyPoints" />
+      </div>
+
+      <div class="ledger-card">
+        <div class="ledger-card-head">
+          <h2 class="ledger-card__title">分类占比</h2>
+          <div class="ledger-rank-toggle" role="tablist" aria-label="占比方向">
             <button
               type="button"
               class="ledger-rank-toggle__btn"
@@ -295,43 +350,7 @@ onBeforeUnmount(() => {
             </button>
           </div>
         </div>
-        <p v-if="!ranking.length" class="ledger-muted">
-          {{ rankType === 'income' ? '这个月还没有收入记录。' : '这个月还没有支出记录。' }}
-        </p>
-        <div v-for="item in ranking" :key="item.category" class="ledger-rank">
-          <span class="ledger-rank__name">
-            <i class="ledger-dot" :class="`ledger-dot--${categoryTone(item.category)}`" aria-hidden="true"></i>
-            {{ item.category }}
-          </span>
-          <span class="ledger-rank__track" aria-hidden="true">
-            <span
-              class="ledger-rank__bar"
-              :class="`ledger-dot--${categoryTone(item.category)}`"
-              :style="{ width: `${Math.max(6, (item.amount_cents / maxRankAmount) * 100)}%` }"
-            ></span>
-          </span>
-          <span class="ledger-rank__amount">{{ formatYuan(item.amount_cents) }}</span>
-        </div>
-      </div>
-    </section>
-
-    <!-- 统计图表：与上方汇总共用同一份数据，不再额外请求 -->
-    <section class="ledger-charts" aria-label="记账统计">
-      <div class="ledger-card">
-        <div class="ledger-card-head">
-          <h2 class="ledger-card__title">每日走势</h2>
-          <span class="muted">{{ monthLabel }}</span>
-        </div>
-        <p v-if="!dailyPoints.length" class="ledger-muted">这个月还没有记录。</p>
-        <LedgerTrendChart v-else :points="dailyPoints" />
-      </div>
-
-      <div class="ledger-card">
-        <div class="ledger-card-head">
-          <h2 class="ledger-card__title">分类占比</h2>
-          <span class="muted">按{{ donutLabel }}</span>
-        </div>
-        <LedgerDonutChart :items="ranking" :label="donutLabel" />
+        <LedgerShareChart :items="ranking" :label="donutLabel" />
       </div>
     </section>
 
@@ -391,21 +410,53 @@ onBeforeUnmount(() => {
           <div class="ledger-entry-list">
             <div v-for="entry in group.items" :key="entry.id" class="ledger-entry">
               <span class="ledger-entry__time">{{ timeOf(entry.occurred_at) }}</span>
-              <select
-                class="select ledger-entry__cat"
-                :class="`ledger-entry__cat--${categoryTone(entry.category)}`"
-                :value="entry.category"
-                :aria-label="`修改分类：${entry.note || entry.category}`"
-                @change="onCategoryChange(entry, $event)"
-              >
-                <option
-                  v-for="category in categoriesForType(entry.type, entry.category)"
-                  :key="category"
-                  :value="category"
+              <!--
+                两级选择：先定收支方向（分段按钮），再在该方向下选具体分类。
+                方向做成按钮而不是下拉，是因为「支出/收入」只有两个取值，
+                下拉要多点一次，且和右侧的分类下拉长得一样、看不出主次。
+              -->
+              <span class="ledger-entry__picker">
+                <span
+                  class="ledger-entry__type"
+                  :class="{ 'is-income': entry.type === 'income' }"
+                  role="group"
+                  :aria-label="`收支方向：${entry.note || entry.category}`"
                 >
-                  {{ category }}
-                </option>
-              </select>
+                  <button
+                    type="button"
+                    class="ledger-entry__type-btn"
+                    :class="{ 'is-active': entry.type === 'expense' }"
+                    :aria-pressed="entry.type === 'expense'"
+                    @click="setEntryType(entry, 'expense')"
+                  >
+                    支
+                  </button>
+                  <button
+                    type="button"
+                    class="ledger-entry__type-btn"
+                    :class="{ 'is-active': entry.type === 'income' }"
+                    :aria-pressed="entry.type === 'income'"
+                    @click="setEntryType(entry, 'income')"
+                  >
+                    收
+                  </button>
+                </span>
+                <select
+                  class="select ledger-entry__cat"
+                  :class="`ledger-entry__cat--${categoryTone(entry.category)}`"
+                  :value="entry.category"
+                  :aria-label="`修改分类：${entry.note || entry.category}`"
+                  @change="onCategoryChange(entry, $event)"
+                >
+                  <option
+                    v-for="category in categoriesForType(entry.type, entry.category)"
+                    :key="category"
+                    :value="category"
+                  >
+                    {{ category }}
+                  </option>
+                </select>
+              </span>
               <span class="ledger-entry__note" :title="entry.note">{{ entry.note || '—' }}</span>
               <span class="ledger-entry__amount" :class="{ 'is-income': entry.type === 'income' }">
                 {{ formatSignedYuan(entry.type, entry.amount_cents) }}
