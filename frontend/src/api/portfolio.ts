@@ -20,6 +20,8 @@ export interface PortfolioItem {
   /** 作品介绍正文（Markdown），仅详情接口返回，列表接口省略。 */
   content?: string
   sort_order: number
+  /** 是否出现在匿名作品集页；未公开即为草稿。 */
+  is_public: boolean
   repos: PortfolioRepo[]
 }
 
@@ -28,6 +30,7 @@ export interface CreateItemInput {
   description: string
   content?: string
   sort_order: number
+  is_public?: boolean
 }
 
 export interface UpdateItemInput {
@@ -35,6 +38,7 @@ export interface UpdateItemInput {
   description?: string
   content?: string
   sort_order?: number
+  is_public?: boolean
 }
 
 export interface CreateRepoInput {

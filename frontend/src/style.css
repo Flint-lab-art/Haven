@@ -7044,6 +7044,12 @@ select:focus-visible {
   background-color: var(--danger);
 }
 
+.ledger-dot--repay,
+.ledger-cat--repay {
+  --tone: #8e8e93;
+  background-color: #8e8e93;
+}
+
 .ledger-dot--other,
 .ledger-cat--other {
   --tone: var(--label-3);
@@ -7057,6 +7063,7 @@ select:focus-visible {
 .ledger-cat--home,
 .ledger-cat--fun,
 .ledger-cat--health,
+.ledger-cat--repay,
 .ledger-cat--other {
   background: color-mix(in srgb, var(--tone) 14%, transparent);
 }

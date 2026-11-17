@@ -2,6 +2,11 @@
 
 Haven 的前端：Vue 3 + TypeScript + Vite 单页应用。同一份构建产物同时服务公开站点和私有工作台，启动时根据域名选择路由表。
 
+**设计文档在 [`../docs/`](../docs/README.md)**——本文件只讲怎么跑、有哪些能力、有哪些约定。
+
+> **版本号规则与标准 SemVer 不同**，且需与后端保持一致。
+> 见 [`../docs/versioning.md`](../docs/versioning.md)。当前版本 `2.1.0`，与后端一致。
+
 ## 功能
 
 - **私有域**
@@ -10,6 +15,8 @@ Haven 的前端：Vue 3 + TypeScript + Vite 单页应用。同一份构建产物
   - 富文本编辑器：标题、列表、任务列表、表格、代码块（高亮 / 复制）、图片上传、折叠块、颜色、对齐、字数统计、斜杠菜单、气泡菜单
   - 自动保存（防抖 1 秒）、历史版本与 Diff、回收站、发布 / 撤回
   - 记账：多行输入解析预览（行首可写日期）、确认后按 `batch_id` 幂等写入、月度汇总与支出 / 收入分类排行、每日走势与分类占比图表、明细改分类 / 金额 / 时间
+    - 支出分类：餐饮 / 购物 / 交通 / 居家 / 娱乐 / 医疗 / **还款** / 未分类
+    - 收入分类：工资 / 奖金 / 报销 / 退款 / 红包 / 其他收入
   - 标签、作品集、记账、Issue、设置
 - **公开域**
   - 首页、全部笔记、笔记详情、作品集、作品详情、站内搜索
@@ -40,7 +47,16 @@ Haven 的前端：Vue 3 + TypeScript + Vite 单页应用。同一份构建产物
 
 ## 快速开始
 
+> **本地开发通常不需要单独起前端。** 构建时前端产物会被复制进
+> `backend/src/main/resources/static/`，后端同源托管，`./scripts/run.sh` 一条命令即可。
+> 只有需要前端热更新时才起 Vite。
+
 ```bash
+# 方式一：随后端一起跑（推荐日常使用）
+./scripts/build.sh frontend      # 构建一次，产物进 backend/src/main/resources/static/
+./scripts/run.sh                 # 只跑后端
+
+# 方式二：起 Vite 开发服务器（需要热更新时）
 cd frontend
 pnpm install
 pnpm dev
@@ -177,12 +193,22 @@ VITE_PRIVATE_HOST=note.example.com,www.example.com
 所有请求走 `src/api/client.ts`：
 
 - 路径一律使用相对 `/api/...`，不写死域名
+- **请求体自动转 camelCase**：`toCamelCaseKeys` 递归转换后再 `JSON.stringify`
+  （`{ tag_ids: [] }` → `{ tagIds: [] }`），所以 `api/*.ts` 里仍按 `snake_case` 书写
+- 响应是 `snake_case`（后端 Jackson 策略），类型定义按 `snake_case` 写
 - 返回 204 时为 `undefined`
 - 非 2xx 统一抛 `ApiError`，包含 `status`、`code`、`message`、`fields`
 - 401 默认触发全局登出回调；登录接口通过 `skipUnauthorizedHandler` 跳过
 - 列表响应类型为 `{ items: T[], total: number }`
 
 `src/api/` 只负责请求与类型定义，不保存状态；状态放在 Pinia store 或页面组件里。
+
+### 两个特殊形状
+
+| 接口 | 响应 |
+| --- | --- |
+| `GET /api/issues/{id}` | `{ issue, status_events }`；`api/issues.ts` 的 `getIssue()` 内部摊平成页面直接用的 `IssueDetail` |
+| `POST /api/ledger/entries/quick` | `{ batch, errors }`，注意不是扁平的批次对象 |
 
 ## 状态管理
 
@@ -224,28 +250,41 @@ VITE_PRIVATE_HOST=note.example.com,www.example.com
 ## 测试
 
 ```bash
+./scripts/test.sh frontend   # vue-tsc + vitest
+```
+
+或手动：
+
+```bash
 pnpm test         # 单次运行
 pnpm test:watch   # 监听模式
 ```
 
-测试使用 Vitest + jsdom，文件位于 `src/__tests__/*.test.ts`，覆盖路由、主题、快捷键、命令面板、Markdown 渲染、Diff、编辑器扩展等纯逻辑与路由行为。
+测试使用 Vitest + jsdom，文件位于 `src/__tests__/*.test.ts`（22 个文件、167 个用例），覆盖纯函数与路由行为：
+
+| 文件 | 覆盖 |
+| --- | --- |
+| `ledger.test.ts` | 分类数组与长度、色阶、金额格式化 / 解析 |
+| `diff.test.ts` | 版本 Diff |
+| `text-stats.test.ts` | 字数统计 |
+| `theme.test.ts` | 主题解析 |
+| `command-palette.test.ts` | 命令面板匹配 |
+
+> **新增分类要同步四处**：后端 `LedgerCategories`、数据库 CHECK 约束（新迁移）、
+> `api/ledger.ts` 的联合类型、`utils/ledger.ts` 的数组与色阶。前端这两处有测试守着。
 
 ## 构建与部署
 
 ```bash
-pnpm build
+./scripts/build.sh frontend      # 构建 + 复制到 backend/src/main/resources/static/
+./scripts/build.sh all           # 再打包成一个 jar
 ```
 
-产物在 `frontend/dist/`。生产环境由后端同源托管：
-
-```bash
-cd frontend
-pnpm build
-rm -rf ../backend/src/main/resources/static
-cp -r dist ../backend/src/main/resources/static
-```
+脚本会先清空 `static/`（避免旧哈希文件残留），再复制 `dist/` 内容。
+生产部署只需要分发 `backend/target/haven-2.1.0.jar` 一个文件。
 
 `vite.config.ts` 会把 `package.json` 的 `version` 注入为 `__APP_VERSION__`，设置页直接显示这个版本号。
+后端版本在 `backend/pom.xml`（当前 `2.1.0`），产物名为 `haven-2.1.0.jar`。
 
 构建时开启了路由懒加载，编辑器单独成块；`chunkSizeWarningLimit` 为 600 KB。
 

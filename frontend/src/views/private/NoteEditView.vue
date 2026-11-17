@@ -214,11 +214,12 @@ async function save(syncEditor = false): Promise<boolean> {
       return true
     }
 
+    const targetFolder = folderId.value
     const updated = await updateNote(noteId.value, {
       title: title.value,
       content: content.value,
       tag_ids: selectedTagIds.value,
-      folder_id: folderId.value,
+      ...(targetFolder ? { folder_id: targetFolder } : { clear_folder: true }),
     })
     note.value = updated
     lastSaved.value = pending
@@ -315,8 +316,8 @@ async function reloadTags(): Promise<void> {
 /**
  * 编辑页新建标签（TagDropdown 的 created 事件）。
  *
- * 标签只在本篇关联后才有意义：GET /api/tags 会删掉 0 引用的标签，
- * 所以先把它并入本地列表（避免立刻重拉时被清掉），再落到当前笔记上。
+ * 先把它并入本地列表（避免重拉前胶囊短暂消失），再落到当前笔记上。
+ * 后端已不再自动删 0 引用的标签。
  * 已保存过的笔记立刻 PATCH tag_ids；空白笔记等首次保存时随 createNote 一起提交。
  */
 async function onTagCreated(tag: Tag): Promise<void> {
@@ -343,7 +344,7 @@ async function onTagCreated(tag: Tag): Promise<void> {
   const tagKey = JSON.stringify(selectedTagIds.value)
   const newTagId = tag.id
   const revertTag = (): void => {
-    // 关联失败：把刚建的标签从本篇撤掉，它仍是 0 引用，重拉时也会被后端清掉
+    // 关联失败：把刚建的标签从本篇撤掉；标签本身保留，可在下次使用时再关联
     selectedTagIds.value = selectedTagIds.value.filter((id) => id !== newTagId)
     tags.value = tags.value.filter((item) => item.id !== newTagId)
     lastSaved.value = snapshot()

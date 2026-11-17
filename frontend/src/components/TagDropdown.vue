@@ -9,7 +9,7 @@
  *   - 回车可新建；空输入退格关闭面板；Esc / 点外部关闭。
  *
  * 新建的标签只属于当前这篇笔记：创建成功后通过 `created` 交给父组件立即挂载，
- * 本组件不重新拉取列表（GET /api/tags 会删掉 0 引用的标签，见 docs/v3/api.md）。
+ * 本组件不重新拉取列表，避免多余请求；标签本身由后端持久化，不会被自动清理。
  *
  * 标签语义跟随笔记生命周期（类思源）：不在这里做物理删除。
  */
@@ -127,8 +127,8 @@ async function submit(): Promise<void> {
     }
     // 先落选，再通知父组件挂载；父组件异常也不会把选中的标签丢掉
     emit('update:selected', [...props.selected, created.id])
-    // 只把新标签交给父组件挂到当前笔记上；不要在这里重新拉列表：
-    // GET /api/tags 会先删掉 0 引用的标签，此刻还没关联，拉回来会把刚建的删掉。
+    // 只把新标签交给父组件挂到当前笔记上；不要在这里重新拉列表，
+    // 否则会覆盖父组件维护的本地列表。
     emit('created', created)
     input.value = ''
     void nextTick(() => inputRef.value?.focus())

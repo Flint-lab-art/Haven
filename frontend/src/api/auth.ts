@@ -43,11 +43,15 @@ export function setupTotp(): Promise<TotpSetupResult> {
   return request<TotpSetupResult>('/api/auth/totp/setup', { method: 'POST' })
 }
 
-export function verifyTotp(secret: string, code: string): Promise<{ totp_enabled: boolean }> {
+export interface TotpStatus {
+  totp_enabled: boolean
+}
+
+export function verifyTotp(secret: string, code: string): Promise<TotpStatus> {
   return request('/api/auth/totp/verify', { method: 'POST', body: { secret, code } })
 }
 
-export function disableTotp(code: string): Promise<{ totp_enabled: boolean }> {
+export function disableTotp(code: string): Promise<TotpStatus> {
   return request('/api/auth/totp/disable', { method: 'POST', body: { code } })
 }
 

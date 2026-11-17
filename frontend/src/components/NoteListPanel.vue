@@ -818,7 +818,11 @@ async function persistFolderMove(
       updates.map((update) =>
         updateFolder(update.id, {
           sort_order: update.sort_order,
-          ...(update.parent_id !== undefined ? { parent_id: update.parent_id } : {}),
+          ...(update.parent_id !== undefined
+            ? update.parent_id === null
+              ? { clear_parent: true }
+              : { parent_id: update.parent_id }
+            : {}),
         }),
       ),
     )
@@ -877,7 +881,11 @@ async function persistNoteMove(
       updates.map((update) =>
         updateNote(update.id, {
           sort_order: update.sort_order,
-          ...(update.folder_id !== undefined ? { folder_id: update.folder_id } : {}),
+          ...(update.folder_id !== undefined
+            ? update.folder_id === null
+              ? { clear_folder: true }
+              : { folder_id: update.folder_id }
+            : {}),
         }),
       ),
     )

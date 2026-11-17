@@ -75,9 +75,9 @@ describe('记账路由', () => {
 
 describe('记账展示工具', () => {
   it('分类保持单层，支出与收入使用各自的大类', () => {
-    expect(EXPENSE_CATEGORIES).toEqual(['餐饮', '购物', '交通', '居家', '娱乐', '医疗', '未分类'])
+    expect(EXPENSE_CATEGORIES).toEqual(['餐饮', '购物', '交通', '居家', '娱乐', '医疗', '还款', '未分类'])
     expect(INCOME_CATEGORIES).toEqual(['工资', '奖金', '报销', '退款', '红包', '其他收入'])
-    expect(LEDGER_CATEGORIES).toHaveLength(13)
+    expect(LEDGER_CATEGORIES).toHaveLength(14)
     expect(categoriesForType('expense')).toEqual(EXPENSE_CATEGORIES)
     expect(categoriesForType('income')).toEqual(INCOME_CATEGORIES)
     // 老数据里方向与分类不匹配时，把原值补进选项，避免静默改分类
@@ -86,6 +86,7 @@ describe('记账展示工具', () => {
     expect(categoryTone('交通')).toBe('transit')
     expect(categoryTone('工资')).toBe('salary')
     expect(categoryTone('退款')).toBe('refund')
+    expect(categoryTone('还款')).toBe('repay')
     expect(categoryTone('未知')).toBe('other')
     // 图表用的颜色与列表色阶一一对应
     expect(categoryColor('餐饮')).toBe('var(--warning)')

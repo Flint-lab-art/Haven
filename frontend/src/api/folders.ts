@@ -11,6 +11,9 @@ export interface Folder {
   /** 是否为收件箱；固定在根目录第一位，不可删除、不可移动。 */
   is_inbox: boolean
   sort_order: number
+  created_at: string
+  updated_at: string
+  children: Folder[]
 }
 
 export interface CreateFolderInput {
@@ -22,6 +25,8 @@ export interface CreateFolderInput {
 export interface UpdateFolderInput {
   name?: string
   parent_id?: string | null
+  /** 为 true 时移到根目录（parent_id 被忽略）。 */
+  clear_parent?: boolean
   icon?: string | null
   sort_order?: number
 }

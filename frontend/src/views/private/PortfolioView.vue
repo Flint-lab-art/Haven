@@ -30,8 +30,8 @@ const error = ref('')
 const pendingItem = ref<PortfolioItem | null>(null)
 const deleting = ref(false)
 
-const draft = reactive({ title: '', description: '', content: '', sort_order: 0 })
-const newItem = reactive({ title: '', description: '', content: '', sort_order: 0 })
+const draft = reactive({ title: '', description: '', content: '', sort_order: 0, is_public: false })
+const newItem = reactive({ title: '', description: '', content: '', sort_order: 0, is_public: false })
 const repoDraft = reactive({ url: '', title: '', is_primary: false })
 
 const selected = computed(() => items.value.find((item) => item.id === ui.selectedPortfolioId) ?? null)
@@ -64,6 +64,7 @@ async function syncDraft(item: PortfolioItem | null): Promise<void> {
   draft.description = item.description
   draft.sort_order = item.sort_order
   draft.content = item.content ?? ''
+  draft.is_public = item.is_public
 
   try {
     const detail = await getPortfolioItem(item.id)
@@ -73,6 +74,7 @@ async function syncDraft(item: PortfolioItem | null): Promise<void> {
     draft.description = detail.description
     draft.content = detail.content ?? ''
     draft.sort_order = detail.sort_order
+    draft.is_public = detail.is_public
   } catch {
     // 拉详情失败时保留列表里的字段，正文留空不报错
   }
@@ -98,11 +100,13 @@ async function create(): Promise<void> {
       description: newItem.description,
       content: newItem.content,
       sort_order: Number(newItem.sort_order) || 0,
+      is_public: newItem.is_public,
     })
     newItem.title = ''
     newItem.description = ''
     newItem.content = ''
     newItem.sort_order = 0
+    newItem.is_public = false
     ui.selectPortfolio(created.id)
     ui.portfolioChanged()
     await load()
@@ -124,6 +128,7 @@ async function save(): Promise<void> {
       description: draft.description,
       content: draft.content,
       sort_order: Number(draft.sort_order) || 0,
+      is_public: draft.is_public,
     })
     ui.portfolioChanged()
     await load()
@@ -257,6 +262,10 @@ onMounted(load)
         <label class="field__label" for="item-order">排序（小的在前）</label>
         <input id="item-order" v-model.number="newItem.sort_order" class="input" type="number" />
       </div>
+      <label class="row" style="margin-top: 12px; gap: 8px; align-items: center">
+        <input id="item-public" v-model="newItem.is_public" type="checkbox" />
+        <span class="field__label">在公开作品集页展示</span>
+      </label>
 
       <div class="row" style="justify-content: flex-end; margin-top: 16px">
         <button class="btn" type="button" @click="ui.selectPortfolio(null)">取消</button>
@@ -298,6 +307,10 @@ onMounted(load)
           <label class="field__label" for="edit-order">排序</label>
           <input id="edit-order" v-model.number="draft.sort_order" class="input" type="number" />
         </div>
+        <label class="row" style="margin-top: 12px; gap: 8px; align-items: center">
+          <input id="edit-public" v-model="draft.is_public" type="checkbox" />
+          <span class="field__label">在公开作品集页展示</span>
+        </label>
 
         <div class="row" style="justify-content: space-between; margin-top: 16px">
           <button class="btn btn--danger btn--sm" type="button" @click="remove(selected)">删除作品</button>
