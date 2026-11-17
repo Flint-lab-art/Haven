@@ -1,5 +1,5 @@
 import { expect, test as base, type APIRequestContext, type Page } from '@playwright/test'
-import { execFileSync } from 'node:child_process'
+import { psql, SCHEMA } from './db'
 
 /**
  * E2E 共享夹具。
@@ -15,13 +15,6 @@ export const TEST_PASSWORD = 'e2e-password-123'
 
 /** 预生成的 BCrypt 哈希；改密码要同步改这里。 */
 const TEST_PASSWORD_HASH = '$2a$04$x7zXaN/18sMxL4mT37YaieUefx/zLJt0AWWZwb1BFLKoo53e07FaG'
-
-const DB_HOST = process.env.E2E_DB_HOST ?? '127.0.0.1'
-const DB_PORT = process.env.E2E_DB_PORT ?? '5432'
-const DB_USER = process.env.E2E_DB_USER ?? 'dev'
-const DB_PASSWORD = process.env.E2E_DB_PASSWORD ?? '123456'
-const DB_NAME = process.env.E2E_DB_NAME ?? 'dev_db'
-const SCHEMA = process.env.E2E_DB_SCHEMA ?? 'haven_e2e'
 
 /**
  * 清空业务表并重建测试账号。
@@ -57,11 +50,7 @@ export async function resetDatabase(): Promise<void> {
     insert into ${SCHEMA}.folders (user_id, parent_id, name, sort_order, is_inbox)
     select id, null, '收件箱', 0, true from ${SCHEMA}.users where username = '${TEST_USER}';
   `
-  execFileSync(
-    'psql',
-    ['-h', DB_HOST, '-p', DB_PORT, '-U', DB_USER, '-d', DB_NAME, '-v', 'ON_ERROR_STOP=1', '-c', sql],
-    { env: { ...process.env, PGPASSWORD: DB_PASSWORD }, stdio: 'pipe' },
-  )
+  psql(sql)
 }
 
 /** 用 UI 登录（不走 API，确保登录页本身被测到）。 */

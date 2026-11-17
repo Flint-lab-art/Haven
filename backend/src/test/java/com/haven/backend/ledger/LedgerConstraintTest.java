@@ -178,17 +178,84 @@ class LedgerConstraintTest {
     }
 
     private UUID insertInternal(long amountCents, String category, String type) {
+        // 先建用户与批次：V11 起 ledger_entries 有指向 users 和 ledger_batches 的外键，
+        // 测试数据必须自洽，否则任何插入都会因「父记录不存在」失败，
+        // 把真正的约束错误（金额、分类）淹没在外键错误里。
+        UUID userId = UUID.randomUUID();
+        String batchId = "constraint-test-" + UUID.randomUUID();
+        jdbc.update(
+                "INSERT INTO users (id, username, password_hash) VALUES (?::uuid, ?, ?)",
+                userId.toString(),
+                "constraint-" + userId,
+                "x");
+        jdbc.update("INSERT INTO ledger_batches (user_id, batch_id) VALUES (?::uuid, ?)", userId.toString(), batchId);
+
         LedgerEntries entry = new LedgerEntries()
                 .setId(UUID.randomUUID())
-                .setUserId(UUID.randomUUID())
+                .setUserId(userId)
                 .setType(type)
                 .setAmountCents(amountCents)
                 .setCategory(category)
                 .setNote("")
                 .setOccurredAt(OffsetDateTime.now())
-                .setBatchId("constraint-test-" + UUID.randomUUID())
+                .setBatchId(batchId)
                 .setCreatedAt(OffsetDateTime.now());
         entriesMapper.insert(entry);
         return entry.getId();
+    }
+
+    @Test
+    @DisplayName("删除用户会级联清理记账数据（V11 外键）")
+    void deletingUserCascadesLedgerData() {
+        inRolledBackTransaction(() -> {
+            UUID userId = UUID.randomUUID();
+            jdbc.update(
+                    "INSERT INTO users (id, username, password_hash) VALUES (?::uuid, ?, ?)",
+                    userId.toString(),
+                    "cascade-" + userId,
+                    "x");
+            jdbc.update("INSERT INTO ledger_batches (user_id, batch_id) VALUES (?::uuid, 'b1')", userId.toString());
+            jdbc.update("""
+                    INSERT INTO ledger_entries (user_id, type, amount_cents, category, occurred_at, batch_id)
+                    VALUES (?::uuid, 'expense', 100, '餐饮', now(), 'b1')
+                    """, userId.toString());
+            jdbc.update(
+                    "INSERT INTO ledger_aliases (user_id, alias, category) VALUES (?::uuid, '午餐', '餐饮')",
+                    userId.toString());
+
+            jdbc.update("DELETE FROM users WHERE id = ?::uuid", userId.toString());
+
+            // 三张表都必须被清空，否则就是遗留的孤儿数据
+            assertEquals(0, count("SELECT count(*) FROM ledger_entries WHERE user_id = ?::uuid", userId));
+            assertEquals(0, count("SELECT count(*) FROM ledger_batches WHERE user_id = ?::uuid", userId));
+            assertEquals(0, count("SELECT count(*) FROM ledger_aliases WHERE user_id = ?::uuid", userId));
+            return null;
+        });
+    }
+
+    @Test
+    @DisplayName("明细不能引用不存在的批次")
+    void entryRequiresExistingBatch() {
+        assertThrows(
+                DataIntegrityViolationException.class,
+                () -> inRolledBackTransaction(() -> {
+                    UUID userId = UUID.randomUUID();
+                    jdbc.update(
+                            "INSERT INTO users (id, username, password_hash) VALUES (?::uuid, ?, ?)",
+                            userId.toString(),
+                            "orphan-" + userId,
+                            "x");
+                    // 建了用户但没建批次 b-missing
+                    jdbc.update("""
+                            INSERT INTO ledger_entries (user_id, type, amount_cents, category, occurred_at, batch_id)
+                            VALUES (?::uuid, 'expense', 100, '餐饮', now(), 'b-missing')
+                            """, userId.toString());
+                    return null;
+                }));
+    }
+
+    private int count(String sql, UUID userId) {
+        Integer n = jdbc.queryForObject(sql, Integer.class, userId.toString());
+        return n == null ? 0 : n;
     }
 }

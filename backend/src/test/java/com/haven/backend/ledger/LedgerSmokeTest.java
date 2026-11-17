@@ -29,6 +29,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * 记账模块的端到端冒烟测试（service 层，跑真实数据库）。
+ * <p>
+ * V11 起 ledger_* 三表都有指向 users 的外键，所以每个用例必须先建一个真实用户，
+ * 不能再随便用随机 UUID 当 userId。
+ * <p>
+ * 整个类跑在测试事务里，结束时统一回滚，不会污染数据库。
+ */
 @SpringBootTest
 @org.springframework.test.context.ActiveProfiles("test")
 @Transactional
@@ -40,9 +48,12 @@ class LedgerSmokeTest {
     @Autowired
     private Clock clock;
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbc;
+
     @Test
     void quickParseHandlesCategoriesAmountsAndIncome() {
-        String userId = UUID.randomUUID().toString();
+        String userId = newUser();
         seedAliases(userId);
 
         QuickParseResult result = ledgerService.quickParse(userId, """
@@ -81,7 +92,7 @@ class LedgerSmokeTest {
 
     @Test
     void incomeAliasesResolveToIncomeCategories() {
-        String userId = UUID.randomUUID().toString();
+        String userId = newUser();
         ledgerService.upsertAlias(userId, new UpsertLedgerAliasRequest("薪水", "工资"));
 
         QuickParseResult result = ledgerService.quickParse(userId, """
@@ -105,7 +116,7 @@ class LedgerSmokeTest {
 
     @Test
     void quickParseSupportsLeadingDates() {
-        String userId = UUID.randomUUID().toString();
+        String userId = newUser();
         seedAliases(userId);
 
         LocalDate today = LocalDate.now(clock);
@@ -135,7 +146,7 @@ class LedgerSmokeTest {
 
     @Test
     void quickParseSupportsAmountFormats() {
-        String userId = UUID.randomUUID().toString();
+        String userId = newUser();
         seedAliases(userId);
 
         QuickParseResult result = ledgerService.quickParse(userId, """
@@ -154,7 +165,7 @@ class LedgerSmokeTest {
 
     @Test
     void batchIsIdempotentSummaryAndPatchWork() {
-        String userId = UUID.randomUUID().toString();
+        String userId = newUser();
         seedAliases(userId);
 
         QuickParseResult parsed = ledgerService.quickParse(userId, """
@@ -227,7 +238,7 @@ class LedgerSmokeTest {
 
     @Test
     void quickCommitParsesAndWritesInOneCall() {
-        String userId = UUID.randomUUID().toString();
+        String userId = newUser();
         seedAliases(userId);
 
         LedgerQuickCommitDto result = ledgerService.quickCommit(userId, new QuickCommitRequest("""
@@ -265,5 +276,12 @@ class LedgerSmokeTest {
         ledgerService.upsertAlias(userId, new UpsertLedgerAliasRequest("晚饭", "餐饮"));
         ledgerService.upsertAlias(userId, new UpsertLedgerAliasRequest("网购", "购物"));
         ledgerService.upsertAlias(userId, new UpsertLedgerAliasRequest("房租", "居家"));
+    }
+
+    /** 建一个真实用户并返回 id：外键要求 ledger_* 的 user_id 必须存在。 */
+    private String newUser() {
+        String id = UUID.randomUUID().toString();
+        jdbc.update("INSERT INTO users (id, username, password_hash) VALUES (?::uuid, ?, ?)", id, "smoke-" + id, "x");
+        return id;
     }
 }
