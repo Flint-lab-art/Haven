@@ -147,6 +147,32 @@ notesMapper.update(
 
 由 `note/NullFieldUpdateTest` 守着；新增"清空某个字段"的写操作时，照着它补一个用例。
 
+### 2.8.2 `readOnly = true` 只能给纯查询
+
+`@Transactional(readOnly = true)` 会让 PostgreSQL 把整个事务设为只读，
+里面任何 UPDATE 都会抛 `cannot execute UPDATE in a read-only transaction`（SQL state 25006），
+最终表现为 **500**。
+
+踩过的坑：`AuthServiceImpl.loginPrecheck` 看着是「校验逻辑」就标了只读，
+但它内部会写两类数据，只有特定分支才触发：
+
+| 内部写入 | 触发条件 | 是否抛异常 |
+| --- | --- | --- |
+| `AuditRecorder.record`（登录失败审计） | 密码错误 | 否——审计是"尽力而为"，内部 `catch (RuntimeException)` 吞掉，**静默失败** |
+| `TrustedDeviceService.isTrusted`（刷新 last_used_at） | 设备已授信 | **是**——直接 500 |
+
+判断标准：**方法体（含它调用到的所有 service）只要可能写库，就不能标 readOnly**。
+不确定时用 `@Transactional`，读写事务没有副作用，只是少了只读优化。
+
+由 `contract/ReadOnlyTransactionTest` 守着。注意它的写法：
+
+```java
+// 必须挂起测试事务，否则外层读写事务会把内层 readOnly 当提示忽略，测不出问题
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
+```
+
+而且要挑**会真正抛异常的写入路径**；审计这类有 catch 兜底的写入在只读事务下只是静默失败。
+
 ### 2.9 常量
 
 ```java

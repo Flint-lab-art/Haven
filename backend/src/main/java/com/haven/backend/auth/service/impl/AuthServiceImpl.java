@@ -115,8 +115,15 @@ public class AuthServiceImpl implements AuthService {
     /** 登录第二步的校验结果。 */
     record TotpPrecheck(UUID pendingId, String userId, LoginResponse body, boolean trustDevice, String userAgent) {}
 
-    /** 校验用户名密码；需要第二步时返回 totpRequired=true，由调用方写入待验证记录。 */
-    @Transactional(readOnly = true)
+    /**
+     * 校验用户名密码；需要第二步时返回 totpRequired=true，由调用方写入待验证记录。
+     * <p>
+     * 这里<b>不能</b>标 {@code @Transactional(readOnly = true)}：方法内部会写库 ——
+     * 登录失败要记审计事件，{@code isTrusted} 会删除过期授信设备并刷新 last_used_at。
+     * PostgreSQL 在只读事务里执行 UPDATE 会直接报
+     * {@code cannot execute UPDATE in a read-only transaction}（SQL state 25006）。
+     */
+    @Transactional
     public LoginPrecheck loginPrecheck(LoginRequest req, String ip, String ua, String trustedDeviceToken) {
         String attemptKey =
                 LoginAttemptLimiter.LOGIN_PREFIX + req.username().trim().toLowerCase(Locale.ROOT);
