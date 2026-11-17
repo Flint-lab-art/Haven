@@ -25,15 +25,13 @@ import {
   type Folder,
 } from '@/api/folders'
 import { deleteNote, listNotes, publishNote, unpublishNote, updateNote, type NoteSummary } from '@/api/notes'
+import { useTreeDrag } from '@/composables/useTreeDrag'
 import { useUiStore } from '@/stores/ui'
 import { uploadImage } from '@/api/uploads'
 
 import {
-  folderDropPosition,
   folderIndent,
   isFolderDescendant,
-  isInteractiveDragTarget,
-  noteDropPosition,
 } from '@/utils/tree'
 
 /** 分页上限 100，内部循环取完所有笔记。 */
@@ -44,18 +42,26 @@ type Row =
   | { kind: 'folder'; folder: Folder; depth: number }
   | { kind: 'note'; note: NoteSummary; depth: number }
 
-type DragState =
-  | { kind: 'folder'; id: string }
-  | { kind: 'note'; id: string }
-
-type DropTarget =
-  | { kind: 'folder'; id: string; position: 'before' | 'after' | 'inside' }
-  | { kind: 'note'; id: string; position: 'before' | 'after' }
-  | { kind: 'root' }
-
 const route = useRoute()
 const router = useRouter()
 const ui = useUiStore()
+
+// 拖拽状态机：与数据无关，单独放在 composable 里便于测试
+const {
+  dragState,
+  dropTarget,
+  isDragging,
+  isDrop,
+  startFolderDrag,
+  startNoteDrag,
+  clearDrag,
+  onFolderDragOver,
+  onNoteDragOver,
+  onRootDragOver,
+} = useTreeDrag(
+  () => folders.value,
+  () => busy.value,
+)
 
 const folders = ref<Folder[]>([])
 const notes = ref<NoteSummary[]>([])
@@ -68,8 +74,6 @@ const expanded = ref<Set<string>>(new Set())
 const selectedFolder = ref<string | null>(null)
 
 /** 当前拖拽中的节点与可放置位置。 */
-const dragState = ref<DragState | null>(null)
-const dropTarget = ref<DropTarget | null>(null)
 
 const menuFolderId = ref<string | null>(null)
 /** undefined = 未在创建；null = 建在根目录；字符串 = 建在该文件夹下。 */
@@ -528,114 +532,6 @@ function onDocumentKeydown(event: KeyboardEvent): void {
 }
 
 /* ---------------- 拖拽 ---------------- */
-
-function isDragging(kind: DragState['kind'], id: string): boolean {
-  return dragState.value?.kind === kind && dragState.value.id === id
-}
-
-function isDrop(
-  kind: DropTarget['kind'],
-  id: string | null,
-  position?: 'before' | 'after' | 'inside',
-): boolean {
-  const target = dropTarget.value
-  if (!target || target.kind !== kind) return false
-  if (kind === 'root') return true
-  if ('id' in target && target.id !== id) return false
-  return position === undefined || ('position' in target && target.position === position)
-}
-
-function startFolderDrag(event: DragEvent, folder: Folder): void {
-  if (folder.is_inbox || busy.value || isInteractiveDragTarget(event.target)) {
-    event.preventDefault()
-    return
-  }
-  dragState.value = { kind: 'folder', id: folder.id }
-  dropTarget.value = null
-  if (event.dataTransfer) {
-    event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.setData('text/plain', `folder:${folder.id}`)
-  }
-}
-
-function startNoteDrag(event: DragEvent, note: NoteSummary): void {
-  if (busy.value || isInteractiveDragTarget(event.target)) {
-    event.preventDefault()
-    return
-  }
-  dragState.value = { kind: 'note', id: note.id }
-  dropTarget.value = null
-  if (event.dataTransfer) {
-    event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.setData('text/plain', `note:${note.id}`)
-  }
-}
-
-function clearDrag(): void {
-  dragState.value = null
-  dropTarget.value = null
-}
-
-function onFolderDragOver(event: DragEvent, folder: Folder): void {
-  const drag = dragState.value
-  if (!drag) return
-  event.preventDefault()
-  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
-
-  if (drag.kind === 'note') {
-    dropTarget.value = { kind: 'folder', id: folder.id, position: 'inside' }
-    return
-  }
-
-  if (drag.id === folder.id || isFolderDescendant(folders.value, drag.id, folder.id)) {
-    dropTarget.value = null
-    return
-  }
-
-  // 收件箱固定根目录第一位，不参与“拖到它前面/后面”的排序；
-  // 拖到它上面一律视为拖进收件箱。
-  if (folder.is_inbox) {
-    dropTarget.value = { kind: 'folder', id: folder.id, position: 'inside' }
-    return
-  }
-
-  dropTarget.value = {
-    kind: 'folder',
-    id: folder.id,
-    position: folderDropPosition(
-      event.clientY,
-      (event.currentTarget as HTMLElement).getBoundingClientRect(),
-    ),
-  }
-}
-
-function onNoteDragOver(event: DragEvent, note: NoteSummary): void {
-  if (dragState.value?.kind !== 'note') {
-    dropTarget.value = null
-    return
-  }
-  if (dragState.value.id === note.id) {
-    dropTarget.value = null
-    return
-  }
-  event.preventDefault()
-  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
-  dropTarget.value = {
-    kind: 'note',
-    id: note.id,
-    position: noteDropPosition(
-      event.clientY,
-      (event.currentTarget as HTMLElement).getBoundingClientRect(),
-    ),
-  }
-}
-
-function onRootDragOver(event: DragEvent): void {
-  if (!dragState.value) return
-  event.preventDefault()
-  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
-  dropTarget.value = { kind: 'root' }
-}
 
 function siblingFolders(parentId: string | null, excludeId?: string): Folder[] {
   return (childrenMap.value.get(parentId) ?? []).filter((folder) => folder.id !== excludeId)
