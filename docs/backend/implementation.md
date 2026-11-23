@@ -175,4 +175,54 @@ private UUID userId;
 4. 前端 `api/bookmark.ts` + 路由 + 页面
 5. 需要的话在 `SaTokenConfigure` 的排除列表加匿名路径（默认什么都不加）
 6. 文档：`docs/` 补一节，`backend/README.md` 的 API 表补行
-7. 新表加进 `frontend/e2e/start-server.mjs` 的 `E2E_TABLES` 与 `fixtures.ts` 的清理 SQL
+7. 新表加进 `frontend/e2e/fixtures.ts` 的 `resetDatabase()` 清理 SQL（表被删掉时也要同步删）
+
+## 备份与告警（`scripts/backup_*.sh`）
+
+`scripts/backup_haven.sh` / `scripts/backup_vaultwarden.sh` 是服务器上的 cron 脚本，**不进构建、不参与门禁**，
+改完只需要 `bash -n` 加一次手工跑。
+
+三条不变量，改脚本时不要破坏：
+
+1. **成功静默，失败才通知**。成功路径完全不产生 Bark 请求，所以「手机没响」本身就是好消息。
+2. **失败时绝不提前 `exit`**。早退会让通知发不出去；所有步骤用 `fail` 累积，最后统一判断。
+3. **`exit` 码只反映备份本身**。Bark 发不出去（无网络 / key 过期）只写日志，不改退出码——否则
+   cron 的监控会把「通知失败」误判成「备份失败」，反过来又是双重噪音。
+
+### 配置
+
+设备 key 不写进脚本（脚本可能进版本库）。放到备份目录下的 `bark.env`，权限 `600`：
+
+```bash
+# /home/ops/backup/bark.env
+BARK_KEY=你的设备key
+# BARK_URL=https://bark.day.app    # 自建 bark-server 时改这里
+BARK_GROUP=Haven·备份
+# 通知图标（绝对 URL，PNG/JPEG；iOS 不解 SVG）
+BARK_ICON=https://你的域名/apple-touch-icon.png
+```
+
+cron 不继承登录环境，所以路径是写死的 `${LOCAL_BACKUP_DIR}/bark.env`，不依赖 shell 环境变量。
+`BARK_ENV_FILE` 可以覆盖位置（测试用）。
+
+### 通知分级
+
+| 情况 | `level` | `call` | 理由 |
+| --- | --- | --- | --- |
+| 首次或第 2 次失败 | `timeSensitive` | — | 可能是临时抖动（挂载慢、网络），专注模式下也能看到但不吵 |
+| 连续 ≥ 3 次失败 | `critical` | `1` | 备份链已经坏了，需要立刻处理；`critical` 需在 App 内授权，否则自动降级 |
+
+连续次数**从日志里数**，不引入状态文件：`fail_streak` 扫 `backup_*.log`，遇到「结束（成功）」清零。
+因此手工修好后跑一次成功，计数就归零，不需要额外清理。
+
+### 与早期版本的差异
+
+| 行为 | 之前 | 现在 |
+| --- | --- | --- |
+| 挂载失败 | `exit 1`，本地也不备份 | 降级为仅本地备份，同时判失败并通知 |
+| 清理时机 | 每次都清 | 仅成功时清，失败时保留上一份好数据 |
+| 上传失败 | 清理仍会跑 | 跳过清理（否则可能删掉远端最后一份可用备份） |
+| `curl` 缺失 | 静默失败 | 启动时 `command -v` 检查并计入失败环节 |
+
+> 注意：脚本里的 `pg_dump -w` 表示**不提示密码**，所以 `~/.pgpass` 或 peer 认证必须已经配好，
+> 否则 cron 里会直接失败（这正是通知要抓的情况之一）。

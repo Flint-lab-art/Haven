@@ -8,7 +8,7 @@
  * - 折叠状态由 ui store 管理并持久化到 localStorage。
  */
 import { computed, ref, watch } from 'vue'
-import { PopoverContent, PopoverPortal, PopoverRoot } from 'reka-ui'
+import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
@@ -173,21 +173,26 @@ watch(
 
     <PopoverRoot v-model:open="userMenuOpen">
     <div class="sidebar__user">
-      <button
-        class="user-trigger"
-        type="button"
-        :data-tip="mini ? '账户' : undefined"
-        :aria-expanded="userMenuOpen"
-        aria-haspopup="menu"
-        aria-label="账户菜单"
-      >
-        <span class="avatar" aria-hidden="true">{{ initial }}</span>
-        <span class="sidebar__user-info">
-          <span>{{ auth.username ?? '未登录' }}</span>
-          <span class="muted">个人空间</span>
-        </span>
-        <ChevronUp class="user-trigger__chevron" aria-hidden="true" />
-      </button>
+      <!-- 触发按钮必须包在 PopoverTrigger 里：否则它只是个普通 button，
+           aria-expanded 永远是 false，点了没有任何反应。
+           PopoverTrigger 自带 onClick 与 aria-expanded / aria-controls，
+           这里不要再手写同名属性，避免覆盖它算出的值。 -->
+      <PopoverTrigger as-child>
+        <button
+          class="user-trigger"
+          type="button"
+          :data-tip="mini ? '账户' : undefined"
+          aria-haspopup="menu"
+          aria-label="账户菜单"
+        >
+          <span class="avatar" aria-hidden="true">{{ initial }}</span>
+          <span class="sidebar__user-info">
+            <span>{{ auth.username ?? '未登录' }}</span>
+            <span class="muted">个人空间</span>
+          </span>
+          <ChevronUp class="user-trigger__chevron" aria-hidden="true" />
+        </button>
+      </PopoverTrigger>
 
       <!-- 向上弹出的用户菜单：定位与关闭逻辑交给 Reka Popover -->
       <PopoverPortal>

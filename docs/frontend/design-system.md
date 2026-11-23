@@ -94,3 +94,28 @@
 | 全局提示条 | `@/composables/useToast` + `components/common/ToastHost.vue` |
 
 换皮时只换 class，不换行为组件；换行为时只换 Reka 的 Root，不动 class。
+
+### 浮层必须有触发锚点
+
+`Popover` / `DropdownMenu` 是「点某个东西、贴着它弹一层」的控件，**锚点本身就是语义的一部分**：
+
+```vue
+<PopoverRoot v-model:open="open">
+  <PopoverTrigger as-child>
+    <button class="user-trigger">…</button>
+  </PopoverTrigger>
+  <PopoverPortal>
+    <PopoverContent class="user-menu">…</PopoverContent>
+  </PopoverPortal>
+</PopoverRoot>
+```
+
+漏掉 `PopoverTrigger` 时，那个 `<button>` 只是一个普通的、没有 `onClick` 的按钮：语法合法、
+`vue-tsc` 不报错，运行时**点了毫无反应**，而且 `aria-expanded` 永远是 `false`（踩过：侧栏账户菜单）。
+
+- `PopoverTrigger` 自己会设 `onClick` / `aria-expanded` / `aria-controls` / `data-state`，
+  不要在子元素上再手写这几个属性，会覆盖它算出的值；需要别的语义（如 `aria-haspopup="menu"`）可以保留。
+- 开合相关的副作用（打开后聚焦输入框、关闭时清空）用 `watch(open, …)`，不要在手写 click 里做。
+- `Dialog` / `AlertDialog` 没有这条限制：它们常由父组件的 `v-if` 或 `:open` 驱动，本来就不需要 Trigger。
+
+`scripts/check-component-imports.mjs` 会检查这条规则。

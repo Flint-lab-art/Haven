@@ -4,6 +4,10 @@
 // vue-tsc 不报，只有运行期才会露馅。
 import fs from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+/** 相对脚本自身定位，这样从仓库根目录或 frontend/ 下调用都一样。 */
+const FRONTEND_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 const BUILTINS = new Set([
   'Transition',
@@ -23,8 +27,11 @@ function walk(dir) {
   )
 }
 
-const files = walk('src').filter((file) => file.endsWith('.vue'))
+const files = walk(path.join(FRONTEND_ROOT, 'src')).filter((file) => file.endsWith('.vue'))
 let problems = 0
+
+/** 报错里显示相对 frontend/ 的路径，两处调用点输出一致。 */
+const rel = (file) => path.relative(FRONTEND_ROOT, file)
 
 for (const file of files) {
   const source = fs.readFileSync(file, 'utf8')
@@ -56,9 +63,40 @@ for (const file of files) {
 
   if (unknown.size > 0) {
     problems += 1
-    console.log(`${file}: 模板用到但未 import -> ${[...unknown].join(', ')}`)
+    console.log(`${rel(file)}: 模板用到但未 import -> ${[...unknown].join(', ')}`)
   }
 }
 
 console.log(`checked ${files.length} .vue files; problems: ${problems}`)
-process.exit(problems > 0 ? 1 : 0)
+
+/*
+ * 第二类检查：Popover / DropdownMenu 必须有触发锚点。
+ *
+ * 迁移到 Reka 时出现过这种错：<PopoverRoot> 里放了 Panel 和一个普通 <button>，
+ * 但那个 button 没包进 <PopoverTrigger>。它不是语法错误（button 本身合法），
+ * vue-tsc 也不管，运行时就是「点了没反应」——aria-expanded 永远 false。
+ *
+ * 为什么只查这两类：Popover 是「点某个东西、贴着它弹一层」的控件，锚点本身就是
+ * 语义的一部分，没有 Trigger/Anchor 就一定是漏了。Dialog / AlertDialog 不一样，
+ * 它们常由父组件的 v-if 或 :open 驱动（确认框、表单弹窗），没有 Trigger 是正常的。
+ */
+const ANCHORED_ROOTS = [
+  { root: 'PopoverRoot', anchor: ['PopoverTrigger', 'PopoverAnchor'] },
+  { root: 'DropdownMenuRoot', anchor: ['DropdownMenuTrigger'] },
+]
+let triggerProblems = 0
+
+for (const file of files) {
+  const source = fs.readFileSync(file, 'utf8')
+  for (const { root, anchor } of ANCHORED_ROOTS) {
+    if (!source.includes(`<${root}`)) continue
+    if (anchor.some((tag) => source.includes(`<${tag}`))) continue
+    triggerProblems += 1
+    console.log(
+      `${rel(file)}: <${root}> 缺少 ${anchor.map((t) => `<${t}>`).join(' 或 ')}，点了不会有反应`,
+    )
+  }
+}
+
+console.log(`trigger check; problems: ${triggerProblems}`)
+process.exit(problems > 0 || triggerProblems > 0 ? 1 : 0)

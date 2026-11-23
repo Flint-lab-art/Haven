@@ -93,8 +93,9 @@ run_frontend() {
 
   # vue-tsc 不检查模板里的未知标签：组件漏 import 会被当成原生标签静默渲染
   # （踩过：MobileStats 的 DialogOverlay 变成常驻遮罩，整页变灰点不动）。
-  info "组件导入检查（模板里的 PascalCase 标签必须有 import）"
-  node scripts/check-component-imports.mjs || { err "有组件在模板里使用但没有 import"; EXIT_CODE=1; }
+  # 同一个脚本还查 Popover/DropdownMenu 有没有触发锚点（踩过：用户菜单点了没反应）。
+  info "组件导入与浮层锚点检查（模板标签必须有 import；Popover 必须有 Trigger）"
+  node scripts/check-component-imports.mjs || { err "组件导入检查未通过（缺 import 或缺 Popover 触发锚点）"; EXIT_CODE=1; }
 
   info "类型检查（vue-tsc）"
   pnpm exec vue-tsc -b || { err "类型检查失败"; EXIT_CODE=1; }

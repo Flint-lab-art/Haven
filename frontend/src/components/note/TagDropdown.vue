@@ -13,8 +13,8 @@
  *
  * 标签语义跟随笔记生命周期（类思源）：不在这里做物理删除。
  */
-import { computed, nextTick, ref } from 'vue'
-import { PopoverContent, PopoverPortal, PopoverRoot } from 'reka-ui'
+import { computed, nextTick, ref, watch } from 'vue'
+import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka-ui'
 import { ApiError } from '@/api/client'
 import { createTag, type Tag } from '@/api/tags'
 
@@ -80,21 +80,20 @@ function toggleSelected(id: string): void {
   emit('update:selected', next)
 }
 
-async function openPanel(): Promise<void> {
-  open.value = !open.value
-  error.value = ''
-  if (open.value) {
-    input.value = ''
-    await nextTick()
-    inputRef.value?.focus()
-  }
-}
-
 function closePanel(): void {
   open.value = false
-  input.value = ''
-  error.value = ''
 }
+
+/** 开合由 PopoverTrigger 负责，这里只做随之而来的副作用。 */
+watch(open, (next) => {
+  error.value = ''
+  if (next) {
+    input.value = ''
+    void nextTick(() => inputRef.value?.focus())
+  } else {
+    input.value = ''
+  }
+})
 
 /** 从面板点选：加入后保持面板展开，方便连续挑。 */
 function pick(id: string): void {
@@ -182,17 +181,17 @@ defineExpose({
       </span>
       </TransitionGroup>
 
-      <button
-        ref="buttonRef"
-        class="tag-dropdown__trigger"
-        type="button"
-        :aria-expanded="open"
-        aria-haspopup="listbox"
-        @click="openPanel"
-      >
+      <PopoverTrigger as-child>
+        <button
+          ref="buttonRef"
+          class="tag-dropdown__trigger"
+          type="button"
+          aria-haspopup="listbox"
+        >
         <span aria-hidden="true">{{ open ? '×' : '+' }}</span>
         {{ open ? '收起' : '添加标签' }}
-      </button>
+        </button>
+      </PopoverTrigger>
     </div>
 
     <!-- 下拉面板：定位与「点外部关闭」交给 Reka Popover，外观仍是自己的类 -->
