@@ -33,8 +33,10 @@ export async function resetDatabase(): Promise<void> {
     delete from issue.issue_status_events;
     delete from issue.issues;
     delete from ledger.ledger_entries;
-    delete from ledger.ledger_batches;
-    delete from ledger.ledger_aliases;
+    delete from ledger.ledger_budgets;
+    delete from ledger.ledger_accounts;
+    -- ledger_categories 由 V18/V19 迁移预置种子数据，不能清空，
+    -- 否则依赖「餐饮 · 午餐」这类固定分类的用例会找不到分类。
     delete from trusted_devices;
     delete from pending_totp;
     delete from sa_token;

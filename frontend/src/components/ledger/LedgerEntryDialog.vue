@@ -171,7 +171,11 @@ async function submit(): Promise<void> {
         <!-- 账户 -->
         <label class="field">
           <span class="field__label">{{ isTransfer ? '转出账户' : '账户' }}</span>
-          <select v-model="accountId" class="select" aria-label="账户">
+          <select
+            v-model="accountId"
+            class="select"
+            :aria-label="isTransfer ? '转出账户' : '账户'"
+          >
             <option :value="null" disabled>请选择</option>
             <option v-for="acc in activeAccounts" :key="acc.id" :value="acc.id">
               {{ acc.name }}（{{ accountTypeLabel(acc.type) }}）

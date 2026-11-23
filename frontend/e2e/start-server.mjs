@@ -1,17 +1,16 @@
 #!/usr/bin/env node
 /**
- * E2E 启动脚本：准备一个隔离的表空间，然后起一个完整的后端实例。
+ * E2E 启动脚本：准备一个隔离的数据库，然后起一个完整的后端实例。
  *
  * 隔离原则：**绝不使用开发库里的业务表**。
- * 用 PostgreSQL schema 隔离而不是独立数据库，原因：
- * 开发账号（dev）通常没有 CREATE DATABASE 权限，但在自己库里有 CREATE SCHEMA 权限。
- * schema 与数据库在「表、索引、外键」层面完全隔离，效果一样，且不需要管理员介入。
+ * 每次运行都会 DROP + CREATE 独立数据库 `haven_e2e_db`，Flyway 在空库里跑一遍全部迁移，
+ * 迁移结果与真实部署完全一致。
  *
- * 每次运行都会 DROP + CREATE 独立数据库 `haven_e2e_db`，Flyway 在空库里跑一遍全部迁移。
- *
- * 为什么不再用 schema 隔离：V16 起业务表分在 note / issue / ledger，
+ * 为什么是独立数据库而不是 schema：V16 起业务表分在 note / issue / ledger，
  * 而 PostgreSQL schema 不能嵌套——在 `haven_e2e` schema 里跑 `CREATE SCHEMA note`
  * 会把 module schema 建到 dev_db 顶层，污染开发库。
+ *
+ * 注意：重建数据库需要账号有 CREATEDB 权限，见 docs/testing.md。
  *
  * 可用环境变量覆盖：
  *   E2E_DB_HOST / E2E_DB_PORT / E2E_DB_USER / E2E_DB_PASSWORD / E2E_DB_NAME
@@ -39,32 +38,6 @@ const DB_PASSWORD = process.env.E2E_DB_PASSWORD ?? '123456'
 const DB_NAME = process.env.E2E_DB_NAME ?? 'dev_db'
 const E2E_DB = process.env.E2E_DB_NAME ?? 'haven_e2e_db'
 const PORT = process.env.E2E_PORT ?? '18099'
-
-/**
- * 后端起服务前要清空的表（顺序：子表在前）。
- *
- * 表名带模块 schema 前缀：V16 起业务表分到 note / issue / ledger，
- * public 只留认证类公共表。夹具每次重置数据也复用这份清单。
- */
-export const E2E_TABLES = [
-  'note.note_tags',
-  'note.note_versions',
-  'note.notes',
-  'note.folders',
-  'note.tags',
-  'issue.issue_status_events',
-  'issue.issues',
-  'ledger.ledger_entries',
-  'ledger.ledger_batches',
-  'ledger.ledger_aliases',
-  'trusted_devices',
-  'pending_totp',
-  'sa_token',
-  'login_logs',
-  'audit_events',
-  'tokens',
-  'users',
-]
 
 /** 在指定库里执行一段 SQL。 */
 function psql(sql, database = DB_NAME) {

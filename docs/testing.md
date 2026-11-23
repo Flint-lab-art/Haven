@@ -244,14 +244,19 @@ E2E **不连开发库，也不连 Vite dev server**：
 | 项 | 做法 | 原因 |
 | --- | --- | --- |
 | 被测应用 | `java -jar` 起打包后的后端（自带前端静态资源） | 测真实部署形态：同源、无代理、静态托管一致 |
-| 数据隔离 | 独立 schema `haven_e2e`，每次运行 DROP 重建 | 不需要 CREATE DATABASE 权限，且与 `dev_db` 完全隔离 |
+| 数据隔离 | 独立数据库 `haven_e2e_db`，每次运行 DROP + CREATE 重建 | V16 后模块 schema 不能嵌套，只能靠独立库隔离 |
 | 数据库 | 默认 `127.0.0.1:5432` / `dev` / `123456` | 用 `E2E_DB_*` 覆盖 |
 | 端口 | `18099` | 用 `E2E_PORT` 覆盖 |
 | 浏览器来源 | `.npmrc` 里 `PLAYWRIGHT_DOWNLOAD_HOST` 指向 npmmirror | 官方 CDN 在国内经常超时 |
 
-`e2e/start-server.mjs` 负责建 schema 并拉起后端，由 Playwright 的 `webServer` 自动管理生命周期。
+`e2e/start-server.mjs` 负责重建数据库并拉起后端，由 Playwright 的 `webServer` 自动管理生命周期。
 `e2e/fixtures.ts` 在每个用例前清空业务表并重建测试账号（`e2e-user` / `e2e-password-123`，BCrypt cost 4）。
-清单见 `start-server.mjs` 的 `E2E_TABLES`——**新增表要记得加进去**，否则上个用例的数据会漏到下一个用例。
+清理清单直接写在 `fixtures.ts` 的 `resetDatabase()` 里——**新增表要记得加进去**，否则上个用例的数据会漏到下一个用例。
+
+两条容易踩的坑：
+
+- **不能清 `ledger.ledger_categories`**：分类是 V18/V19 迁移预置的种子数据，清掉后依赖「餐饮 · 午餐」这类固定分类的用例会全线失败。只清用例产生的账户、预算与流水。
+- **表被迁移删掉后要同步删清理语句**：V20 删了 `ledger_batches` / `ledger_aliases`，清理 SQL 若还留着会整轮夹具崩溃（每个用例都从这一步开始，所以是全红而不是个别失败）。
 
 所有用例都访问 `http://localhost:18099`：只有一张路由表，不存在"换 hostname 换站点"的分支。
 
@@ -324,7 +329,8 @@ pnpm --dir frontend exec playwright test --repeat-each=2
 - [ ] 涉及金额：断言分，不断言元
 - [ ] 涉及分类/枚举：与常量表一致性测试
 - [ ] 新增迁移：能在空库跑通（测试会自动验证）
-- [ ] 新增表：把表名加进 `frontend/e2e/start-server.mjs` 的 `E2E_TABLES` 与 `fixtures.ts` 的清理 SQL
+- [ ] 新增表：把表名加进 `frontend/e2e/fixtures.ts` 的 `resetDatabase()` 清理 SQL
+- [ ] 删除表：同步删掉 `resetDatabase()` 里对应语句，否则夹具整轮失败
 - [ ] 新增/修改 `@RequestBody` DTO：在 `RequestBodyContractTest` 固定一份实际请求 JSON
 - [ ] 新页面或新交互：在 `frontend/e2e/` 加一条对应用例（造数据走 `e2e/api.ts`，断言走界面）
 

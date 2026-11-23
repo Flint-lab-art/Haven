@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { psql, scalar, SCHEMA } from './db'
+import { psql, scalar } from './db'
 import { expect, test, TEST_PASSWORD, TEST_USER } from './fixtures'
 
 /**
@@ -118,14 +118,14 @@ const TRUSTED_TOKEN_HASH = createHash('sha256').update(TRUSTED_TOKEN).digest('he
 
 function createTrustedDevice(userId: string): void {
   psql(`
-    insert into ${SCHEMA}.trusted_devices (user_id, device_name, token_hash, expires_at)
+    insert into public.trusted_devices (user_id, device_name, token_hash, expires_at)
     values ('${userId}', 'E2E 测试设备', '${TRUSTED_TOKEN_HASH}', now() + interval '30 days');
   `)
 }
 
 /** 库里实际剩下几条授信设备。 */
 function countTrustedDevices(): number {
-  return scalar(`select count(*) from ${SCHEMA}.trusted_devices`)
+  return scalar('select count(*) from public.trusted_devices')
 }
 
 async function currentUserId(page: import('@playwright/test').Page): Promise<string> {
