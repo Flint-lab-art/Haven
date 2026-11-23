@@ -7,7 +7,8 @@
  *
  * `l` 是「进去看看」，`Enter` 才是「就存这里」——两者语义不同，不要合并。
  */
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
+import { DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui'
 import type { Folder } from '@/api/folders'
 import { Folder as FolderIcon } from 'lucide-vue-next'
 
@@ -146,13 +147,6 @@ function onKeydown(event: KeyboardEvent): void {
   }
 }
 
-function onPointerDown(event: PointerEvent): void {
-  if (!props.open) return
-  const target = event.target as Node | null
-  if (dialogRef.value && target && dialogRef.value.contains(target)) return
-  emit('cancel')
-}
-
 watch(
   () => props.open,
   (open) => {
@@ -161,37 +155,28 @@ watch(
       currentId.value = null
       resetActive()
       void nextTick(() => dialogRef.value?.focus())
-      document.addEventListener('pointerdown', onPointerDown, true)
-    } else {
-      document.removeEventListener('pointerdown', onPointerDown, true)
     }
   },
 )
-
-onMounted(() => {
-  if (props.open) document.addEventListener('pointerdown', onPointerDown, true)
-})
-
-onBeforeUnmount(() => {
-  document.removeEventListener('pointerdown', onPointerDown, true)
-})
 </script>
 
 <template>
-  <div v-if="open" class="folder-pick-backdrop" role="presentation">
-    <div
-      ref="dialogRef"
-      class="folder-pick"
-      role="dialog"
-      aria-modal="true"
-      aria-label="选择文件夹"
-      tabindex="-1"
-      @keydown="onKeydown"
-    >
-      <header class="folder-pick__head">
-        <h2 class="folder-pick__title">选择文件夹</h2>
-        <p class="folder-pick__path">{{ breadcrumb }}</p>
-      </header>
+  <DialogRoot :open="open" @update:open="(value: boolean) => !value && emit('cancel')">
+    <DialogPortal>
+      <DialogOverlay class="folder-pick-backdrop" />
+      <DialogContent
+        ref="dialogRef"
+        class="folder-pick"
+        tabindex="-1"
+        @keydown="onKeydown"
+      >
+        <header class="folder-pick__head">
+          <DialogTitle class="folder-pick__title">选择文件夹</DialogTitle>
+          <DialogDescription class="sr-only">
+            用 j/k 移动，l 进入文件夹，h 返回上级，Enter 确认，Esc 取消。
+          </DialogDescription>
+          <p class="folder-pick__path">{{ breadcrumb }}</p>
+        </header>
 
       <div class="folder-pick__columns">
         <!-- 左列：当前目录的内容，j/k 在这里移动，Enter 确认高亮项 -->
@@ -231,8 +216,9 @@ onBeforeUnmount(() => {
         <span><kbd>l</kbd> 进入</span>
         <span><kbd>h</kbd> 上级</span>
         <span><kbd>Enter</kbd> 存到这里</span>
-        <span><kbd>Esc</kbd> 取消</span>
-      </footer>
-    </div>
-  </div>
+          <span><kbd>Esc</kbd> 取消</span>
+        </footer>
+      </DialogContent>
+    </DialogPortal>
+  </DialogRoot>
 </template>

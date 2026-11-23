@@ -15,6 +15,7 @@ import {
   type Account,
   type AccountType,
 } from '@/api/ledger'
+import { toast } from '@/composables/useToast'
 import { accountTypeLabel, formatYuan, parseYuanToCents } from '@/utils/ledger'
 import AccountIconPicker from '@/components/ledger/AccountIconPicker.vue'
 import AccountAvatar from '@/components/ledger/AccountAvatar.vue'
@@ -22,7 +23,6 @@ import AccountAvatar from '@/components/ledger/AccountAvatar.vue'
 const accounts = ref<Account[]>([])
 const loading = ref(true)
 const error = ref('')
-const toast = ref('')
 
 /** 表单状态：editingId 为 null 表示新建。 */
 const formOpen = ref(false)
@@ -97,13 +97,12 @@ async function submit(): Promise<void> {
 
     if (editingId.value) {
       await updateAccount(editingId.value, payload)
-      toast.value = '账户已更新'
+      toast.success('账户已更新')
     } else {
       await createAccount(payload)
-      toast.value = '账户已创建'
+      toast.success('账户已创建')
     }
     resetForm()
-    setTimeout(() => (toast.value = ''), 2000)
     await load()
   } catch (err) {
     error.value = err instanceof ApiError ? err.message : '保存失败'
@@ -154,7 +153,6 @@ onMounted(load)
     </div>
 
     <p v-if="error" class="notice notice--error ledger-notice">{{ error }}</p>
-    <p v-if="toast" class="notice notice--success ledger-notice">{{ toast }}</p>
 
     <!-- 新建表单 -->
     <section v-if="formOpen" class="panel panel--pad ledger-account-form">

@@ -147,7 +147,7 @@ onMounted(load)
         <div
           class="m-total__fill"
           :class="{ 'm-total__fill--over': overBudget }"
-          :style="{ width: usedPercent + '%' }"
+          :style="{ transform: `scaleX(${usedPercent / 100})` }"
         ></div>
       </div>
       <p class="m-total__meta">

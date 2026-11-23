@@ -478,6 +478,9 @@ onBeforeUnmount(() => {
         />
       </div>
 
+      <!-- 行进出用 transition-group：删除/新建时给一条 120ms 的淡出淡入，
+           不加高度动画（树是高频操作，动高度会抖） -->
+      <TransitionGroup name="tree-row-fade">
       <template v-for="row in rows" :key="row.kind === 'folder' ? `f-${row.folder.id}` : `n-${row.note.id}`">
         <!-- 文件夹行 -->
         <template v-if="row.kind === 'folder'">
@@ -600,6 +603,7 @@ onBeforeUnmount(() => {
           @dragend="clearDrag"
         />
       </template>
+      </TransitionGroup>
 
       <!-- 拖到树的最下方：文件夹回根目录，笔记进收件箱 -->
       <div

@@ -7,7 +7,8 @@
  * - Mini 模式只留居中图标与头像，悬停显示 Tooltip；
  * - 折叠状态由 ui store 管理并持久化到 localStorage。
  */
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { PopoverContent, PopoverPortal, PopoverRoot } from 'reka-ui'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
@@ -38,25 +39,9 @@ const initial = computed(() => (auth.username ?? 'H').slice(0, 1).toUpperCase())
 const mini = computed(() => ui.sidebarMini)
 
 const userMenuOpen = ref(false)
-const userArea = ref<HTMLElement | null>(null)
-
-function toggleUserMenu(): void {
-  userMenuOpen.value = !userMenuOpen.value
-}
 
 function closeUserMenu(): void {
   userMenuOpen.value = false
-}
-
-function onDocumentPointerDown(event: PointerEvent): void {
-  if (!userMenuOpen.value) return
-  const target = event.target as Node | null
-  if (target && userArea.value?.contains(target)) return
-  closeUserMenu()
-}
-
-function onDocumentKeydown(event: KeyboardEvent): void {
-  if (event.key === 'Escape') closeUserMenu()
 }
 
 async function signOut(): Promise<void> {
@@ -77,15 +62,7 @@ watch(
   () => closeUserMenu(),
 )
 
-onMounted(() => {
-  document.addEventListener('pointerdown', onDocumentPointerDown)
-  document.addEventListener('keydown', onDocumentKeydown)
-})
-
-onBeforeUnmount(() => {
-  document.removeEventListener('pointerdown', onDocumentPointerDown)
-  document.removeEventListener('keydown', onDocumentKeydown)
-})
+// 点外部 / Esc 交给 Reka Popover；折叠或换页时仍然主动收起，避免菜单悬在半空
 </script>
 
 <template>
@@ -194,7 +171,8 @@ onBeforeUnmount(() => {
       <span>回收站</span>
     </RouterLink>
 
-    <div ref="userArea" class="sidebar__user">
+    <PopoverRoot v-model:open="userMenuOpen">
+    <div class="sidebar__user">
       <button
         class="user-trigger"
         type="button"
@@ -202,7 +180,6 @@ onBeforeUnmount(() => {
         :aria-expanded="userMenuOpen"
         aria-haspopup="menu"
         aria-label="账户菜单"
-        @click="toggleUserMenu"
       >
         <span class="avatar" aria-hidden="true">{{ initial }}</span>
         <span class="sidebar__user-info">
@@ -212,7 +189,9 @@ onBeforeUnmount(() => {
         <ChevronUp class="user-trigger__chevron" aria-hidden="true" />
       </button>
 
-      <div v-if="userMenuOpen" class="user-menu" role="menu" aria-label="账户">
+      <!-- 向上弹出的用户菜单：定位与关闭逻辑交给 Reka Popover -->
+      <PopoverPortal>
+        <PopoverContent class="user-menu" side="top" align="start" :side-offset="6" @open-auto-focus.prevent>
         <RouterLink :to="{ name: 'settings' }" class="user-menu__item" role="menuitem" @click="closeUserMenu">
           <Settings aria-hidden="true" />
           设置
@@ -222,7 +201,9 @@ onBeforeUnmount(() => {
           <LogOut aria-hidden="true" />
           退出登录
         </button>
-      </div>
+        </PopoverContent>
+      </PopoverPortal>
     </div>
+    </PopoverRoot>
   </nav>
 </template>

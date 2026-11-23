@@ -81,8 +81,8 @@ watch(
     <p v-if="error" class="notice notice--error" style="margin: 0 16px 12px">{{ error }}</p>
 
     <div v-if="!searched" class="detail-empty" style="min-height: 40svh">
-      <p class="detail-empty__title">输入关键词开始搜索</p>
-      <p class="detail-empty__text">支持标题、正文与标签，2 个字以上效果最好。</p>
+      <p class="detail-empty__title">还没有搜索关键词</p>
+      <p class="detail-empty__text">支持标题、正文与标签，两个字以上更准。</p>
     </div>
 
     <template v-else>
@@ -104,8 +104,8 @@ watch(
       </div>
 
       <div v-else-if="noteHits.length === 0" class="detail-empty" style="min-height: 32svh">
-        <p class="detail-empty__title">没有匹配的笔记</p>
-        <p class="detail-empty__text">换个关键词试试。</p>
+        <p class="detail-empty__title">没有找到匹配的笔记</p>
+        <p class="detail-empty__text">换个关键词，或少写几个字再试。</p>
       </div>
 
       <div v-else class="note-list">

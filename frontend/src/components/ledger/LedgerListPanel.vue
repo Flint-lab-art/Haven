@@ -104,8 +104,8 @@ function openEntry(entry: { id: string }): void {
       </div>
 
       <div v-else-if="dayGroups.length === 0" class="ledger-list-hint">
-        <p class="empty__title">这个月还没有记录</p>
-        <p class="empty__text">点右侧「记一笔」开始。</p>
+        <p class="empty__title">这个月还没有记账</p>
+        <p class="empty__text">点右上角「记一笔」，或者到「设置 · 账户」先建一个账户。</p>
       </div>
 
       <template v-else>

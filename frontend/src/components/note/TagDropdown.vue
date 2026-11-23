@@ -13,7 +13,8 @@
  *
  * 标签语义跟随笔记生命周期（类思源）：不在这里做物理删除。
  */
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
+import { PopoverContent, PopoverPortal, PopoverRoot } from 'reka-ui'
 import { ApiError } from '@/api/client'
 import { createTag, type Tag } from '@/api/tags'
 
@@ -35,7 +36,6 @@ const error = ref('')
 /** 刚在本组件里创建、父组件列表还没反映出来的标签，用于让胶囊立刻可见。 */
 const optimistic = ref<Tag[]>([])
 
-const root = ref<HTMLElement | null>(null)
 const inputRef = ref<HTMLInputElement | null>(null)
 const buttonRef = ref<HTMLButtonElement | null>(null)
 
@@ -150,16 +150,7 @@ function onBackspace(): void {
   if (input.value === '') closePanel()
 }
 
-/** 点组件外部关闭面板。 */
-function onDocumentPointerDown(event: PointerEvent): void {
-  if (!open.value) return
-  const target = event.target as Node | null
-  if (target && root.value?.contains(target)) return
-  closePanel()
-}
-
-onMounted(() => document.addEventListener('pointerdown', onDocumentPointerDown))
-onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocumentPointerDown))
+// 点外部关闭交给 Reka Popover；Esc 仍由输入框自己处理（关闭面板而不是关整个浮层）
 
 defineExpose({
   /** 供父组件聚焦（例如快捷键触发时）。 */
@@ -168,9 +159,11 @@ defineExpose({
 </script>
 
 <template>
-  <div ref="root" class="tag-dropdown">
+  <PopoverRoot v-model:open="open">
+    <div class="tag-dropdown">
     <!-- 已选标签 + 唯一的操作入口 -->
     <div class="tag-dropdown__bar">
+      <TransitionGroup name="tag">
       <span
         v-for="tag in selectedTags"
         :key="tag.id"
@@ -187,6 +180,7 @@ defineExpose({
           ×
         </button>
       </span>
+      </TransitionGroup>
 
       <button
         ref="buttonRef"
@@ -201,8 +195,10 @@ defineExpose({
       </button>
     </div>
 
-    <!-- 下拉面板 -->
-    <div v-if="open" class="tag-dropdown__panel" role="listbox">
+    <!-- 下拉面板：定位与「点外部关闭」交给 Reka Popover，外观仍是自己的类 -->
+    <PopoverPortal>
+      <PopoverContent class="tag-dropdown__panel" align="end" :side-offset="6" @open-auto-focus.prevent>
+        <div role="listbox">
       <input
         ref="inputRef"
         v-model="input"
@@ -246,6 +242,9 @@ defineExpose({
           </button>
         </li>
       </ul>
+        </div>
+      </PopoverContent>
+    </PopoverPortal>
     </div>
-  </div>
+  </PopoverRoot>
 </template>

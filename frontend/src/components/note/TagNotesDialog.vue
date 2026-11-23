@@ -4,7 +4,16 @@
  *
  * 只读：列出引用该标签的笔记，点标题跳转对应笔记。
  */
-import { onBeforeUnmount, ref, watch } from 'vue'
+import { ref, watch } from 'vue'
+import {
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogOverlay,
+  DialogPortal,
+  DialogRoot,
+  DialogTitle,
+} from 'reka-ui'
 import { ApiError } from '@/api/client'
 import { listTagNotes, type Tag } from '@/api/tags'
 import type { NoteSummary } from '@/api/notes'
@@ -25,7 +34,6 @@ const emit = defineEmits<{
 const notes = ref<NoteSummary[]>([])
 const loading = ref(false)
 const error = ref('')
-const dialogRef = ref<HTMLElement | null>(null)
 
 async function load(): Promise<void> {
   const tag = props.tag
@@ -46,48 +54,34 @@ async function load(): Promise<void> {
   }
 }
 
-function onPointerDown(event: PointerEvent): void {
-  if (!props.open) return
-  const target = event.target as Node | null
-  if (dialogRef.value && target && dialogRef.value.contains(target)) return
-  emit('close')
-}
-
-function onKeydown(event: KeyboardEvent): void {
-  if (event.key === 'Escape' && props.open) emit('close')
-}
-
+// 点外部 / Esc / 焦点陷阱交给 Reka Dialog；这里只关心「打开时拉数据、关闭时清空」
 watch(
   () => [props.open, props.tag?.id] as const,
   ([open]) => {
     if (open) {
       void load()
-      document.addEventListener('pointerdown', onPointerDown, true)
-      document.addEventListener('keydown', onKeydown)
     } else {
       notes.value = []
       error.value = ''
-      document.removeEventListener('pointerdown', onPointerDown, true)
-      document.removeEventListener('keydown', onKeydown)
     }
   },
 )
-
-onBeforeUnmount(() => {
-  document.removeEventListener('pointerdown', onPointerDown, true)
-  document.removeEventListener('keydown', onKeydown)
-})
 </script>
 
 <template>
-  <div v-if="open && tag" class="modal-backdrop" role="presentation">
-    <div ref="dialogRef" class="modal tag-notes-modal" role="dialog" aria-modal="true" :aria-label="tag.name">
-      <header class="tag-notes-modal__head">
-        <h2 class="tag-notes-modal__title">{{ tag.name }}</h2>
-        <button class="icon-btn" type="button" aria-label="关闭" @click="emit('close')">
-          <X aria-hidden="true" />
-        </button>
-      </header>
+  <DialogRoot :open="open && Boolean(tag)" @update:open="(value: boolean) => !value && emit('close')">
+    <DialogPortal v-if="tag">
+      <DialogOverlay class="modal-backdrop" />
+      <DialogContent class="modal tag-notes-modal">
+        <header class="tag-notes-modal__head">
+          <DialogTitle class="tag-notes-modal__title">{{ tag.name }}</DialogTitle>
+          <DialogDescription class="sr-only">引用这个标签的笔记列表</DialogDescription>
+          <DialogClose as-child>
+            <button class="icon-btn" type="button" aria-label="关闭">
+              <X aria-hidden="true" />
+            </button>
+          </DialogClose>
+        </header>
 
       <p v-if="error" class="notice notice--error" style="margin: 0 0 12px">{{ error }}</p>
 
@@ -105,7 +99,8 @@ onBeforeUnmount(() => {
             <span class="tag-note-row__meta">更新于 {{ formatRelative(note.updated_at) }}</span>
           </button>
         </li>
-      </ul>
-    </div>
-  </div>
+        </ul>
+      </DialogContent>
+    </DialogPortal>
+  </DialogRoot>
 </template>

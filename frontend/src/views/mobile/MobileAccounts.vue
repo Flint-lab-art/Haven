@@ -11,6 +11,7 @@
  * 而这是打开账户页最想知道的第一个数。
  */
 import { computed, onMounted, ref } from 'vue'
+import { DialogContent, DialogOverlay, DialogPortal, DialogRoot } from 'reka-ui'
 import { ApiError } from '@/api/client'
 import {
   createAccount,
@@ -215,9 +216,10 @@ onMounted(load)
     </ul>
 
     <!-- 底部抽屉：新建 / 编辑 -->
-    <Teleport to="body">
-      <div v-if="sheetOpen" class="m-sheet-backdrop" @click.self="closeSheet">
-        <div class="m-sheet" role="dialog" aria-modal="true" :aria-label="editingId ? '编辑账户' : '新建账户'">
+    <DialogRoot :open="sheetOpen" @update:open="(value: boolean) => !value && closeSheet()">
+      <DialogPortal>
+        <DialogOverlay class="m-sheet-backdrop" />
+        <DialogContent class="m-sheet" :aria-label="editingId ? '编辑账户' : '新建账户'">
           <div class="m-sheet__grab"></div>
 
           <!-- 实时预览：改名字/图标立刻看到效果 -->
@@ -285,8 +287,8 @@ onMounted(load)
               删除
             </button>
           </div>
-        </div>
-      </div>
-    </Teleport>
+        </DialogContent>
+      </DialogPortal>
+    </DialogRoot>
   </div>
 </template>

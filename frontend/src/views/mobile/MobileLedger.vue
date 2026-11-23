@@ -6,6 +6,7 @@
  * 录入用底部抽屉，分类用一级行 + 二级折叠胶囊。
  */
 import { computed, onMounted, ref } from 'vue'
+import { DialogContent, DialogOverlay, DialogPortal, DialogRoot } from 'reka-ui'
 import { RouterLink } from 'vue-router'
 import MobileCategoryPicker from '@/components/mobile/MobileCategoryPicker.vue'
 import MobileKeypad from '@/components/mobile/MobileKeypad.vue'
@@ -13,6 +14,7 @@ import SwipeRow from '@/components/mobile/SwipeRow.vue'
 import MobileTimePicker from '@/components/mobile/MobileTimePicker.vue'
 import AccountAvatar from '@/components/ledger/AccountAvatar.vue'
 import { ApiError } from '@/api/client'
+import { toast } from '@/composables/useToast'
 import { useLedgerData } from '@/composables/useLedgerData'
 import {
   createEntry,
@@ -202,12 +204,14 @@ async function save(): Promise<void> {
       note: formNote.value.trim() || null,
       occurred_at: fromLocalDateTimeInput(formTime.value),
     }
-    if (editingId.value) {
-      await updateEntry(editingId.value, payload)
+    const editing = editingId.value !== null
+    if (editing) {
+      await updateEntry(editingId.value as string, payload)
     } else {
       await createEntry(payload)
     }
     sheetOpen.value = false
+    toast.success(editing ? '已更新' : '已记一笔')
     await refresh()
   } catch (err) {
     formError.value = err instanceof ApiError ? err.message : '保存失败'
@@ -221,6 +225,7 @@ async function remove(entry: LedgerEntry): Promise<void> {
   try {
     await deleteEntry(entry.id)
     removeEntry(entry.id)
+    toast.success('已删除')
     await refresh()
   } catch (err) {
     error.value = err instanceof ApiError ? err.message : '删除失败'
@@ -317,7 +322,7 @@ onMounted(async () => {
           <div
             class="m-budget__fill"
             :class="{ 'm-budget__fill--over': budgetOver }"
-            :style="{ width: budgetPercent + '%' }"
+            :style="{ transform: `scaleX(${budgetPercent / 100})` }"
           ></div>
         </div>
       </section>
@@ -383,19 +388,14 @@ onMounted(async () => {
       </button>
 
       <!--
-        底部抽屉录入。
-
-        用 Teleport 挂到 body：.m-main 有 overflow-y: auto，会创建新的层叠上下文，
-        抽屉的 z-index 只在 .m-main 内部比较，压不住 fixed 的底部 tabbar。
+        底部抽屉录入。挂到 body 是硬性要求：.m-main 有 overflow-y: auto，
+        会创建新的层叠上下文，抽屉的 z-index 只在 .m-main 内部比较，
+        压不住 fixed 的底部 tabbar。这里改用 Reka 的 Portal，效果相同。
       -->
-      <Teleport to="body">
-        <div v-if="sheetOpen" class="m-sheet-backdrop" @click.self="sheetOpen = false">
-          <div
-            class="m-sheet"
-            role="dialog"
-            aria-modal="true"
-            aria-label="记一笔"
-          >
+      <DialogRoot :open="sheetOpen" @update:open="(value: boolean) => !value && (sheetOpen = false)">
+        <DialogPortal>
+          <DialogOverlay class="m-sheet-backdrop" />
+          <DialogContent class="m-sheet" aria-label="记一笔">
             <div class="m-sheet__grab"></div>
 
             <!-- 类型：顶部胶囊，轻量 -->
@@ -498,14 +498,11 @@ onMounted(async () => {
 
           <!-- 数字键盘：数字 + 退格 + 保存，一只手能完成全部操作 -->
           <MobileKeypad v-model="formAmount" :busy="saving" :save-label="editingId ? '保存' : '记一笔'" @save="save" />
-        </div>
-      </div>
+          </DialogContent>
+        </DialogPortal>
+      </DialogRoot>
 
-      <!--
-        时间选择弹窗：也要 Teleport，否则会被 .m-main 的层叠上下文关在里面，
-        盖不住已经挂到 body 的抽屉。
-      -->
+      <!-- 时间选择弹窗自己也是 Reka Dialog + Portal，盖在抽屉之上 -->
       <MobileTimePicker v-model="formTime" :open="timePickerOpen" @close="timePickerOpen = false" />
-    </Teleport>
   </div>
 </template>

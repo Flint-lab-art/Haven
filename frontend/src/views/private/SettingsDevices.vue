@@ -56,7 +56,7 @@ onMounted(load)
           </div>
 
           <div v-else-if="devices.length === 0" class="panel empty">
-            <p class="empty__title">没有授信设备</p>
+            <p class="empty__title">还没有授信设备。</p>
             <p class="empty__text">下次登录时勾选“信任这台设备”，30 天内就不用再输动态码。</p>
           </div>
 

@@ -9,6 +9,7 @@
  * 约束：只到「今天」为止，记账不记未来。
  */
 import { computed, nextTick, ref, watch } from 'vue'
+import { DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle } from 'reka-ui'
 
 const props = defineProps<{
   /** ISO 时间字符串。 */
@@ -105,15 +106,18 @@ function confirm(): void {
 </script>
 
 <template>
-  <div v-if="open" class="m-picker-backdrop" @click.self="emit('close')">
-    <div class="m-picker" role="dialog" aria-modal="true" aria-label="选择时间">
-      <div class="m-picker__grab"></div>
+  <DialogRoot :open="open" @update:open="(value: boolean) => !value && emit('close')">
+    <DialogPortal>
+      <DialogOverlay class="m-picker-backdrop" />
+      <DialogContent class="m-picker">
+        <div class="m-picker__grab"></div>
 
-      <div class="m-picker__head">
-        <button type="button" class="m-picker__action" @click="emit('close')">取消</button>
-        <span class="m-picker__title">选择时间</span>
-        <button type="button" class="m-picker__action m-picker__action--primary" @click="confirm">确定</button>
-      </div>
+        <div class="m-picker__head">
+          <button type="button" class="m-picker__action" @click="emit('close')">取消</button>
+          <DialogTitle class="m-picker__title">选择时间</DialogTitle>
+          <DialogDescription class="sr-only">滚轮选择日期、小时与分钟，只到当前时刻为止。</DialogDescription>
+          <button type="button" class="m-picker__action m-picker__action--primary" @click="confirm">确定</button>
+        </div>
 
       <!-- 三列等宽滚轮：日 / 时 / 分，每列顶部标单位 -->
       <div class="m-picker__wheels">
@@ -170,7 +174,7 @@ function confirm(): void {
             </button>
           </div>
         </div>
-      </div>
-    </div>
-  </div>
+      </DialogContent>
+    </DialogPortal>
+  </DialogRoot>
 </template>

@@ -6,6 +6,15 @@
  * - 编辑时预填 issue，只提交发生变化的字段。
  */
 import { reactive, ref, watch } from 'vue'
+import {
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogOverlay,
+  DialogPortal,
+  DialogRoot,
+  DialogTitle,
+} from 'reka-ui'
 import { ApiError } from '@/api/client'
 import {
   createIssue,
@@ -125,14 +134,22 @@ async function save(): Promise<void> {
 </script>
 
 <template>
-  <div v-if="open" class="modal-backdrop" role="presentation" @click.self="close">
-    <section class="modal issues-modal" role="dialog" aria-modal="true" :aria-label="issue ? '编辑 Issue' : '新建 Issue'">
-      <header class="modal__head">
-        <h2 class="modal__title">{{ issue ? '编辑 Issue' : '新建 Issue' }}</h2>
-        <button class="icon-btn" type="button" aria-label="关闭" @click="close">
-          <X aria-hidden="true" />
-        </button>
-      </header>
+  <!-- 行为交给 Reka Dialog；class 留在我们自己手里，主题零适配 -->
+  <DialogRoot :open="open" @update:open="(value: boolean) => !value && close()">
+    <DialogPortal>
+      <DialogOverlay class="modal-backdrop" />
+      <DialogContent class="modal issues-modal">
+        <header class="modal__head">
+          <DialogTitle class="modal__title">{{ issue ? '编辑 Issue' : '新建 Issue' }}</DialogTitle>
+          <DialogDescription class="sr-only">
+            填写标题、类型、状态与优先级，保存后回到 Issue 列表。
+          </DialogDescription>
+          <DialogClose as-child>
+            <button class="icon-btn" type="button" aria-label="关闭">
+              <X aria-hidden="true" />
+            </button>
+          </DialogClose>
+        </header>
 
       <p v-if="formError" class="notice notice--error">{{ formError }}</p>
 
@@ -195,13 +212,16 @@ async function save(): Promise<void> {
         </div>
       </div>
 
-      <footer class="modal__actions issues-modal__actions">
-        <span class="issues-modal__spacer"></span>
-        <button class="btn" type="button" :disabled="saving" @click="close">取消</button>
-        <button class="btn btn--primary" type="button" :disabled="saving" @click="save">
-          {{ saving ? '保存中…' : '保存' }}
-        </button>
-      </footer>
-    </section>
-  </div>
+        <footer class="modal__actions issues-modal__actions">
+          <span class="issues-modal__spacer"></span>
+          <DialogClose as-child>
+            <button class="btn" type="button" :disabled="saving">取消</button>
+          </DialogClose>
+          <button class="btn btn--primary" type="button" :disabled="saving" @click="save">
+            {{ saving ? '保存中…' : '保存' }}
+          </button>
+        </footer>
+      </DialogContent>
+    </DialogPortal>
+  </DialogRoot>
 </template>

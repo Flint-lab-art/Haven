@@ -397,10 +397,14 @@ a:hover {
   color: var(--on-accent);
 }
 
+/*
+ * 焦点环：用 outline 而不是 box-shadow —— box-shadow 要配合 border-radius 才贴合，
+ * 之前给 circle 按钮加 r-sm 会让它在聚焦时变方。outline 自带 offset，形状不变。
+ */
 :focus-visible {
-  outline: none;
-  box-shadow: var(--focus-ring);
-  border-radius: var(--r-sm);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: none;
 }
 
 :focus:not(:focus-visible) {
@@ -612,9 +616,10 @@ a:hover {
   padding: var(--sp-3) var(--sp-3) var(--sp-2);
   background: var(--bg-grouped);
   border-right: 1px solid var(--sep);
-  /* 折叠时平滑过渡，展开/收起都不跳变 */
-  transition: width var(--dur-base) var(--ease-smooth),
-    padding var(--dur-base) var(--ease-smooth);
+  /*
+   * 折叠是瞬时切换：width / padding 都是布局属性，过渡它会让三栏每帧重排。
+   * 「平滑」由内部文字与图标的 opacity 变化承担（见 .sidebar__brand-text 等）。
+   */
   /* 让 Mini 模式的 Tooltip 可以溢出到列表栏上 */
   overflow: visible;
 }
@@ -651,6 +656,21 @@ a:hover {
   flex: none;
 }
 
+
+/* 折叠/展开时，文字与副标题用极短的淡入淡出补上「平滑感」，替代对 width 的过渡 */
+.side-link > span,
+.sidebar__label,
+.sidebar__user-info,
+.sidebar__brand-text {
+  transition: opacity var(--dur-fast) var(--ease-smooth);
+}
+
+.sidebar--mini .side-link > span,
+.sidebar--mini .sidebar__label,
+.sidebar--mini .sidebar__user-info,
+.sidebar--mini .sidebar__brand-text {
+  opacity: 0;
+}
 
 .sidebar__label {
   font: var(--text-caption-caps);
@@ -742,17 +762,41 @@ a:hover {
 }
 
 /* 底部用户菜单：向上弹出 */
+/*
+ * 用户菜单：位置由 Reka Popover 计算（挂在 body 上，不会被子导航裁掉），
+ * 这里只留外观与进出场。origin 在左下角——它从底部触发器「长出来」。
+ */
 .user-menu {
-  position: absolute;
-  left: 0;
-  bottom: calc(100% + 6px);
   z-index: 120;
   width: 184px;
   padding: var(--sp-1);
-  background: var(--bg);
+  background: var(--bg-elevated);
   border: 1px solid var(--sep);
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-pop);
+  transform-origin: bottom left;
+}
+
+.user-menu[data-state='open'] {
+  animation: pop-in var(--dur-fast) var(--ease-snappy);
+}
+
+.user-menu[data-state='closed'] {
+  animation: pop-out var(--dur-fast) var(--ease-smooth);
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.97);
+  }
+}
+
+@keyframes pop-out {
+  to {
+    opacity: 0;
+    transform: translateY(2px) scale(0.98);
+  }
 }
 
 .user-menu__item {
@@ -1287,6 +1331,117 @@ button.tag[aria-pressed='true'] {
   background: var(--danger-soft);
 }
 
+/* ============ 列表进出场（TransitionGroup） ============
+
+ * 只做 opacity + 极小的位移：删除/新建一行时给个「聚散」的确认，
+ * 不动高度、不动相邻行 —— 树是高频操作，布局动画会抖。
+ */
+.tag-enter-active,
+.tag-leave-active {
+  transition:
+    opacity var(--dur-fast) var(--ease-smooth),
+    transform var(--dur-fast) var(--ease-snappy);
+}
+
+.tag-enter-from,
+.tag-leave-to {
+  opacity: 0;
+  transform: scale(0.96);
+}
+
+.tree-row-fade-enter-active,
+.tree-row-fade-leave-active {
+  transition: opacity var(--dur-fast) var(--ease-smooth);
+}
+
+.tree-row-fade-enter-from,
+.tree-row-fade-leave-to {
+  opacity: 0;
+}
+
+/* ============ 统一浮层节奏 ============
+
+ * 全部浮层都由 [data-state] 驱动（Reka 的 Presence 保留节点直到动画结束）：
+ * 进 180ms（--dur-base）、出 120ms（--dur-fast）。退出永远比进入快。
+ */
+.version-overlay[data-state='open'],
+.folder-pick-backdrop[data-state='open'] {
+  animation: backdrop-in var(--dur-base) var(--ease-smooth);
+}
+
+.version-overlay[data-state='closed'],
+.folder-pick-backdrop[data-state='closed'] {
+  animation: backdrop-out var(--dur-fast) var(--ease-smooth);
+}
+
+/* ============ 全局提示条（Toast） ============
+
+ * 与弹层同一条浮起规则：无边框、--shadow-pop、--r-xl。
+ * 状态只用左侧 2px 竖条表达，不整块染色——浅色与深色主题都不用另调。
+ */
+.toast-viewport {
+  position: fixed;
+  right: var(--sp-6);
+  bottom: calc(var(--sp-6) + env(safe-area-inset-bottom, 0px));
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  width: min(360px, calc(100vw - var(--sp-8)));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  outline: none;
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-xl);
+  background: var(--bg-elevated);
+  box-shadow:
+    var(--shadow-pop),
+    inset 2px 0 0 var(--success);
+  font: var(--text-footnote);
+  color: var(--label);
+}
+
+.toast--error {
+  box-shadow:
+    var(--shadow-pop),
+    inset 2px 0 0 var(--danger);
+}
+
+.toast--warning {
+  box-shadow:
+    var(--shadow-pop),
+    inset 2px 0 0 var(--warning);
+}
+
+.toast[data-state='open'] {
+  animation: toast-in var(--dur-base) var(--ease-snappy);
+}
+
+.toast[data-state='closed'] {
+  animation: toast-out var(--dur-fast) var(--ease-smooth);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+}
+
+@keyframes toast-out {
+  to {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
 /* ============ 图标 ============
 
  * 图标统一走 lucide（24 网格、继承 currentColor、描边由组件默认值给出），
@@ -1501,19 +1656,26 @@ svg {
   background: var(--input-hover);
 }
 
+/*
+ * 焦点统一走外环（与按钮、链接同一套 --focus-ring）。
+ * 之前这里是「底部一条蓝线」，和全站的焦点环并存两套语法，键盘用户看到的戒指不一致。
+ */
 .input:focus,
 .textarea:focus,
 .select:focus {
   outline: none;
   background: var(--bg);
-  box-shadow: inset 0 -2px 0 var(--accent);
+  box-shadow: var(--focus-ring);
 }
 
+/*
+ * 下拉箭头用内联 SVG（1.75 描边、圆角线帽），与 lucide 图标同一族；
+ * 之前是两个旋转渐变拼出来的三角，描边与角度都和图标系统无关。
+ */
 .select {
-  background-image: linear-gradient(45deg, transparent 50%, var(--label-2) 50%),
-    linear-gradient(135deg, var(--label-2) 50%, transparent 50%);
-  background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%;
-  background-size: 5px 5px, 5px 5px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236e6e73' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-position: calc(100% - 12px) 50%;
+  background-size: 14px 14px;
   background-repeat: no-repeat;
   padding-right: 34px;
 }
@@ -2500,6 +2662,14 @@ ul[data-type='taskList'] li[data-checked='true'] > div {
 
 /* ============ 弹窗 ============ */
 
+/*
+ * 进出场由 [data-state] 驱动：Reka UI 的 Presence 会在关闭时先保留节点、
+ * 打上 data-state="closed"，等 `animationend` 之后再卸载。
+ * 所以这里必须用 animation 而不是 transition —— Vue 的 v-if 没有 leave 过渡，
+ * 只有动画才能让“关闭”这一半也被播出来。
+ *
+ * 节奏约定：进 180ms（--dur-base），出 120ms（--dur-fast），退出永远比进入快。
+ */
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -2510,11 +2680,24 @@ ul[data-type='taskList'] li[data-checked='true'] > div {
   display: grid;
   place-items: center;
   padding: var(--sp-6);
+}
+
+.modal-backdrop[data-state='open'] {
   animation: backdrop-in var(--dur-base) var(--ease-smooth);
+}
+
+.modal-backdrop[data-state='closed'] {
+  animation: backdrop-out var(--dur-fast) var(--ease-smooth);
 }
 
 @keyframes backdrop-in {
   from {
+    opacity: 0;
+  }
+}
+
+@keyframes backdrop-out {
+  to {
     opacity: 0;
   }
 }
@@ -2528,7 +2711,14 @@ ul[data-type='taskList'] li[data-checked='true'] > div {
   border-radius: var(--r-2xl);
   box-shadow: var(--shadow-modal);
   padding: var(--sp-6);
+}
+
+.modal[data-state='open'] {
   animation: modal-in var(--dur-base) var(--ease-snappy);
+}
+
+.modal[data-state='closed'] {
+  animation: modal-out var(--dur-fast) var(--ease-smooth);
 }
 
 @keyframes modal-in {
@@ -2538,10 +2728,30 @@ ul[data-type='taskList'] li[data-checked='true'] > div {
   }
 }
 
+@keyframes modal-out {
+  to {
+    opacity: 0;
+    transform: translateY(6px) scale(0.99);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .modal-backdrop,
-  .modal {
+  .modal-backdrop[data-state],
+  .modal[data-state],
+  .toast[data-state],
+  .user-menu[data-state],
+  .tag-dropdown__panel[data-state],
+  .version-overlay[data-state],
+  .folder-pick-backdrop[data-state] {
     animation: none;
+  }
+
+  /* 列表进出场的过渡同样收到最短 */
+  .tag-enter-active,
+  .tag-leave-active,
+  .tree-row-fade-enter-active,
+  .tree-row-fade-leave-active {
+    transition-duration: 0.01ms;
   }
 }
 
@@ -2929,21 +3139,30 @@ ul[data-type='taskList'] li[data-checked='true'] > div {
   background: var(--bg-elevated);
   border: 1px solid var(--sep);
   border-radius: var(--r-lg);
-  box-shadow: var(--shadow-2);
+  box-shadow: var(--shadow-pop);
   padding: var(--sp-2);
+  transform-origin: top right;
+}
+
+.tag-dropdown__panel[data-state='open'] {
   animation: dropdown-in var(--dur-fast) var(--ease-snappy);
+}
+
+.tag-dropdown__panel[data-state='closed'] {
+  animation: dropdown-out var(--dur-fast) var(--ease-smooth);
+}
+
+@keyframes dropdown-out {
+  to {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
 }
 
 @keyframes dropdown-in {
   from {
     opacity: 0;
     transform: translateY(-4px);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .tag-dropdown__panel {
-    animation: none;
   }
 }
 
@@ -4248,22 +4467,10 @@ ul[data-type='taskList'] li[data-checked='true'] > div {
   background-color: transparent;
 }
 
-/* ============ 所有输入控件：聚焦只保留光标，不画高亮边框 ============ */
-
-.input:focus,
-.textarea:focus,
-.select:focus {
-  background: var(--fill);
-  box-shadow: none;
-  outline: none;
-}
-
-input:focus-visible,
-textarea:focus-visible,
-select:focus-visible {
-  outline: none;
-  box-shadow: none;
-}
+/*
+ * 输入控件的聚焦样式统一在「表单控件」一节里定义（外环 + 白底），
+ * 这里不再覆盖成「什么都不画」——那样键盘用户完全看不到焦点在哪。
+ */
 
 /* 标签内联输入：默认与聚焦都使用中性虚线，不闪蓝色 */
 .tag-input {
@@ -5911,7 +6118,9 @@ select:focus-visible {
   height: 100%;
   border-radius: inherit;
   background: color-mix(in srgb, var(--accent) 65%, var(--fill));
-  transition: width var(--dur-slow) var(--ease-smooth);
+  /* 宽度在挂载时写入，刷新时用 scaleX 补齐：合成属性，不触发布局 */
+  transform-origin: left center;
+  transition: transform var(--dur-slow) var(--ease-smooth);
 }
 
 .folder-stat:hover .folder-stat__bar-fill {
@@ -6899,9 +7108,10 @@ select:focus-visible {
 .ledger-rank__bar {
   display: block;
   height: 100%;
-  border-radius: 999px;
+  border-radius: var(--r-capsule);
   background: var(--accent);
-  transition: width var(--dur-base) var(--ease-smooth);
+  transform-origin: left center;
+  transition: transform var(--dur-base) var(--ease-smooth);
 }
 
 .ledger-rank__amount {
@@ -8111,7 +8321,8 @@ select:focus-visible {
   height: 100%;
   border-radius: inherit;
   background: var(--accent);
-  transition: width var(--dur-base) var(--ease-smooth);
+  transform-origin: left center;
+  transition: transform var(--dur-base) var(--ease-smooth);
 }
 
 .ledger-budget__fill--over {
@@ -8502,7 +8713,8 @@ select:focus-visible {
 .m-budget__fill {
   height: 100%;
   background: var(--accent);
-  transition: width var(--dur-base) var(--ease-smooth);
+  transform-origin: left center;
+  transition: transform var(--dur-base) var(--ease-smooth);
 }
 
 .m-budget__fill--over {
@@ -8920,7 +9132,6 @@ select:focus-visible {
   padding: var(--sp-2) var(--sp-4) calc(var(--sp-4) + env(safe-area-inset-bottom, 0px));
   border-radius: var(--r-xl) var(--r-xl) 0 0;
   background: var(--bg-grouped);
-  animation: m-sheet-in var(--dur-base) var(--ease-smooth);
 }
 
 .m-picker__grab {
@@ -9237,6 +9448,16 @@ select:focus-visible {
   background: rgb(0 0 0 / 0.32);
 }
 
+.m-sheet-backdrop[data-state='open'],
+.m-picker-backdrop[data-state='open'] {
+  animation: backdrop-in var(--dur-base) var(--ease-smooth);
+}
+
+.m-sheet-backdrop[data-state='closed'],
+.m-picker-backdrop[data-state='closed'] {
+  animation: backdrop-out var(--dur-fast) var(--ease-smooth);
+}
+
 /*
  * 抽屉本身不滚动：键盘要始终贴在底部，
  * 内容超出时只让分类区自己滚（见 .m-cats__grid）。
@@ -9251,7 +9472,6 @@ select:focus-visible {
   border-radius: var(--r-xl) var(--r-xl) 0 0;
   background: var(--bg-grouped);
   overflow: hidden;
-  animation: m-sheet-in var(--dur-base) var(--ease-smooth);
 }
 
 /* 分类网格限高：账户多、分类多时不把金额和键盘挤出屏幕 */
@@ -9267,6 +9487,38 @@ select:focus-visible {
   to {
     transform: translateY(0);
     opacity: 1;
+  }
+}
+
+@keyframes m-sheet-out {
+  to {
+    transform: translateY(100%);
+  }
+}
+
+/*
+ * 移动端弹层的进出场：统一由 [data-state] 驱动（Reka 的 Presence 负责保留节点）。
+ * 规则挂在抽屉本体上，抽屉类名各自保留，避免四个面板各写一份动画。
+ */
+.m-sheet[data-state='open'],
+.m-picker[data-state='open'],
+.m-granularity-sheet[data-state='open'] {
+  animation: m-sheet-in var(--dur-base) var(--ease-smooth);
+}
+
+.m-sheet[data-state='closed'],
+.m-picker[data-state='closed'],
+.m-granularity-sheet[data-state='closed'] {
+  animation: m-sheet-out var(--dur-fast) var(--ease-smooth);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .m-sheet[data-state],
+  .m-picker[data-state],
+  .m-granularity-sheet[data-state],
+  .m-sheet-backdrop[data-state],
+  .m-picker-backdrop[data-state] {
+    animation: none;
   }
 }
 
@@ -9955,7 +10207,6 @@ select:focus-visible {
   padding: var(--sp-2) var(--sp-4) calc(var(--sp-4) + env(safe-area-inset-bottom, 0px));
   border-radius: var(--r-xl) var(--r-xl) 0 0;
   background: var(--bg-grouped);
-  animation: m-sheet-in var(--dur-base) var(--ease-smooth);
 }
 
 .m-granularity-list {
@@ -10529,7 +10780,6 @@ select:focus-visible {
   padding: var(--sp-2) var(--sp-4) calc(var(--sp-4) + env(safe-area-inset-bottom, 0px));
   border-radius: var(--r-xl) var(--r-xl) 0 0;
   background: var(--bg-grouped);
-  animation: m-sheet-in var(--dur-base) var(--ease-smooth);
 }
 
 .m-granularity-list {
@@ -11492,9 +11742,10 @@ select:focus-visible {
 
 .m-total__fill {
   height: 100%;
+  transform-origin: left center;
   border-radius: inherit;
   background: var(--accent);
-  transition: width var(--dur-base) var(--ease-smooth);
+  transition: transform var(--dur-base) var(--ease-smooth);
 }
 
 .m-total__fill--over {

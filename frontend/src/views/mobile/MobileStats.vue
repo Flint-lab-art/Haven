@@ -257,13 +257,15 @@ onMounted(load)
       Teleport 到 body：.m-main 有 overflow-y: auto，会创建新的层叠上下文，
       弹层的 z-index 只在 .m-main 内部比较，压不住 fixed 的底部菜单栏。
     -->
-    <Teleport to="body">
-      <div v-if="pickerOpen" class="m-picker-backdrop" @click.self="pickerOpen = false">
-        <div class="m-granularity-sheet" role="dialog" aria-modal="true" aria-label="选择粒度">
+    <DialogRoot :open="pickerOpen" @update:open="(value: boolean) => !value && (pickerOpen = false)">
+      <DialogPortal>
+        <DialogOverlay class="m-picker-backdrop" />
+        <DialogContent class="m-granularity-sheet">
           <div class="m-picker__grab"></div>
           <div class="m-picker__head">
             <span></span>
-            <span class="m-picker__title">统计粒度</span>
+            <DialogTitle class="m-picker__title">统计粒度</DialogTitle>
+            <DialogDescription class="sr-only">按周、月、季、年查看收支</DialogDescription>
             <button type="button" class="m-picker__action" @click="pickerOpen = false">取消</button>
           </div>
           <div class="m-granularity-list">
@@ -281,8 +283,9 @@ onMounted(load)
             </button>
           </div>
         </div>
-      </div>
-    </Teleport>
+      </DialogContent>
+    </DialogPortal>
+    </DialogRoot>
 
     <p v-if="error" class="m-notice m-notice--error">{{ error }}</p>
 

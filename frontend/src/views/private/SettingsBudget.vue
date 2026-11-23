@@ -18,13 +18,13 @@ import {
   type Budget,
   type Category,
 } from '@/api/ledger'
+import { toast } from '@/composables/useToast'
 import { currentMonth, formatYuan, monthLabel, parseYuanToCents, shiftMonth } from '@/utils/ledger'
 import { ChevronLeft, ChevronRight } from 'lucide-vue-next'
 
 const month = ref(currentMonth())
 const loading = ref(true)
 const error = ref('')
-const toast = ref('')
 
 const budget = ref<Budget | null>(null)
 const categories = ref<Category[]>([])
@@ -104,8 +104,7 @@ async function save(rootId: number): Promise<void> {
 async function refresh(): Promise<void> {
   try {
     budget.value = await getBudget(month.value)
-    toast.value = '已保存'
-    setTimeout(() => (toast.value = ''), 1500)
+    toast.success('预算已保存')
   } catch (err) {
     error.value = err instanceof ApiError ? err.message : '刷新失败'
   }
@@ -141,7 +140,6 @@ onMounted(load)
     </div>
 
     <p v-if="error" class="notice notice--error ledger-notice">{{ error }}</p>
-    <p v-if="toast" class="notice notice--success ledger-notice">{{ toast }}</p>
 
     <div v-if="loading" class="panel panel--pad">
       <div class="skeleton skeleton--title" style="width: 40%"></div>

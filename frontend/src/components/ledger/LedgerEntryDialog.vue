@@ -7,6 +7,15 @@
  * - 转账：转出账户 + 转入账户，无分类
  */
 import { computed, ref, watch } from 'vue'
+import {
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogOverlay,
+  DialogPortal,
+  DialogRoot,
+  DialogTitle,
+} from 'reka-ui'
 import CategoryPicker from './CategoryPicker.vue'
 import { ApiError } from '@/api/client'
 import { createEntry, updateEntry, type Account, type Category, type EntryType, type LedgerEntry } from '@/api/ledger'
@@ -104,14 +113,20 @@ async function submit(): Promise<void> {
 </script>
 
 <template>
-  <div class="modal-backdrop" @click.self="emit('close')">
-    <div class="modal ledger-entry-dialog" role="dialog" aria-modal="true" aria-label="记一笔">
-      <header class="modal__head">
-        <h2 class="modal__title">{{ entry ? '编辑' : '记一笔' }}</h2>
-        <button class="icon-btn" type="button" aria-label="关闭" @click="emit('close')">
-          <X aria-hidden="true" />
-        </button>
-      </header>
+  <!-- 开关由父组件的 v-if 控制，所以这里固定 open；Reka 负责焦点陷阱 / Esc / 关闭归还焦点 -->
+  <DialogRoot :open="true" @update:open="(value: boolean) => !value && emit('close')">
+    <DialogPortal>
+      <DialogOverlay class="modal-backdrop" />
+      <DialogContent class="modal ledger-entry-dialog">
+        <header class="modal__head">
+          <DialogTitle class="modal__title">{{ entry ? '编辑' : '记一笔' }}</DialogTitle>
+          <DialogDescription class="sr-only">选择类型、金额、分类与账户，保存后回到流水列表。</DialogDescription>
+          <DialogClose as-child>
+            <button class="icon-btn" type="button" aria-label="关闭">
+              <X aria-hidden="true" />
+            </button>
+          </DialogClose>
+        </header>
 
       <div class="modal__body ledger-entry-dialog__body">
         <!-- 类型 -->
@@ -192,21 +207,24 @@ async function submit(): Promise<void> {
         <p v-if="error" class="notice notice--error">{{ error }}</p>
       </div>
 
-      <footer class="modal__actions">
-        <button
-          v-if="entry"
-          class="btn btn--danger modal__actions-lead"
-          type="button"
-          :disabled="busy"
-          @click="emit('delete')"
-        >
-          删除
-        </button>
-        <button class="btn" type="button" :disabled="busy" @click="emit('close')">取消</button>
-        <button class="btn btn--primary" type="button" :disabled="busy" @click="submit">
-          {{ busy ? '保存中…' : '保存' }}
-        </button>
-      </footer>
-    </div>
-  </div>
+        <footer class="modal__actions">
+          <button
+            v-if="entry"
+            class="btn btn--danger modal__actions-lead"
+            type="button"
+            :disabled="busy"
+            @click="emit('delete')"
+          >
+            删除
+          </button>
+          <DialogClose as-child>
+            <button class="btn" type="button" :disabled="busy">取消</button>
+          </DialogClose>
+          <button class="btn btn--primary" type="button" :disabled="busy" @click="submit">
+            {{ busy ? '保存中…' : '保存' }}
+          </button>
+        </footer>
+      </DialogContent>
+    </DialogPortal>
+  </DialogRoot>
 </template>

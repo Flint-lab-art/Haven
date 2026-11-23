@@ -127,7 +127,7 @@ const privateRoutes: RouteRecordRaw[] = [
         meta: {
           title: '回收站',
           section: 'trash',
-          emptyTitle: '回收站是空的',
+          emptyTitle: '回收站里还没有东西',
           emptyText: '从左侧选一篇被删除的笔记，还原或永久删除。',
         },
       },

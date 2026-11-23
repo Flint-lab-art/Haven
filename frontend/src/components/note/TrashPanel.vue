@@ -84,8 +84,8 @@ onMounted(() => void load())
     </div>
 
     <div v-else-if="items.length === 0" class="detail-empty" style="min-height: 40svh">
-      <p class="detail-empty__title">回收站是空的</p>
-      <p class="detail-empty__text">删除的笔记会先放在这里，30 天内都可以还原。</p>
+      <p class="detail-empty__title">回收站里还没有东西</p>
+      <p class="detail-empty__text">删除的笔记会先放这里，30 天内都可以还原。</p>
     </div>
 
     <div v-else class="list-rows">

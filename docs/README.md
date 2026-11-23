@@ -16,6 +16,7 @@
 | [versioning.md](versioning.md) | 所有人 | 版本号规则（与标准 SemVer 不同，务必先读） |
 | [backend/implementation.md](backend/implementation.md) | 后端 | 基础设施组件、上传、查询、幂等、配置分层 |
 | [frontend/implementation.md](frontend/implementation.md) | 前端 | 启动时序、路由、API 层、编辑器、常见坑 |
+| [frontend/design-system.md](frontend/design-system.md) | 前端、设计 | **视觉规则**：层级（内容平面 / 临时层浮起）、字号九档、颜色、按压三档、动效约定、状态文案 |
 | [frontend/ios-native-design.md](frontend/ios-native-design.md) | 移动端、设计 | 基于 `/m/` 的 iOS 原生设计方案：信息架构、视觉规范、页面与交互、平台能力、落地路线 |
 
 ## 日常命令

@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { RouterView, useRoute } from 'vue-router'
 import SiteFooter from '@/components/layout/SiteFooter.vue'
+import ToastHost from '@/components/common/ToastHost.vue'
 
 const route = useRoute()
 
@@ -21,4 +22,5 @@ const showFixedFooter = computed(() => {
 <template>
   <RouterView />
   <SiteFooter v-if="showFixedFooter" />
+  <ToastHost />
 </template>

@@ -20,6 +20,7 @@ import {
   type Category,
   type LedgerEntry,
 } from '@/api/ledger'
+import { toast } from '@/composables/useToast'
 import { useLedgerData } from '@/composables/useLedgerData'
 import { currentMonth } from '@/utils/ledger'
 
@@ -36,7 +37,6 @@ export const useLedgerStore = defineStore('ledger', () => {
   const budget = ref<Budget | null>(null)
 
   const error = ref('')
-  const toast = ref('')
   const initialized = ref(false)
 
   /** 右侧正在编辑的流水 id；null 表示没开对话框。 */
@@ -138,16 +138,16 @@ export const useLedgerStore = defineStore('ledger', () => {
     try {
       await deleteEntry(entry.id)
       data.removeEntry(entry.id)
+      toast.success('已删除')
       await refresh()
     } catch (err) {
       error.value = err instanceof ApiError ? err.message : '删除失败'
     }
   }
 
-  /** 短暂的成功提示。 */
+  /** 短暂的成功提示：走全局 toast，不再自己维护定时器。 */
   function flash(message: string): void {
-    toast.value = message
-    setTimeout(() => (toast.value = ''), 2000)
+    toast.success(message)
   }
 
   return {
@@ -159,7 +159,6 @@ export const useLedgerStore = defineStore('ledger', () => {
     categories,
     budget,
     error,
-    toast,
     editingId,
     dialogOpen,
     categoryMeta,

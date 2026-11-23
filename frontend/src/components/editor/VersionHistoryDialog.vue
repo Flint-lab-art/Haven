@@ -6,7 +6,16 @@
  * - 左栏版本时间线，右栏为选中版本与「当前编辑器内容」的 DIFF；
  * - 不跳转路由，避免离开编辑页丢掉未保存的上下文。
  */
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
+import {
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogOverlay,
+  DialogPortal,
+  DialogRoot,
+  DialogTitle,
+} from 'reka-ui'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { ApiError } from '@/api/client'
 import {
@@ -45,8 +54,6 @@ const loadingDetail = ref(false)
 const restoring = ref(false)
 const error = ref('')
 const confirmRestore = ref(false)
-
-const dialogRef = ref<HTMLElement | null>(null)
 
 const selectedSummary = computed(
   () => versions.value.find((v) => v.id === selectedId.value) ?? null,
@@ -131,21 +138,8 @@ async function doRestore(): Promise<void> {
   }
 }
 
-function onPointerDown(event: PointerEvent): void {
-  if (!props.open) return
-  const target = event.target as Node | null
-  // 确认框开着时不要把点击当成「点外部」，否则会先关浮层再关确认框
-  if (confirmRestore.value) return
-  if (dialogRef.value && target && dialogRef.value.contains(target)) return
-  emit('close')
-}
-
-function onKeydown(event: KeyboardEvent): void {
-  if (event.key === 'Escape' && props.open) {
-    emit('close')
-  }
-}
-
+// 点外部 / Esc / 焦点陷阱交给 Reka Dialog：
+// 确认框（AlertDialog）叠在上面时会自己吃掉点击，不用再判 confirmRestore。
 watch(
   () => props.open,
   (open) => {
@@ -159,41 +153,28 @@ watch(
     }
   },
 )
-
-// 用 pointerdown 判断点外部，不用 focusout / blur：
-// 面板内部焦点转移会被 focusout 误判成移出组件（AGENTS.md 的踩坑记录）。
-watch(
-  () => props.open,
-  (open) => {
-    if (open) {
-      document.addEventListener('pointerdown', onPointerDown, true)
-      document.addEventListener('keydown', onKeydown)
-    } else {
-      document.removeEventListener('pointerdown', onPointerDown, true)
-      document.removeEventListener('keydown', onKeydown)
-    }
-  },
-)
-
-onBeforeUnmount(() => {
-  document.removeEventListener('pointerdown', onPointerDown, true)
-  document.removeEventListener('keydown', onKeydown)
-})
 </script>
 
 <template>
-  <div v-if="open" class="version-overlay" role="presentation">
-    <section ref="dialogRef" class="version-dialog" role="dialog" aria-label="历史版本">
-      <header class="version-dialog__head">
-        <h2 class="version-dialog__title">历史版本</h2>
-        <span v-if="stats.added || stats.removed" class="version-dialog__stats">
-          <span class="diff-count diff-count--add">+{{ stats.added }}</span>
-          <span class="diff-count diff-count--del">−{{ stats.removed }}</span>
-        </span>
-        <button class="icon-btn" type="button" aria-label="关闭" @click="emit('close')">
-          <X aria-hidden="true" />
-        </button>
-      </header>
+  <DialogRoot :open="open" @update:open="(value: boolean) => !value && emit('close')">
+    <DialogPortal>
+      <DialogOverlay class="version-overlay" />
+      <DialogContent class="version-dialog">
+        <header class="version-dialog__head">
+          <DialogTitle class="version-dialog__title">历史版本</DialogTitle>
+          <DialogDescription class="sr-only">
+            左侧选择版本，右侧查看与当前内容的差异，可还原到选中版本。
+          </DialogDescription>
+          <span v-if="stats.added || stats.removed" class="version-dialog__stats">
+            <span class="diff-count diff-count--add">+{{ stats.added }}</span>
+            <span class="diff-count diff-count--del">−{{ stats.removed }}</span>
+          </span>
+          <DialogClose as-child>
+            <button class="icon-btn" type="button" aria-label="关闭">
+              <X aria-hidden="true" />
+            </button>
+          </DialogClose>
+        </header>
 
       <p v-if="error" class="notice notice--error" style="margin: 0 16px 12px">{{ error }}</p>
 
@@ -266,14 +247,17 @@ onBeforeUnmount(() => {
         </button>
       </footer>
 
-      <ConfirmDialog
-        :open="confirmRestore"
-        title="还原到此版本"
-        message="当前内容会被覆盖，且仍可在历史版本中找回。确定继续吗？"
-        :busy="restoring"
-        @confirm="doRestore"
-        @cancel="confirmRestore = false"
-      />
-    </section>
-  </div>
+      </DialogContent>
+    </DialogPortal>
+  </DialogRoot>
+
+  <!-- 确认框叠在版本浮层之上；它自己管理焦点与 Esc，所以与 Root 平级 -->
+  <ConfirmDialog
+    :open="confirmRestore"
+    title="还原到此版本"
+    message="当前内容会被覆盖，且仍可在历史版本中找回。确定继续吗？"
+    :busy="restoring"
+    @confirm="doRestore"
+    @cancel="confirmRestore = false"
+  />
 </template>

@@ -284,7 +284,7 @@ onMounted(() => void load())
             <span class="folder-stat__bar" aria-hidden="true">
               <span
                 class="folder-stat__bar-fill"
-                :style="{ width: `${Math.max(4, (folder.count / maxFolderCount) * 100)}%` }"
+                :style="{ transform: `scaleX(${Math.max(0.04, folder.count / maxFolderCount)})` }"
               ></span>
             </span>
             <span class="folder-stat__count">{{ folder.count }}</span>

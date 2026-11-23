@@ -94,7 +94,6 @@ onMounted(() => {
     </header>
 
     <p v-if="store.error" class="notice notice--error">{{ store.error }}</p>
-    <p v-if="store.toast" class="notice notice--success">{{ store.toast }}</p>
 
     <!-- 结余：整页的视觉锚点 -->
     <section class="ledger-hero" aria-label="本月结余">
@@ -154,7 +153,7 @@ onMounted(() => {
         <div
           class="ledger-budget__fill"
           :class="{ 'ledger-budget__fill--over': store.budgetOver }"
-          :style="{ width: store.budgetPercent + '%' }"
+          :style="{ transform: `scaleX(${store.budgetPercent / 100})` }"
         ></div>
       </div>
       <ul class="ledger-budget__items">

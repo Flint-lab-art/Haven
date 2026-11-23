@@ -58,7 +58,7 @@ onMounted(load)
           </div>
 
           <div v-else-if="sessions.length === 0" class="panel empty">
-            <p class="empty__title">没有活跃会话</p>
+            <p class="empty__title">当前没有其他活跃会话。</p>
             <p class="empty__text">当前设备上线后会出现在这里。</p>
           </div>
 
