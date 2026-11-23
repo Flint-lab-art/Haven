@@ -24,8 +24,6 @@ public final class NoteDtos {
             Integer sortOrder,
             String title,
             String contentPreview,
-            String visibility,
-            OffsetDateTime publishedAt,
             OffsetDateTime createdAt,
             OffsetDateTime updatedAt,
             List<TagBrief> tags) {}
@@ -37,8 +35,6 @@ public final class NoteDtos {
             Integer sortOrder,
             String title,
             String content,
-            String visibility,
-            OffsetDateTime publishedAt,
             OffsetDateTime createdAt,
             OffsetDateTime updatedAt,
             List<TagBrief> tags) {}
@@ -69,27 +65,6 @@ public final class NoteDtos {
 
     /** 版本分页列表。 */
     public record NoteVersionPage(List<NoteVersionSummary> items, long total) {}
-
-    /** 公开笔记列表项。 */
-    public record PublicNoteSummary(
-            UUID id,
-            String title,
-            String contentPreview,
-            OffsetDateTime publishedAt,
-            OffsetDateTime updatedAt,
-            List<TagBrief> tags) {}
-
-    /** 公开笔记分页列表。 */
-    public record PublicNotePage(List<PublicNoteSummary> items, long total) {}
-
-    /** 公开笔记详情。 */
-    public record PublicNoteDetail(
-            UUID id,
-            String title,
-            String content,
-            OffsetDateTime publishedAt,
-            OffsetDateTime updatedAt,
-            List<TagBrief> tags) {}
 
     /** 标签及其笔记数。 */
     public record TagSummary(UUID id, String name, long noteCount, OffsetDateTime createdAt) {}

@@ -1,331 +1,211 @@
 import { createApi } from './api'
 import { expect, test } from './fixtures'
 
-
 /**
- * 打开快速记账弹窗。
+ * 记账（PC 端）：账户、两级分类、转账、预算。
  *
- * 记账入口从「页面内常驻大文本框」改成了悬浮按钮 + 弹窗：
- * 看流水是高频动作，记账是低频动作，不该让输入框占掉版面。
+ * 造数据走 API，**用户可见结果用界面断言**。
+ * 重点验三件事：
+ * 1. 转账不计入收支统计（模型最容易出错的点）；
+ * 2. 二级分类的支出能归到一级（预算与统计都靠这条）；
+ * 3. 金额按整数分存储，小数不丢精度。
  */
-async function openQuickDialog(page: import('@playwright/test').Page) {
-  await page.getByRole('button', { name: '快速记一笔' }).click()
-  const dialog = page.getByRole('dialog', { name: '快速记账' })
-  await expect(dialog).toBeVisible()
-  return dialog
+
+/** 建一个可用账户，返回 id。 */
+async function seedAccount(api: ReturnType<typeof createApi>, name = '工资卡', initial = 1_000_000) {
+  return api.createAccount({ name, type: 'bank', initialBalanceCents: initial })
 }
 
-/**
- * 记账：快捷解析预览、确认写入、月度汇总、切月份、改分类、还款分类、删除。
- *
- * 记账是「解析自由文本」的入口，最容易出现「解析结果和写库结果不一致」：
- * 预览看到的和真正写进去的必须一致，所以两条路径都要验。
- */
+test('记一笔支出后出现在列表，月度汇总同步', async ({ authedPage: page }) => {
+  const api = createApi(page.request)
+  const account = await seedAccount(api)
+  const lunch = await api.categoryIdByName('餐饮', '午餐')
 
-test('快捷输入能解析出预览条目', async ({ authedPage: page }) => {
   await page.goto('/ledger')
-  const dialog = await openQuickDialog(page)
+  await page.getByRole('button', { name: '记一笔' }).click()
 
-  await dialog.getByLabel('记账输入').fill('早餐 12\n打车 25.5')
-  await dialog.getByRole('button', { name: '解析预览' }).click()
+  const dialog = page.getByRole('dialog', { name: '记一笔' })
+  await expect(dialog).toBeVisible()
 
-  // 预览行按解析结果渲染
-  const rows = dialog.locator('.ledger-parse__row')
-  await expect(rows).toHaveCount(2)
-  await expect(rows.first()).toContainText('早餐')
-  await expect(rows.first()).toContainText('12')
-  await expect(rows.nth(1)).toContainText('打车')
-})
+  // 选分类：点「餐饮」进下钻，再点「午餐」
+  await dialog.getByRole('radio', { name: /餐饮/ }).click()
+  await dialog.getByRole('radio', { name: /午餐/ }).click()
 
-test('确认写入后明细出现，月度汇总同步更新', async ({ authedPage: page }) => {
-  await page.goto('/ledger')
-  const dialog = await openQuickDialog(page)
+  await dialog.getByLabel('金额').fill('35')
+  await dialog.getByLabel('账户').selectOption(account.id)
+  await dialog.getByRole('button', { name: '保存' }).click()
 
-  await dialog.getByLabel('记账输入').fill('早餐 30\n午餐 20')
-  await dialog.getByRole('button', { name: '解析预览' }).click()
-  await dialog.getByRole('button', { name: /确认写入 2 笔/ }).click()
-
-  // 写入成功后弹窗自动关闭
   await expect(dialog).toBeHidden()
 
-  // 明细列表出现两行
-  const entries = page.locator('.ledger-entry')
-  await expect(entries).toHaveCount(2)
+  // 列表出现这一笔
+  await expect(page.locator('.ledger-entry').filter({ hasText: '午餐' })).toHaveCount(1)
+  // 汇总支出 = 35
+  await expect(page.locator('.ledger-stat__value').first()).toContainText('35')
 
-  // 汇总支出 = 50
-  await expect(page.locator('.ledger-total__value')).toContainText('50')
-
-  // 用 API 确认真的落库，且金额分毫不差（12.5 这类小数最容易出错）
-  const api = createApi(page.request)
+  // 落库确认
   const { items } = await api.ledgerEntries()
-  expect(items).toHaveLength(2)
-  expect(items.reduce((sum, e) => sum + e.amount_cents, 0)).toBe(5000)
+  expect(items).toHaveLength(1)
+  expect(items[0]).toMatchObject({ type: 'expense', amount_cents: 3500, category_id: lunch })
+})
+
+test('转账两个账户一减一增，且不计入收支统计', async ({ authedPage: page }) => {
+  const api = createApi(page.request)
+  const bank = await seedAccount(api, '工资卡', 1_000_000)
+  const wallet = await api.createAccount({ name: '微信', type: 'ewallet', initialBalanceCents: 0 })
+
+  await page.goto('/ledger')
+  await page.getByRole('button', { name: '记一笔' }).click()
+  const dialog = page.getByRole('dialog', { name: '记一笔' })
+
+  await dialog.getByRole('tab', { name: '转账' }).click()
+  await dialog.getByLabel('金额').fill('1000')
+  await dialog.getByLabel('账户').selectOption(bank.id)
+  await dialog.getByLabel('转入账户').selectOption(wallet.id)
+  await dialog.getByRole('button', { name: '保存' }).click()
+  await expect(dialog).toBeHidden()
+
+  // 列表里能看到转账
+  await expect(page.locator('.ledger-entry').filter({ hasText: '转账' })).toHaveCount(1)
+
+  // 关键：支出与收入都还是 0
+  await expect(page.locator('.ledger-stat__value').first()).toContainText('¥0')
+
+  // 账户余额：工资卡 10000-1000，微信 +1000
+  const res = await page.request.get('/api/ledger/accounts')
+  expect(res.ok()).toBeTruthy()
+  const list = (await res.json()) as { id: string; balance_cents: number }[]
+  expect(list.find((a) => a.id === bank.id)?.balance_cents).toBe(900_000)
+  expect(list.find((a) => a.id === wallet.id)?.balance_cents).toBe(100_000)
 })
 
 test('小数金额按分存储不丢精度', async ({ authedPage: page }) => {
   const api = createApi(page.request)
-  const items = await api.quickCommit('咖啡 25.5')
-  expect(items[0].amount_cents).toBe(2550)
+  const account = await seedAccount(api)
+  const coffee = await api.categoryIdByName('餐饮', '零食饮料')
+
+  await api.createLedgerEntry({ type: 'expense', amountCents: 2550, categoryId: coffee, accountId: account.id })
 
   await page.goto('/ledger')
   await expect(page.locator('.ledger-entry')).toHaveCount(1)
-  await expect(page.locator('.ledger-entry__amount').first()).toContainText('25.5')
-})
-
-test('收入行被识别为收入，会计入收入汇总', async ({ authedPage: page }) => {
-  const api = createApi(page.request)
-  await api.quickCommit('工资 8000')
-
-  await page.goto('/ledger')
-  // 明细里带 is-income 样式；页面显示成「+¥8,000」这种带千分位的形式
-  await expect(page.locator('.ledger-entry__amount.is-income')).toContainText('8,000')
+  await expect(page.locator('.ledger-entry__amount').first()).toContainText('25.50')
 
   const { items } = await api.ledgerEntries()
-  expect(items[0].type).toBe('income')
-  expect(items[0].amount_cents).toBe(800000)
+  expect(items[0].amount_cents).toBe(2550)
 })
 
-test('可以切换月份查看不同月份', async ({ authedPage: page }) => {
+test('二级分类支出能归到一级，月度汇总按大类显示', async ({ authedPage: page }) => {
+  const api = createApi(page.request)
+  const account = await seedAccount(api)
+  const lunch = await api.categoryIdByName('餐饮', '午餐')
+  const snacks = await api.categoryIdByName('餐饮', '零食饮料')
+
+  await api.createLedgerEntry({ type: 'expense', amountCents: 2000, categoryId: lunch, accountId: account.id })
+  await api.createLedgerEntry({ type: 'expense', amountCents: 1000, categoryId: snacks, accountId: account.id })
+
   await page.goto('/ledger')
+  // 两笔都在列表里，且都显示「餐饮」作为大类
+  await expect(page.locator('.ledger-entry')).toHaveCount(2)
+  await expect(page.locator('.ledger-entry').first()).toContainText('餐饮')
 
-  const monthInput = page.getByLabel('选择月份')
-  // inputValue() 不自动等待；先确认它已有值（月份由页面加载后填入）
-  await expect(monthInput).not.toHaveValue('')
-  const current = await monthInput.inputValue()
-  const [year, month] = current.split('-').map(Number)
-  const prev = month === 1 ? `${year - 1}-12` : `${year}-${String(month - 1).padStart(2, '0')}`
+  // 汇总支出 = 30
+  await expect(page.locator('.ledger-stat__value').first()).toContainText('30')
+})
 
+test('可以切换月份，上个月的记录不会混进本月', async ({ authedPage: page }) => {
+  const api = createApi(page.request)
+  const account = await seedAccount(api)
+  const lunch = await api.categoryIdByName('餐饮', '午餐')
+
+  // 建一笔上个月的
+  const lastMonth = new Date()
+  lastMonth.setMonth(lastMonth.getMonth() - 1)
+  lastMonth.setDate(15)
+  await api.createLedgerEntry({
+    type: 'expense',
+    amountCents: 9900,
+    categoryId: lunch,
+    accountId: account.id,
+    occurredAt: lastMonth.toISOString(),
+  })
+
+  await page.goto('/ledger')
+  // 本月没有记录
+  await expect(page.locator('.empty__title').filter({ hasText: '还没有记录' })).toBeVisible()
+
+  // 切到上个月
   await page.getByRole('button', { name: '上个月' }).click()
-  await expect(monthInput).toHaveValue(prev)
-
-  await page.getByRole('button', { name: '下个月' }).click()
-  await expect(monthInput).toHaveValue(current)
+  await expect(page.locator('.ledger-entry')).toHaveCount(1)
 })
 
-test('明细行的分类下拉可直接修改，改完落库', async ({ authedPage: page }) => {
+test('编辑明细可改金额，保存后列表与汇总同步', async ({ authedPage: page }) => {
   const api = createApi(page.request)
-  await api.quickCommit('午饭 40')
+  const account = await seedAccount(api)
+  const lunch = await api.categoryIdByName('餐饮', '午餐')
+
+  await api.createLedgerEntry({ type: 'expense', amountCents: 4000, categoryId: lunch, accountId: account.id })
 
   await page.goto('/ledger')
-  const row = page.locator('.ledger-entry').filter({ hasText: '午饭' }).first()
-  await expect(row).toBeVisible()
+  await page.locator('.ledger-entry').first().getByRole('button', { name: '编辑' }).click()
 
-  // 行内直接有分类下拉
-  await row.locator('select.ledger-entry__cat').selectOption('餐饮')
+  const dialog = page.getByRole('dialog', { name: '记一笔' })
+  await expect(dialog).toBeVisible()
+  await dialog.getByLabel('金额').fill('60')
+  await dialog.getByRole('button', { name: '保存' }).click()
+  await expect(dialog).toBeHidden()
 
-  await expect
-    .poll(async () => (await api.ledgerEntries()).items[0].category)
-    .toBe('餐饮')
+  await expect(page.locator('.ledger-entry__amount').first()).toContainText('60')
+  await expect(page.locator('.ledger-stat__value').first()).toContainText('60')
+
+  const { items } = await api.ledgerEntries()
+  expect(items[0].amount_cents).toBe(6000)
 })
 
-test('「还款」是内置分类（V10 迁移新增）', async ({ authedPage: page }) => {
-  const res = await page.request.get('/api/ledger/categories')
-  const body = (await res.json()) as { items: string[] }
-  expect(body.items).toContain('还款')
-})
-
-test('可以删除明细，删除后列表清空', async ({ authedPage: page }) => {
+test('删除明细后列表清空', async ({ authedPage: page }) => {
   const api = createApi(page.request)
-  await api.quickCommit('随手 10')
+  const account = await seedAccount(api)
+  const lunch = await api.categoryIdByName('餐饮', '午餐')
+  await api.createLedgerEntry({ type: 'expense', amountCents: 1200, categoryId: lunch, accountId: account.id })
 
   await page.goto('/ledger')
-  const row = page.locator('.ledger-entry').filter({ hasText: '随手' }).first()
-  await expect(row).toBeVisible()
-
-  await row.getByRole('button', { name: '删除这笔记录' }).click()
-  const confirm = page.getByRole('alertdialog')
-  await expect(confirm).toBeVisible()
-  await confirm.getByRole('button', { name: '删除' }).click()
+  await page.locator('.ledger-entry').first().getByRole('button', { name: '删除' }).click()
+  await page.getByRole('button', { name: '删除', exact: true }).last().click()
 
   await expect(page.locator('.ledger-entry')).toHaveCount(0)
-  await expect.poll(async () => (await api.ledgerEntries()).items.length).toBe(0)
+  const { total } = await api.ledgerEntries()
+  expect(total).toBe(0)
 })
 
-test('解析失败的行给出逐行错误，且不写入', async ({ authedPage: page }) => {
-  await page.goto('/ledger')
-  const dialog = await openQuickDialog(page)
-
-  await dialog.getByLabel('记账输入').fill('这一行没有金额')
-  await dialog.getByRole('button', { name: '解析预览' }).click()
-
-  // 有明显错误提示，且没有可写入的条目
-  await expect(dialog.locator('.ledger-parse__errors')).toBeVisible()
-
+test('支出与收入分别汇总，不混在一起', async ({ authedPage: page }) => {
   const api = createApi(page.request)
-  expect((await api.ledgerEntries()).items).toHaveLength(0)
-})
+  const account = await seedAccount(api)
+  const lunch = await api.categoryIdByName('餐饮', '午餐')
 
-test('编辑弹窗可改金额与分类，保存后列表与汇总同步', async ({ authedPage: page }) => {
-  const api = createApi(page.request)
-  await api.quickCommit('晚饭 40')
-
-  await page.goto('/ledger')
-  const row = page.locator('.ledger-entry').filter({ hasText: '晚饭' }).first()
-  await expect(row).toBeVisible()
-
-  // 打开编辑弹窗
-  await row.getByRole('button', { name: '编辑金额与时间' }).click()
-  const dialog = page.getByRole('dialog', { name: '编辑记账' })
-  await expect(dialog).toBeVisible()
-
-  // 分类与金额都能改
-  await dialog.locator('select').selectOption('娱乐')
-  await dialog.locator('input[inputmode="decimal"]').fill('60')
-  await dialog.getByRole('button', { name: '保存' }).click()
-
-  // 弹窗关闭，列表显示新值
-  await expect(dialog).toBeHidden()
-  await expect(page.locator('.ledger-entry__amount').first()).toContainText('60')
-
-  // 汇总同步到 60
-  await expect(page.locator('.ledger-total__value')).toContainText('60')
-
-  // 落库确认
-  const { items } = await api.ledgerEntries()
-  expect(items[0]).toMatchObject({ amount_cents: 6000, category: '娱乐' })
-})
-
-test('编辑弹窗金额非法时给出提示且不关闭', async ({ authedPage: page }) => {
-  const api = createApi(page.request)
-  await api.quickCommit('测试非法 10')
+  await api.createLedgerEntry({ type: 'expense', amountCents: 3000, categoryId: lunch, accountId: account.id })
+  // 收入：找收入一级下的「工资」
+  const roots = await api.categories()
+  const incomeRoot = roots.find((c) => c.kind === 'income')
+  const salary = incomeRoot?.children.find((c) => c.name === '工资')?.id ?? incomeRoot!.id
+  await api.createLedgerEntry({ type: 'income', amountCents: 800_000, categoryId: salary, accountId: account.id })
 
   await page.goto('/ledger')
-  await page.locator('.ledger-entry').first().getByRole('button', { name: '编辑金额与时间' }).click()
-
-  const dialog = page.getByRole('dialog', { name: '编辑记账' })
-  await dialog.locator('input[inputmode="decimal"]').fill('0')
-  await dialog.getByRole('button', { name: '保存' }).click()
-
-  await expect(dialog.getByText(/金额需为大于 0/)).toBeVisible()
-  await expect(dialog).toBeVisible()
-
-  // 数据没被改动
-  const { items } = await api.ledgerEntries()
-  expect(items[0].amount_cents).toBe(1000)
+  const stats = page.locator('.ledger-stat__value')
+  await expect(stats.nth(0)).toContainText('30') // 支出
+  await expect(stats.nth(1)).toContainText('8,000') // 收入
 })
 
-test('「Token」是内置支出分类，并能用别名快捷记账', async ({ authedPage: page }) => {
-  const res = await page.request.get('/api/ledger/categories')
-  const body = (await res.json()) as { items: string[] }
-  expect(body.items).toContain('Token')
-
-  // 默认别名只灌注给开发账号，E2E 账号要自己建一条
-  const alias = await page.request.post('/api/ledger/aliases', {
-    data: { alias: 'claude', category: 'Token' },
-  })
-  expect(alias.ok(), await alias.text()).toBeTruthy()
-
-  // AI 服务的常见写法：第一词是别名，金额在后
-  const api = createApi(page.request)
-  const items = await api.quickCommit('claude 20')
-  expect(items[0]).toMatchObject({ type: 'expense', category: 'Token', amount_cents: 2000 })
-
-  // 界面上的分类下拉里也能选到。
-  // allTextContents() 不自动等待，先等行渲染完再读，否则会读到空数组。
+test('没有账户时给出引导，并能从设置建账户', async ({ authedPage: page }) => {
   await page.goto('/ledger')
-  const row = page.locator('.ledger-entry').filter({ hasText: 'claude' }).first()
-  await expect(row).toBeVisible()
-  await expect(row.locator('select.ledger-entry__cat option').first()).toBeAttached()
-  const options = await row.locator('select.ledger-entry__cat option').allTextContents()
-  expect(options).toContain('Token')
-})
+  await expect(page.getByText('还没有账户')).toBeVisible()
 
-test('「订阅」是内置支出分类，与 Token 并存且互不干扰', async ({ authedPage: page }) => {
-  const res = await page.request.get('/api/ledger/categories')
-  const body = (await res.json()) as { items: string[] }
-  expect(body.items).toContain('订阅')
-  expect(body.items).toContain('Token')
+  // 从设置里的账户页建一个
+  await page.goto('/settings/accounts')
+  await page.getByRole('button', { name: '新建账户' }).click()
+  await page.getByLabel('账户名').fill('现金')
+  await page.getByLabel('账户类型').selectOption('cash')
+  await page.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(page.locator('.row-item').filter({ hasText: '现金' })).toBeVisible()
 
-  // 默认别名只灌注给开发账号，E2E 账号自己建
-  for (const [alias, category] of [
-    ['icloud', '订阅'],
-    ['claude', 'Token'],
-  ]) {
-    const r = await page.request.post('/api/ledger/aliases', { data: { alias, category } })
-    expect(r.ok(), await r.text()).toBeTruthy()
-  }
-
-  const api = createApi(page.request)
-  const rows = await api.quickCommit('icloud 25\nclaude 20')
-  // 返回顺序是录入顺序，不是文本行序，所以按集合断言
-  expect(rows.map((r) => r.category).sort()).toEqual(['Token', '订阅'].sort())
-  expect(rows.every((r) => r.type === 'expense')).toBe(true)
-
-  // 界面下拉里两个分类都能选
+  // 回记账页，引导消失
   await page.goto('/ledger')
-  const row = page.locator('.ledger-entry').filter({ hasText: 'icloud' }).first()
-  await expect(row).toBeVisible()
-  await expect(row.locator('select.ledger-entry__cat option').first()).toBeAttached()
-  const options = await row.locator('select.ledger-entry__cat option').allTextContents()
-  expect(options).toContain('订阅')
-  expect(options).toContain('Token')
-})
-
-test('明细按天分组，每天显示当日小计', async ({ authedPage: page }) => {
-  const api = createApi(page.request)
-  // 同一天两笔支出 + 另一天一笔，验证分组与组内合计
-  await api.quickCommit('早饭 10\n午饭 20\n昨天 晚饭 30')
-
-  await page.goto('/ledger')
-
-  // 应分成两组：今天与昨天（写法上「昨天」会被解析成前一天）
-  const days = page.locator('.ledger-day')
-  await expect(days).toHaveCount(2)
-
-  // 第一组是今天，小计 = 30
-  await expect(days.first().locator('.ledger-day__date')).toHaveText('今天')
-  await expect(days.first().locator('.ledger-day__sum')).toContainText('30')
-
-  // 第二组是昨天，小计 = 30
-  await expect(days.nth(1).locator('.ledger-day__date')).toHaveText('昨天')
-  await expect(days.nth(1).locator('.ledger-day__sum')).toContainText('30')
-
-  // 组内只显示时刻（日期已在表头）
-  await expect(days.first().locator('.ledger-entry__time').first()).toHaveText(/^\d{2}:\d{2}$/)
-})
-
-test('同一天的支出与收入分别汇总，不混在一起', async ({ authedPage: page }) => {
-  const api = createApi(page.request)
-  await api.quickCommit('午饭 50\n工资 8000')
-
-  await page.goto('/ledger')
-  const today = page.locator('.ledger-day').first()
-
-  // 支出 50、收入 8000 各自标注
-  await expect(today.locator('.ledger-day__sum-item').first()).toContainText('支出')
-  await expect(today.locator('.ledger-day__sum-item').first()).toContainText('50')
-  await expect(today.locator('.ledger-day__sum-item--income')).toContainText('收入')
-  // 金额带千分位：¥8,000
-  await expect(today.locator('.ledger-day__sum-item--income')).toContainText('8,000')
-})
-
-test('快速记账入口是悬浮按钮，不占用明细版面', async ({ authedPage: page }) => {
-  await page.goto('/ledger')
-
-  const fab = page.getByRole('button', { name: '快速记一笔' })
-  await expect(fab).toBeVisible()
-
-  // 记账输入框默认不可见：只有点开弹窗才出现
-  await expect(page.getByLabel('记账输入')).toHaveCount(0)
-
-  // 弹窗可用 Esc 之外的显式按钮关闭
-  await fab.click()
-  await expect(page.getByRole('dialog', { name: '快速记账' })).toBeVisible()
-  await page.getByRole('dialog', { name: '快速记账' }).getByRole('button', { name: '取消' }).click()
-  await expect(page.getByRole('dialog', { name: '快速记账' })).toBeHidden()
-})
-
-test('重复提交同一批次不会重复写入（幂等）', async ({ authedPage: page }) => {
-  const batchId = 'e2e-idempotent-batch'
-  const payload = {
-    batch_id: batchId,
-    items: [{ type: 'expense', amount_cents: 1000, category: '餐饮', occurred_at: new Date().toISOString() }],
-  }
-
-  const first = await page.request.post('/api/ledger/entries/batch', { data: payload })
-  expect(first.status()).toBe(201)
-
-  const second = await page.request.post('/api/ledger/entries/batch', { data: payload })
-  expect(second.status()).toBe(200)
-  expect(await second.json()).toMatchObject({ created: false })
+  await expect(page.getByText('还没有账户')).toHaveCount(0)
 })

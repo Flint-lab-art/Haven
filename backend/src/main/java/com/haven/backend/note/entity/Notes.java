@@ -14,7 +14,7 @@ import lombok.ToString;
 @Getter
 @Setter
 @ToString(exclude = {"content", "searchText"})
-@TableName("notes")
+@TableName("note.notes")
 public class Notes implements Serializable {
 
     private static final long serialVersionUID = 1L;
@@ -30,12 +30,6 @@ public class Notes implements Serializable {
 
     @TableField("content")
     private String content;
-
-    @TableField("visibility")
-    private String visibility;
-
-    @TableField("published_at")
-    private OffsetDateTime publishedAt;
 
     @TableField("search_text")
     private String searchText;

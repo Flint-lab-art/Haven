@@ -36,10 +36,10 @@ sa-token:
 ```
 POST /api/auth/login { username, password, trustDevice? }
   │
-  ├─ 失败 → 记录 login_failure 审计 + 失败计数 +1
+  ├─ 失败 → 写 login_failure（独立事务）+ 失败计数 +1
   │          超限 → 429
   │
-  ├─ 未启用 TOTP，或当前设备已授信 → 直接建会话
+  ├─ 未启用 TOTP，或当前设备已授信 → 直接建会话 + 写 login_success(method=password)
   │
   └─ 启用 TOTP 且设备未授信
        ├─ 写 pending_totp（只存 token 哈希，5 分钟有效）
@@ -47,18 +47,24 @@ POST /api/auth/login { username, password, trustDevice? }
 
 POST /api/auth/login/totp { tempToken, code }
   │
-  ├─ 校验失败 → 计数 +1；达到上限则作废临时令牌
-  ├─ 校验通过 → 删除临时记录 → 建会话
+  ├─ 校验失败 → 写 totp_failure + 计数 +1；达到上限则作废临时令牌
+  ├─ 校验通过 → 删除临时记录 → 建会话 + 写 login_success(method=totp)
   └─ trustDevice=true → 写授信设备 Cookie（30 天）
+
+POST /api/auth/logout
+  └─ 写 logout(method=session) → 注销 Sa-Token 会话 + 清除授信设备 Cookie
 ```
 
 ### 登录入口为什么要分两层
 
-`AuthServiceImpl.loginPrecheck` 只做**数据库内的校验**（`@Transactional(readOnly=true)`），
+`AuthServiceImpl.loginPrecheck` 只做**数据库内的校验**（`@Transactional`，见下文为什么不是只读），
 `AuthSessionOpener.login` 负责**事务外的副作用**（`StpUtil.login`）。
 
 如果混在一个 `@Transactional` 方法里，事务回滚时用户已经被"登录"了，
 或者反过来——数据提交了但会话没建成。
+
+登录日志的记录点也按这两层分布：失败写在 `loginPrecheck` / `totpPrecheck`，
+成功写在 `AuthSessionOpener`（事务外、会话建好之后）。
 
 ### 失败限流
 
@@ -107,6 +113,8 @@ public enum RequiredAccess {
 | `/api/tokens/**` | SESSION_TOTP |
 | `/api/auth/totp/setup`、`verify`、`disable` | SESSION |
 | `/api/auth/password` | SESSION_TOTP |
+| `/api/auth/login-logs` | SESSION |
+| `/api/auth/logout` | SESSION（Token 调用直接返回，没有会话可注销） |
 | 其余 `/api/**` | 按方法：GET→READ，其他→WRITE |
 
 ## 4. TOTP
@@ -143,18 +151,76 @@ POST /api/auth/password { oldPassword, newPassword, totpCode? }
 
 ## 6. 审计
 
-`audit_events` 表先前存在但从未写入。现在由 `audit/AuditRecorder` 统一记录：
+安全事件分两张表记，**互不重叠**：
+
+| 表 | 记什么 | 写入者 |
+| --- | --- | --- |
+| `login_logs` | 登录成功 / 失败、动态码失败、登出 | `auth/LoginLogRecorder` |
+| `audit_events` | 其余安全操作（TOTP、改密、Token、授信设备、会话吊销） | `audit/AuditRecorder` |
+
+### 6.1 `login_logs`
+
+`login_logs` 的列见 [data-model.md](data-model.md#login_logs)。事件与失败原因：
+
+| `event_type` | 什么时候写 | 可能的 `failure_reason` |
+| --- | --- | --- |
+| `login_success` | 会话建成后 | — |
+| `login_failure` | 密码校验失败或超限 | `unknown_user` / `bad_password` / `too_many_attempts` |
+| `totp_failure` | 动态码校验失败或超限 | `expired` / `unknown_user` / `too_many_attempts` / `bad_code` |
+| `logout` | `POST /api/auth/logout` | — |
+
+写入位置：
 
 | 事件 | 位置 |
 | --- | --- |
 | `login_failure` | `AuthServiceImpl.loginPrecheck` |
-| `login_success` | `AuthSessionOpener.login` / `loginTotp` |
+| `totp_failure` | `AuthServiceImpl.totpPrecheck` |
+| `login_success` | `AuthSessionOpener.login`（`password`）/ `loginTotp`（`totp`） |
+| `logout` | `AuthServiceImpl.logout(userId, ip, userAgent)` |
+
+**必须走 `LoginLogRecorder.record(...)`**，它标注了
+`@Transactional(propagation = REQUIRES_NEW)`：
+
+```java
+@Transactional(propagation = Propagation.REQUIRES_NEW)
+public void record(...) { ... }
+```
+
+原因：登录失败随后会抛 401，外层 `loginPrecheck` 的事务随之回滚。如果共用事务，
+**"有人正在猜你的密码"这条最重要的日志会和失败一起消失**。
+
+写入失败只打 `warn`，不影响登录主流程（登录日志是旁路能力）。
+`LoginLogsTest` 用 `@Transactional(propagation = Propagation.NOT_SUPPORTED)` 挂起测试事务，
+断言"外层回滚后日志仍在"。
+
+`session_hash` 是会话 Token 的 SHA-256，只落库用于把日志和会话对应起来，**永远不出服务端**。
+
+### 6.2 查询接口
+
+```text
+GET /api/auth/login-logs?limit=20&offset=0
+→ { "items": [{ id, event_type, username, method, success, failure_reason,
+                ip, user_agent, created_at }], "total": 0 }
+```
+
+- 权限是 **`SESSION`**：API Token 一律 403。登录历史本身属于最敏感的信息之一，泄露一个 Token 不该顺带泄露全部登录地点。
+- 过滤条件是 `user_id = 我` **或** `lower(username) = lower(我的用户名)`。后者是为了让"把用户名打错了一半"的失败尝试也能被看到——那些记录的 `user_id` 是空的。
+- `limit` 收敛到 1..200（比通用上限 100 宽，因为日志页一次拉 50 条），`offset` 不小于 0。
+- 响应里没有 `session_hash`。
+
+前端入口在设置页 `/settings/login-logs`（`SettingsPanel` 里排在「账号安全」与「会话」之间）。
+
+### 6.3 `audit_events`（非登录事件）
+
+`audit_events` 表先前存在但从未写入。现在由 `audit/AuditRecorder` 统一记录：
+
+| 事件 | 位置 |
+| --- | --- |
 | `totp_bound` / `totp_disabled` | `AuthServiceImpl` |
 | `password_changed` | `AuthServiceImpl.changePassword` |
 | `token_created` / `token_revoked` | `ApiTokenServiceImpl` |
 | `trusted_device_added` / `_revoked` | `TrustedDeviceServiceImpl` |
 | `session_revoked` | `SessionServiceImpl` |
-| `note_published` / `note_unpublished` | `NotesServiceImpl` |
 
 ### 写入策略
 
@@ -179,9 +245,9 @@ try {
 - [ ] 新增写操作是否加了 `@Transactional`
 - [ ] 查询是否加了 `@Transactional(readOnly = true)`
 - [ ] 敏感操作（改密、Token、TOTP）是否要求 `SESSION` 或 `SESSION_TOTP`
-- [ ] 凭据相关逻辑是否有对应的审计事件
+- [ ] 凭据相关逻辑是否有对应的审计事件 / 登录日志
 - [ ] 日志里是否可能带出密码 / Token / 正文
-- [ ] 新增公开接口是否考虑限流
+- [ ] 新增匿名端点是否考虑限流
 
 ## 8. 常见误判
 
@@ -189,5 +255,6 @@ try {
 | --- | --- |
 | `sa_token` 表存在但没被使用 | 确实是"死资产"，当前用内存存储；接入 `sa-token-jdbc` 或删除表 |
 | Token 的 `scope` 只有 `read` / `read_write` | 够用；细粒度权限等真有需求再加 |
-| `/api/public/**` 完全匿名 | 是设计；匿名用户看公开笔记/作品集 |
+| `login_logs` 和 `audit_events` 都记安全事件 | 分工明确：登录类事件只进 `login_logs`，其余进 `audit_events`；`audit_events.event_type` 的 CHECK 里仍保留 `login_*` / `note_published` 等历史取值（已执行的迁移不可改），`AuditEventType` 枚举已不再包含它们，新代码不会写入 |
+| 登录查询接口不让 API Token 调 | 是设计；`SESSION` 级，见上文 |
 | 上传文件匿名可读 | 靠随机文件名保密；需要严格私密时改成鉴权代理 |

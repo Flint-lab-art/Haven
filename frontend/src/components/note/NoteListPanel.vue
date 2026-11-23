@@ -19,7 +19,7 @@ import IconPicker from './IconPicker.vue'
 import NoteTreeItem from './NoteTreeItem.vue'
 import { ApiError } from '@/api/client'
 import { deleteFolder, type Folder } from '@/api/folders'
-import { deleteNote, publishNote, unpublishNote, type NoteSummary } from '@/api/notes'
+import { deleteNote, type NoteSummary } from '@/api/notes'
 import { useFolderEditing } from '@/composables/useFolderEditing'
 import { useFolderIcon } from '@/composables/useFolderIcon'
 import { useNoteTree } from '@/composables/useNoteTree'
@@ -27,6 +27,8 @@ import { useTreeDrag } from '@/composables/useTreeDrag'
 import { useTreeDragPersist } from '@/composables/useTreeDragPersist'
 import { useUiStore } from '@/stores/ui'
 import { folderIndent, isFolderDescendant } from '@/utils/tree'
+import { FilePlus, FolderPlus } from 'lucide-vue-next'
+
 
 const route = useRoute()
 const router = useRouter()
@@ -179,7 +181,6 @@ const pendingDelete = ref<{
   message: string
 } | null>(null)
 const deleting = ref(false)
-const busyNoteId = ref<string | null>(null)
 
 let refreshTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -280,32 +281,6 @@ async function confirmDelete(): Promise<void> {
     pendingDelete.value = null
   } finally {
     deleting.value = false
-  }
-}
-
-async function toggleNoteVisibility(note: NoteSummary): Promise<void> {
-  if (busyNoteId.value) return
-
-  // 正在编辑这篇笔记时，先把编辑器里的最新内容落库，避免公开旧版本
-  if (currentNoteId.value === note.id) {
-    const ok = await ui.flushNote()
-    if (!ok) return
-  }
-
-  busyNoteId.value = note.id
-  error.value = ''
-  try {
-    const updated =
-      note.visibility === 'public' ? await unpublishNote(note.id) : await publishNote(note.id)
-    notes.value = notes.value.map((item) =>
-      item.id === note.id
-        ? { ...item, visibility: updated.visibility, updated_at: updated.updated_at }
-        : item,
-    )
-  } catch (err) {
-    error.value = actionError(err, '操作失败，请稍后重试')
-  } finally {
-    busyNoteId.value = null
   }
 }
 
@@ -467,17 +442,10 @@ onBeforeUnmount(() => {
       <h1 class="panel-title panel-title--compact">{{ panelTitle }}</h1>
       <div class="panel-actions">
         <button class="icon-btn" type="button" title="新建笔记" aria-label="新建笔记" @click="startNewNote">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M6 3h7l5 5v13H6z" />
-            <path d="M13 3v5h5" />
-            <path d="M12 12v5M9.5 14.5h5" />
-          </svg>
+          <FilePlus aria-hidden="true" />
         </button>
         <button class="icon-btn" type="button" title="新建文件夹" aria-label="新建文件夹" @click="startCreateRoot">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-            <path d="M12 11v5M9.5 13.5h5" />
-          </svg>
+          <FolderPlus aria-hidden="true" />
         </button>
       </div>
     </header>
@@ -624,9 +592,7 @@ onBeforeUnmount(() => {
                 ? 'after'
                 : null
           "
-          :busy="busyNoteId === row.note.id"
           @open="router.push(noteTarget(row.note))"
-          @toggle-visibility="toggleNoteVisibility(row.note)"
           @remove="removeNote(row.note)"
           @dragstart="startNoteDrag($event, row.note)"
           @dragover="onNoteDragOver($event, row.note)"

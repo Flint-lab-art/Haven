@@ -5,10 +5,10 @@
  * Cmd/Ctrl+K 打开，输入规则：
  *   - `s ` + 关键词     搜笔记（只搜标题）
  *   - `n ` + 标题       新建笔记并预填标题
- *   - `d` / `w` / `t` / `g` / `p` / `,` 回车   打开对应页面
+ *   - `d` / `w` / `t` / `g` / `,` 回车   打开对应页面
  *   - 其他              按命令名或 key 前缀匹配
  *
- * 命令固定七条，不做运行时注册（docs/v6/conventions.md 2.2）。
+ * 命令固定六条，不做运行时注册（docs/conventions.md 2.2）。
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -92,13 +92,6 @@ const commands = computed<Command[]>(() => [
     label: '打开回收站',
     icon: '🗑️',
     run: () => go({ name: 'trash' }),
-  },
-  {
-    key: 'portfolio',
-    alias: 'p',
-    label: '打开作品集',
-    icon: '🗂️',
-    run: () => go({ name: 'portfolio' }),
   },
   {
     key: 'settings',

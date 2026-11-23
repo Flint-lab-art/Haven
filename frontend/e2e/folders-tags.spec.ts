@@ -73,24 +73,39 @@ test('图标面板点击后可见（回归：面板曾被 overflow 裁掉）', a
   const picker = page.locator('.icon-picker')
   await expect(picker).toBeVisible()
 
-  // 关键断言：面板真的在视口内且有尺寸。
+  // 关键断言：面板真的在视口内、有尺寸，且没有被祖先容器裁掉。
   // 只断言 exists/visible 不够——被 overflow 裁掉的元素仍可能被判为 visible，
-  // 所以直接比对它的 boundingBox 是否落在树容器内部。
+  // 所以用 elementFromPoint 验证面板内部几个点都能命中面板自己。
+  // 注意别断言「完整落在视口内」：树栏在窗口左侧，面板贴边是正常布局，不是 bug。
   const box = await picker.boundingBox()
   expect(box, '面板应渲染出实际尺寸').not.toBeNull()
   expect(box!.width).toBeGreaterThan(100)
   expect(box!.height).toBeGreaterThan(100)
 
-  const inViewport = await picker.evaluate((el) => {
+  const visibleHitPoints = await picker.evaluate((el) => {
     const r = el.getBoundingClientRect()
-    return r.top >= 0 && r.left >= 0 && r.bottom <= window.innerHeight && r.right <= window.innerWidth
+    // 取面板内部、离边缘 8px 的九个点，避开圆角与边框
+    const xs = [r.left + 8, r.left + r.width / 2, r.right - 8]
+    const ys = [r.top + 8, r.top + r.height / 2, r.bottom - 8]
+    return xs.flatMap((x) =>
+      ys.map((y) => {
+        const hit = document.elementFromPoint(x, y)
+        return hit !== null && (hit === el || el.contains(hit))
+      }),
+    )
   })
-  expect(inViewport, '面板不应被裁到视口外').toBe(true)
+  expect(visibleHitPoints, '面板内部各点都应能命中面板本身（未被裁掉）').toEqual(
+    Array(9).fill(true),
+  )
 
-  // 选一个 emoji，图标应立刻更新
-  await picker.getByRole('button', { name: /😀|🚀|📁/ }).first().click()
-  // 图标变化后，行内不再是默认文件夹图标（出现文本 emoji 或图片）
-  await expect(row.locator('.tree-icon')).not.toHaveCount(0)
+  // 选一个 emoji，文件夹图标应立刻变成 emoji（默认是 SVG 文件夹图标，没有 —emoji 类）
+  const emojiButton = picker.getByRole('button', { name: /😀|🚀|📁/ }).first()
+  const pickedEmoji = (await emojiButton.textContent())?.trim() ?? ''
+  await emojiButton.click()
+
+  const emojiIcon = row.locator('.tree-icon--emoji')
+  await expect(emojiIcon).toBeVisible()
+  await expect(emojiIcon).toHaveText(pickedEmoji)
 })
 
 test('右键菜单的「更改图标」同样能打开面板', async ({ authedPage: page }) => {

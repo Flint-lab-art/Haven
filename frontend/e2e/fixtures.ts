@@ -1,5 +1,5 @@
 import { expect, test as base, type APIRequestContext, type Page } from '@playwright/test'
-import { psql, SCHEMA } from './db'
+import { psql } from './db'
 
 /**
  * E2E 共享夹具。
@@ -25,30 +25,29 @@ const TEST_PASSWORD_HASH = '$2a$04$x7zXaN/18sMxL4mT37YaieUefx/zLJt0AWWZwb1BFLKoo
  */
 export async function resetDatabase(): Promise<void> {
   const sql = `
-    delete from ${SCHEMA}.note_tags;
-    delete from ${SCHEMA}.note_versions;
-    delete from ${SCHEMA}.notes;
-    delete from ${SCHEMA}.folders;
-    delete from ${SCHEMA}.tags;
-    delete from ${SCHEMA}.issue_status_events;
-    delete from ${SCHEMA}.issues;
-    delete from ${SCHEMA}.portfolio_repos;
-    delete from ${SCHEMA}.portfolio_items;
-    delete from ${SCHEMA}.ledger_entries;
-    delete from ${SCHEMA}.ledger_batches;
-    delete from ${SCHEMA}.ledger_aliases;
-    delete from ${SCHEMA}.trusted_devices;
-    delete from ${SCHEMA}.pending_totp;
-    delete from ${SCHEMA}.sa_token;
-    delete from ${SCHEMA}.audit_events;
-    delete from ${SCHEMA}.tokens;
-    delete from ${SCHEMA}.users;
+    delete from note.note_tags;
+    delete from note.note_versions;
+    delete from note.notes;
+    delete from note.folders;
+    delete from note.tags;
+    delete from issue.issue_status_events;
+    delete from issue.issues;
+    delete from ledger.ledger_entries;
+    delete from ledger.ledger_batches;
+    delete from ledger.ledger_aliases;
+    delete from trusted_devices;
+    delete from pending_totp;
+    delete from sa_token;
+    delete from login_logs;
+    delete from audit_events;
+    delete from tokens;
+    delete from users;
 
-    insert into ${SCHEMA}.users (id, username, password_hash, totp_enabled, created_at, updated_at)
+    insert into users (id, username, password_hash, totp_enabled, created_at, updated_at)
     values (gen_random_uuid(), '${TEST_USER}', '${TEST_PASSWORD_HASH}', false, now(), now());
 
-    insert into ${SCHEMA}.folders (user_id, parent_id, name, sort_order, is_inbox)
-    select id, null, '收件箱', 0, true from ${SCHEMA}.users where username = '${TEST_USER}';
+    insert into note.folders (user_id, parent_id, name, sort_order, is_inbox)
+    select id, null, '收件箱', 0, true from users where username = '${TEST_USER}';
   `
   psql(sql)
 }

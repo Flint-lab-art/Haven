@@ -13,10 +13,20 @@ import lombok.Setter;
 import lombok.ToString;
 import lombok.experimental.Accessors;
 
+/**
+ * 一条流水。
+ * <p>
+ * 三种形态（由数据库 {@code ledger_entries_shape_check} 兜底）：
+ * <ul>
+ *   <li>支出 / 收入：有 {@code categoryId} 与 {@code accountId}，{@code toAccountId} 为空；</li>
+ *   <li>转账：有 {@code accountId}（转出）与 {@code toAccountId}（转入），{@code categoryId} 为空。</li>
+ * </ul>
+ * 转账不计入收支统计。
+ */
 @Getter
 @Setter
 @ToString
-@TableName("ledger_entries")
+@TableName("ledger.ledger_entries")
 @Accessors(chain = true)
 public class LedgerEntries implements Serializable {
 
@@ -29,16 +39,24 @@ public class LedgerEntries implements Serializable {
     @TableField(value = "user_id", typeHandler = UuidTypeHandler.class)
     private UUID userId;
 
-    /** expense / income。 */
+    /** expense / income / transfer。 */
     @TableField("type")
     private String type;
 
     @TableField("amount_cents")
     private Long amountCents;
 
-    /** 餐饮 / 购物 / 交通 / 居家 / 娱乐 / 医疗 / 还款 / 未分类。 */
-    @TableField("category")
-    private String category;
+    /** 支出 / 收入的分类；转账为空。 */
+    @TableField("category_id")
+    private Short categoryId;
+
+    /** 支出 / 收入的资金账户；转账时的转出账户。 */
+    @TableField(value = "account_id", typeHandler = UuidTypeHandler.class)
+    private UUID accountId;
+
+    /** 转账时的转入账户；支出 / 收入为空。 */
+    @TableField(value = "to_account_id", typeHandler = UuidTypeHandler.class)
+    private UUID toAccountId;
 
     @TableField("note")
     private String note;
@@ -46,9 +64,9 @@ public class LedgerEntries implements Serializable {
     @TableField("occurred_at")
     private OffsetDateTime occurredAt;
 
-    @TableField("batch_id")
-    private String batchId;
-
     @TableField("created_at")
     private OffsetDateTime createdAt;
+
+    @TableField("updated_at")
+    private OffsetDateTime updatedAt;
 }

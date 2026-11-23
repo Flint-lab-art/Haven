@@ -6,7 +6,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.haven.backend.audit.AuditRecorder;
 import com.haven.backend.note.entity.NoteVersions;
 import com.haven.backend.note.entity.Notes;
 import com.haven.backend.note.mapper.FoldersMapper;
@@ -61,9 +60,6 @@ class NoteVersionSnapshotTest {
     @Mock
     private FoldersMapper foldersMapper;
 
-    @Mock
-    private AuditRecorder auditRecorder;
-
     private NotesServiceImpl service;
     private Notes note;
     private UUID userId;
@@ -72,8 +68,8 @@ class NoteVersionSnapshotTest {
     @BeforeEach
     void setUp() {
         Clock clock = Clock.fixed(NOW.toInstant(), ZoneOffset.UTC);
-        service = new NotesServiceImpl(
-                notesMapper, clock, auditRecorder, noteTagsMapper, tagsMapper, noteVersionsMapper, foldersMapper);
+        service =
+                new NotesServiceImpl(notesMapper, clock, noteTagsMapper, tagsMapper, noteVersionsMapper, foldersMapper);
 
         userId = UUID.randomUUID();
         userIdText = userId.toString();

@@ -2,6 +2,8 @@
 /** 搜索框：占满内容宽度，左侧放大镜，回车触发（不再需要独立按钮）。 */
 import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { Search } from 'lucide-vue-next'
+
 
 const props = withDefaults(
   defineProps<{
@@ -35,10 +37,7 @@ function submit(): void {
 <template>
   <form class="search-bar" role="search" @submit.prevent="submit">
     <div class="search-field">
-      <svg class="search-field__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
-        <circle cx="11" cy="11" r="6.5" />
-        <path d="m16 16 4 4" />
-      </svg>
+      <Search class="search-field__icon" aria-hidden="true" />
       <input
         v-model="q"
         class="input search-input"

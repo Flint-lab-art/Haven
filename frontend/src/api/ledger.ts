@@ -1,74 +1,68 @@
-/** 记账接口（V4 / V5 迁移对应的 ledger 模块）。 */
+/**
+ * 记账接口（docs/ledger.md 第五节）。
+ *
+ * 模型三根支柱：账户（钱从哪出）、两级分类（花在哪）、转账（不计收支）。
+ */
 import { request } from './client'
 import type { ListResult } from './client'
 
-export type LedgerType = 'expense' | 'income'
+/** 账户类型。 */
+export type AccountType = 'cash' | 'bank' | 'credit' | 'ewallet'
 
-/** 单层分类，与后端 check 约束保持一致：支出 + 收入。 */
-export type LedgerCategory =
-  | '餐饮'
-  | '购物'
-  | '交通'
-  | '居家'
-  | '娱乐'
-  | '医疗'
-  | '还款'
-  | '订阅'
-  | 'Token'
-  | '未分类'
-  | '工资'
-  | '奖金'
-  | '报销'
-  | '退款'
-  | '红包'
-  | '其他收入'
+/** 流水类型；transfer 不计入收支统计。 */
+export type EntryType = 'expense' | 'income' | 'transfer'
+
+export interface Account {
+  id: string
+  name: string
+  /** 图标 key（如 `icbc` / `alipay`）；空串表示不显示。 */
+  icon: string
+  type: AccountType
+  /** 期初余额（分）。 */
+  initial_balance_cents: number
+  /** 实时余额 = 期初 + 流水累计；credit 类为负数表示欠款。 */
+  balance_cents: number
+  sort_order: number
+  archived: boolean
+}
+
+export interface Category {
+  id: number
+  /** 一级为 null。 */
+  parent_id: number | null
+  name: string
+  /** emoji 图标；空串表示没有。 */
+  icon: string
+  kind: EntryType
+  sort_order: number
+  children: Category[]
+}
 
 export interface LedgerEntry {
   id: string
-  type: LedgerType
-  /** 金额，单位「分」，整数。 */
+  type: EntryType
   amount_cents: number
-  category: LedgerCategory
-  note: string
+  /** 支出 / 收入的分类；转账为 null。 */
+  category_id: number | null
+  category_name: string | null
+  /** 一级分类名，便于按大类分组。 */
+  root_category_name: string | null
+  /** 支出 / 收入的账户；转账时为转出账户。 */
+  account_id: string | null
+  account_name: string | null
+  /** 转账的转入账户。 */
+  to_account_id: string | null
+  to_account_name: string | null
+  note: string | null
   occurred_at: string
-  batch_id: string
   created_at: string
+  updated_at: string
 }
 
-/** quick 解析出的单条记录，可直接回传给 batch 接口。 */
-export interface ParsedLedgerItem {
-  line: number
-  raw: string
-  type: LedgerType
-  amount_cents: number
-  category: LedgerCategory
-  note: string
-  occurred_at: string
-}
-
-export interface LedgerParseError {
-  line: number
-  raw: string
-  message: string
-}
-
-export interface QuickParseResult {
-  items: ParsedLedgerItem[]
-  errors: LedgerParseError[]
-}
-
-export interface LedgerCategoryRank {
-  category: LedgerCategory
-  amount_cents: number
-  count: number
-}
-
-/** 按天聚合的一个点；没有记录的日期由后端补零。 */
-export interface LedgerDailyPoint {
-  date: string
-  expense_cents: number
-  income_cents: number
-  count: number
+export interface CategorySpend {
+  category_id: number
+  category_name: string
+  spent_cents: number
 }
 
 export interface LedgerSummary {
@@ -77,17 +71,20 @@ export interface LedgerSummary {
   to: string
   total_expense_cents: number
   total_income_cents: number
+  /** 不含转账。 */
   total_count: number
-  /** 支出分类排行。 */
-  category_ranking: LedgerCategoryRank[]
-  /** 收入分类排行。 */
-  income_category_ranking: LedgerCategoryRank[]
-  /** 当月每天的收支走势，已补零。 */
-  daily: LedgerDailyPoint[]
-  recent: LedgerEntry[]
+  transfer_count: number
+  expense_by_category: CategorySpend[]
+  income_by_category: CategorySpend[]
 }
 
-/** 最近 N 天的统计，字段与月度汇总一致，额外带 days。 */
+export interface DailyPoint {
+  date: string
+  expense_cents: number
+  income_cents: number
+  count: number
+}
+
 export interface LedgerTrend {
   days: number
   from: string
@@ -95,101 +92,159 @@ export interface LedgerTrend {
   total_expense_cents: number
   total_income_cents: number
   total_count: number
-  category_ranking: LedgerCategoryRank[]
-  income_category_ranking: LedgerCategoryRank[]
-  daily: LedgerDailyPoint[]
+  daily: DailyPoint[]
 }
 
-export interface CreateLedgerEntryInput {
-  type: LedgerType
+export interface BudgetItem {
+  category_id: number
+  category_name: string
   amount_cents: number
-  category: LedgerCategory
-  note?: string
-  occurred_at?: string
+  spent_cents: number
+  remaining_cents: number
 }
 
-export interface CreateLedgerBatchInput {
-  batch_id: string
-  raw_text?: string
-  items: CreateLedgerEntryInput[]
+export interface Budget {
+  month: string
+  total_budget_cents: number
+  total_spent_cents: number
+  items: BudgetItem[]
 }
 
-export interface LedgerBatchResult {
-  /** 首次写入为 true，重复 batch_id 回放为 false。 */
-  created?: boolean
-  batch_id: string
-  raw_text: string | null
-  created_at: string
-  items: LedgerEntry[]
-  total: number
+// ── 账户 ──────────────────────────────────────────
+
+export interface AccountInput {
+  name: string
+  icon?: string
+  type: AccountType
+  initial_balance_cents?: number
+  sort_order?: number
+  archived?: boolean
 }
 
-export interface UpdateLedgerEntryInput {
-  category?: LedgerCategory
-  amount_cents?: number
-  occurred_at?: string
+export function listAccounts(): Promise<Account[]> {
+  return request<Account[]>('/api/ledger/accounts')
 }
 
-export interface ListLedgerEntriesQuery {
+export function createAccount(input: AccountInput): Promise<Account> {
+  return request<Account>('/api/ledger/accounts', { method: 'POST', body: input })
+}
+
+export function updateAccount(id: string, input: AccountInput): Promise<Account> {
+  return request<Account>(`/api/ledger/accounts/${id}`, { method: 'PUT', body: input })
+}
+
+export function deleteAccount(id: string): Promise<void> {
+  return request<void>(`/api/ledger/accounts/${id}`, { method: 'DELETE' })
+}
+
+// ── 分类 ──────────────────────────────────────────
+
+export function listCategories(): Promise<Category[]> {
+  return request<Category[]>('/api/ledger/categories')
+}
+
+// ── 流水 ──────────────────────────────────────────
+
+export interface LedgerEntryInput {
+  type: EntryType
+  amount_cents: number
+  /** 支出 / 收入的分类。 */
+  category_id?: number | null
+  /** 支出 / 收入的账户；转账时的转出账户。 */
+  account_id?: string | null
+  /** 转账的转入账户。 */
+  to_account_id?: string | null
+  note?: string | null
+  occurred_at?: string | null
+}
+
+export interface ListEntriesQuery {
+  type?: EntryType
+  category_id?: number
+  account_id?: string
   from?: string
   to?: string
-  category?: LedgerCategory
-  type?: LedgerType
   limit?: number
   offset?: number
 }
 
-/** 只解析不落库，返回 items + 逐行 errors。 */
-export function quickParse(text: string): Promise<QuickParseResult> {
-  return request<QuickParseResult>('/api/ledger/quick', {
-    method: 'POST',
-    body: { text },
-  })
-}
-
-/** 确认写入，按 batch_id 幂等。 */
-export function createLedgerBatch(input: CreateLedgerBatchInput): Promise<LedgerBatchResult> {
-  return request<LedgerBatchResult>('/api/ledger/entries/batch', {
-    method: 'POST',
-    body: input,
-  })
-}
-
-/** 月度汇总：总额 + 分类排行 + 按天走势 + 最近 3 笔。 */
-export function getLedgerSummary(month: string): Promise<LedgerSummary> {
-  return request<LedgerSummary>('/api/ledger/summary', { query: { month } })
-}
-
-/** 最近 N 天（默认 7）的统计与按天走势，仪表盘用。 */
-export function getLedgerTrend(days = 7): Promise<LedgerTrend> {
-  return request<LedgerTrend>('/api/ledger/trend', { query: { days } })
-}
-
-export function listLedgerEntries(
-  query: ListLedgerEntriesQuery = {},
-): Promise<ListResult<LedgerEntry>> {
+export function listEntries(query: ListEntriesQuery = {}): Promise<ListResult<LedgerEntry>> {
   return request<ListResult<LedgerEntry>>('/api/ledger/entries', {
     query: {
+      type: query.type,
+      category_id: query.category_id,
+      account_id: query.account_id,
       from: query.from,
       to: query.to,
-      category: query.category,
-      type: query.type,
       limit: query.limit,
       offset: query.offset,
     },
   })
 }
 
-export function updateLedgerEntry(
-  id: string,
-  input: UpdateLedgerEntryInput,
-): Promise<LedgerEntry> {
-  return request<LedgerEntry>(`/api/ledger/entries/${id}`, {
-    method: 'PATCH',
-    body: input,
+export function getEntry(id: string): Promise<LedgerEntry> {
+  return request<LedgerEntry>(`/api/ledger/entries/${id}`)
+}
+
+export function createEntry(input: LedgerEntryInput): Promise<LedgerEntry> {
+  return request<LedgerEntry>('/api/ledger/entries', { method: 'POST', body: input })
+}
+
+export function updateEntry(id: string, input: Partial<LedgerEntryInput>): Promise<LedgerEntry> {
+  return request<LedgerEntry>(`/api/ledger/entries/${id}`, { method: 'PATCH', body: input })
+}
+
+export function deleteEntry(id: string): Promise<void> {
+  return request<void>(`/api/ledger/entries/${id}`, { method: 'DELETE' })
+}
+
+// ── 统计 ──────────────────────────────────────────
+
+export function getSummary(month?: string): Promise<LedgerSummary> {
+  return request<LedgerSummary>('/api/ledger/summary', { query: { month } })
+}
+
+export function getTrend(days = 7): Promise<LedgerTrend> {
+  return request<LedgerTrend>('/api/ledger/trend', { query: { days } })
+}
+
+// ── 区间统计 ──────────────────────────────────────
+
+export interface LedgerRangeStats {
+  from: string
+  to: string
+  total_expense_cents: number
+  total_income_cents: number
+  total_count: number
+  transfer_count: number
+  expense_by_category: CategorySpend[]
+  income_by_category: CategorySpend[]
+  /** 区间内按天补零的点；月/季/年视图由前端合并成月。 */
+  buckets: DailyPoint[]
+}
+
+/**
+ * 任意区间统计（周 / 月 / 季 / 年都走这里）。
+ *
+ * 区间由前端按本地时区算好，后端只认 from/to。
+ */
+export function getRangeStats(from: string, to: string): Promise<LedgerRangeStats> {
+  return request<LedgerRangeStats>('/api/ledger/stats', { query: { from, to } })
+}
+
+// ── 预算 ──────────────────────────────────────────
+
+export function getBudget(month?: string): Promise<Budget> {
+  return request<Budget>('/api/ledger/budgets', { query: { month } })
+}
+
+export function upsertBudget(categoryId: number, month: string, amountCents: number): Promise<Budget> {
+  return request<Budget>('/api/ledger/budgets', {
+    method: 'PUT',
+    body: { category_id: categoryId, month, amount_cents: amountCents },
   })
 }
 
-export function deleteLedgerEntry(id: string): Promise<void> {
-  return request<void>(`/api/ledger/entries/${id}`, { method: 'DELETE' })
+export function deleteBudget(categoryId: number, month: string): Promise<void> {
+  return request<void>(`/api/ledger/budgets/${categoryId}`, { method: 'DELETE', query: { month } })
 }

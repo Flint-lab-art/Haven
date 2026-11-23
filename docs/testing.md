@@ -4,9 +4,9 @@
 
 | 类型 | 数量 | 说明 |
 | --- | ---: | --- |
-| 后端测试 | 158（25 个测试类） | JUnit 5 + Mockito + Spring Boot Test |
-| 前端测试 | 232（30 个文件） | Vitest + jsdom |
-| 端到端测试 | 66（9 个 spec） | Playwright + Chromium，跑打包后的真实产物 |
+| 后端测试 | 163 个用例（28 个测试类） | JUnit 5 + Mockito + Spring Boot Test |
+| 前端测试 | 232（31 个文件） | Vitest + jsdom |
+| 端到端测试 | 76 个用例（8 个 spec） | Playwright + Chromium，跑打包后的真实产物 |
 
 ### 为什么还要 E2E
 
@@ -26,8 +26,9 @@ E2E 就是补这一层：它测的是「用户点下去会看到什么」，而�
 
 | 类型 | 测试类 |
 | --- | --- |
-| 纯单元（无 Spring） | `LedgerTextParserTest`、`LedgerClassifierTest`、`LedgerStatsCalculatorTest`、`LedgerRepaymentCategoryTest`、`TotpUtilTest`、`LoginAttemptLimiterTest`、`ClockConfigTest`、`AuthServiceImplTest`、`AuditRecorderTest`、`NotesServiceImplTest`、`FoldersServiceImplTest`、`UploadsServiceImplTest`、`PortfolioServiceImplTest`、`StatsServiceImplTest`、`GlobalExceptionHandlerTest`、`WebConfigTest`、`UploadsStaticControllerTest` |
+| 纯单元（无 Spring） | `LedgerTextParserTest`、`LedgerClassifierTest`、`LedgerStatsCalculatorTest`、`LedgerRepaymentCategoryTest`、`LedgerTokenCategoryTest`、`LedgerSubscriptionCategoryTest`、`TotpUtilTest`、`LoginAttemptLimiterTest`、`ClockConfigTest`、`AuthServiceImplTest`、`AuditRecorderTest`、`NotesServiceImplTest`、`FoldersServiceImplTest`、`UploadsServiceImplTest`、`StatsServiceImplTest`、`GlobalExceptionHandlerTest`、`WebConfigTest`、`UploadsStaticControllerTest`、`NoteVersionSnapshotTest` |
 | Web 层契约 | `NotesControllerWebTest`、`AuthInterceptorTest` |
+| 事务传播 / 契约 | `LoginLogsTest`（`REQUIRES_NEW` 日志在外层回滚后仍保留）、`ReadOnlyTransactionTest`、`RequestBodyContractTest`、`NullFieldUpdateTest` |
 | 需要数据库 | `LedgerSmokeTest`、`LedgerConstraintTest`、`NotesMapperAggregationTest`、`TestDatabaseSupportTest`、`BackendApplicationTests` |
 
 ```bash
@@ -53,45 +54,40 @@ E2E 就是补这一层：它测的是「用户点下去会看到什么」，而�
 | 优先级 | 模式 | 触发 |
 | --- | --- | --- |
 | 1 | Testcontainers PostgreSQL | `-Dhaven.test.mode=container` |
-| 2 | **临时 schema（默认）** | 无需配置 |
+| 2 | **独立测试库（默认）** | 无需配置 |
 | 3 | 报错退出 | 前两者都不可用 |
 
 > **不会静默回落到开发库**。两者都失败时抛异常并给出修复指引。
 
-### 临时 schema 怎么工作
+### 独立测试库怎么工作
 
 ```
-1. 连接本地 PostgreSQL（默认 jdbc:postgresql://127.0.0.1:5432/dev_db，账号 dev）
-2. CREATE SCHEMA haven_test_<随机12位>
-3. 确保 pg_trgm 扩展在 public
-4. 数据源 URL: ?options=-c search_path=<schema>,public   ← 关键
-5. Flyway 在空 schema 上完整迁移
-6. JVM 退出时 DROP SCHEMA CASCADE
-7. 下次启动先清理上次异常退出遗留的 haven_test_*
+1. 连维护库（默认 postgres，回退 dev_db），账号 dev
+2. 断开该库上的残留连接 → DROP DATABASE IF EXISTS haven_test_db → CREATE DATABASE
+3. 在测试库里 CREATE EXTENSION IF NOT EXISTS pg_trgm SCHEMA public
+4. Flyway 在空库上完整迁移（含 V16 的 note / issue / ledger schema）
+5. 数据源 URL 直接指向 haven_test_db，不带 search_path
 ```
 
-可通过 `TEST_DB_URL` / `TEST_DB_USERNAME` / `TEST_DB_PASSWORD` 覆盖连接信息。
+可通过 `TEST_DB_NAME` 改库名，`TEST_DB_HOST` / `TEST_DB_PORT` 改实例，`TEST_DB_URL` 整体覆盖 URL，`TEST_DB_USERNAME` / `TEST_DB_PASSWORD` 改账号。
+
+**测试账号需要 `CREATEDB` 权限**：`ALTER ROLE dev CREATEDB`（管理员执行一次）。
+
+### 为什么不再用临时 schema
+
+V16 起业务表按模块分在 `note` / `issue` / `ledger`，而 **PostgreSQL 的 schema 不能嵌套**：
+临时 schema 里建不出 module schema，迁移里的 `CREATE SCHEMA note` 会直接落到库顶层，污染开发库。
+所以改用独立数据库，迁移路径与生产完全一致。
 
 ### pg_trgm 的坑
 
-两个必须同时满足，否则迁移会报 `operator class "gin_trgm_ops" does not exist`：
+迁移里有 `gin_trgm_ops` 索引，扩展必须装在**测试库自己的 `public`** 里，
+否则会报 `operator class "gin_trgm_ops" does not exist`。
+独立测试库方案下 `search_path` 保持默认（`"$user", public`），不再需要手工拼 `options`。
 
-1. **扩展装在 `public`**：迁移里的 `CREATE EXTENSION IF NOT EXISTS` 只有在扩展已存在于 `public` 时才是空操作
-2. **`search_path` 必须包含 `public`**：`gin_trgm_ops` 是扩展提供的 operator class，只在扩展所在 schema 可见
+也不要改回 `currentSchema` / `search_path` 方案——见上一节的原因。
 
-另外，**绝对不要用 `currentSchema` 参数**：pgjdbc 会把它写进 `options`，从而覆盖掉 `search_path`。
-
-```java
-// 正确
-url + "?options=-c%20search_path%3D" + schema + "%2Cpublic"
-
-// 错误：会丢掉 public
-url + "?currentSchema=" + schema + "&options=..."
-```
-
-这两个约束由 `TestDatabaseSupportTest` 断言守着。
-
-### 需要数据库的测试
+## 需要数据库的测试
 
 加 `@ActiveProfiles("test")`：
 
@@ -255,32 +251,23 @@ E2E **不连开发库，也不连 Vite dev server**：
 
 `e2e/start-server.mjs` 负责建 schema 并拉起后端，由 Playwright 的 `webServer` 自动管理生命周期。
 `e2e/fixtures.ts` 在每个用例前清空业务表并重建测试账号（`e2e-user` / `e2e-password-123`，BCrypt cost 4）。
+清单见 `start-server.mjs` 的 `E2E_TABLES`——**新增表要记得加进去**，否则上个用例的数据会漏到下一个用例。
 
-### 公开域与私有域
-
-同一份构建按 hostname 切路由表，E2E 同时覆盖两侧：
-
-| 地址 | 域 | 覆盖内容 |
-| --- | --- | --- |
-| `http://localhost:18099` | 私有域 | 工作台、设置、登录 |
-| `http://127.0.0.1:18099` | 公开域 | 公开首页、笔记、搜索、作品集 |
-
-`start-server.mjs` 把 `HAVEN_PRIVATE_HOSTS` 设为 `localhost`，所以 `127.0.0.1` 派生出公开路由表。
-**不要统一成 `127.0.0.1`**：那样私有域用例会全部落到公开页，表现为「登录后仍被当成匿名」。
+所有用例都访问 `http://localhost:18099`：只有一张路由表，不存在"换 hostname 换站点"的分支。
 
 ### 用例组织
 
 | 文件 | 覆盖 |
 | --- | --- |
 | `auth.spec.ts` | 登录、错误提示、redirect 回跳、登出、`/api/me` |
-| `notes.spec.ts` | 新建、自动保存落库、正文可搜索、删除/还原/永久删除、历史版本、公开与撤回、移动文件夹 |
+| `auth-sensitive.spec.ts` | 改密 / TOTP / Token / 授信设备等敏感操作的权限与失效链路 |
+| `notes.spec.ts` | 新建、自动保存落库、正文可搜索、删除/还原/永久删除、历史版本、移动文件夹 |
 | `note-versions.spec.ts` | 版本快照语义（存「修改前」）、还原、无变化不产生版本 |
 | `folders-tags.spec.ts` | 文件夹增删改、嵌套层级、**图标面板可见性**、删除文件夹时笔记回收件箱、标签 |
-| `ledger.spec.ts` | 解析预览、确认写入、小数精度、收入识别、切月份、改分类、删除、幂等、逐行错误 |
-| `portfolio.spec.ts` | 新建/编辑、公开开关、仓库链接增删、删除作品 |
+| `ledger.spec.ts` | 记一笔、**转账不计收支且两侧余额正确**、小数精度、二级归一级、切月份、编辑、删除、无账户引导 |
+| `mobile.spec.ts` | `/m/` 三个 tab、记账抽屉（分类网格 + 数字键盘）、统计四粒度与图表形态、我的、账户、Issue 列表/新建/改状态 |
 | `issues.spec.ts` | 新建、状态流转、按状态过滤、时间线、编辑、删除 |
-| `settings.spec.ts` | 概览、主题持久化、账号安全、会话、授信设备、Token（含只读 Token 不能写） |
-| `public.spec.ts` | 公开首页/列表/详情/搜索/作品集、无后台入口、私密内容不可见、匿名 401 |
+| `settings.spec.ts` | 概览、主题持久化、账号安全、**登录日志页记录本次登录**、会话、授信设备、Token（含只读 Token 不能写） |
 
 ### 写用例的两条约定
 
@@ -293,7 +280,6 @@ E2E **不连开发库，也不连 Vite dev server**：
 
 | 现象 | 原因 |
 | --- | --- |
-| 私有域用例全落到公开页 | 用了 `127.0.0.1` 而不是 `localhost` |
 | 找不到笔记树里的笔记 | `POST /api/notes` 不传 `folder_id` 时笔记不属于任何文件夹，界面不展示 |
 | `getByRole('dialog')` 匹配不到确认框 | `ConfirmDialog` 用的是 `alertdialog` |
 | 严格模式报「resolved to 2 elements」 | 页面上有同名按钮（如列表栏「添加」与表单提交「添加」），需收窄到容器 |
@@ -338,6 +324,7 @@ pnpm --dir frontend exec playwright test --repeat-each=2
 - [ ] 涉及金额：断言分，不断言元
 - [ ] 涉及分类/枚举：与常量表一致性测试
 - [ ] 新增迁移：能在空库跑通（测试会自动验证）
+- [ ] 新增表：把表名加进 `frontend/e2e/start-server.mjs` 的 `E2E_TABLES` 与 `fixtures.ts` 的清理 SQL
 - [ ] 新增/修改 `@RequestBody` DTO：在 `RequestBodyContractTest` 固定一份实际请求 JSON
 - [ ] 新页面或新交互：在 `frontend/e2e/` 加一条对应用例（造数据走 `e2e/api.ts`，断言走界面）
 

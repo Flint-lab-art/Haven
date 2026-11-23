@@ -30,7 +30,6 @@ export interface NoteSummary {
   id: string
   title: string
   folder_id: string | null
-  visibility: 'private' | 'public'
   content_preview: string
   tags: { id: string; name: string }[]
 }
@@ -44,20 +43,36 @@ export interface Tag {
   name: string
 }
 
-export interface LedgerEntry {
+export interface LedgerAccount {
   id: string
-  type: string
-  amount_cents: number
-  category: string
-  note: string | null
-  occurred_at: string
+  name: string
+  type: 'cash' | 'bank' | 'credit' | 'ewallet'
+  initial_balance_cents: number
+  balance_cents: number
 }
 
-export interface PortfolioItem {
+export interface LedgerCategory {
+  id: number
+  parent_id: number | null
+  name: string
+  icon: string
+  kind: 'expense' | 'income' | 'transfer'
+  children: LedgerCategory[]
+}
+
+export interface LedgerEntry {
   id: string
-  title: string
-  description: string
-  is_public: boolean
+  type: 'expense' | 'income' | 'transfer'
+  amount_cents: number
+  category_id: number | null
+  category_name: string | null
+  root_category_name: string | null
+  account_id: string | null
+  account_name: string | null
+  to_account_id: string | null
+  to_account_name: string | null
+  note: string | null
+  occurred_at: string
 }
 
 export interface Issue {
@@ -151,14 +166,62 @@ export function createApi(request: APIRequestContext) {
       return (await ensureOk(await request.post('/api/tags', { data: { name } }), `创建标签「${name}」`)) as Tag
     },
 
-    /** 快捷记账并直接写入，返回本批条目。 */
-    async quickCommit(text: string): Promise<LedgerEntry[]> {
-      const body = (await ensureOk(
-        await request.post('/api/ledger/entries/quick', { data: { text } }),
-        '快捷记账',
-      )) as { batch: { items: LedgerEntry[] }; errors: unknown[] }
-      expect(body.errors, '快捷记账不应有解析错误').toEqual([])
-      return body.batch.items
+    /** 建一个账户，返回账户（含 id）。 */
+    async createAccount(input: {
+      name: string
+      type?: 'cash' | 'bank' | 'credit' | 'ewallet'
+      initialBalanceCents?: number
+    }): Promise<LedgerAccount> {
+      return (await ensureOk(
+        await request.post('/api/ledger/accounts', {
+          data: {
+            name: input.name,
+            type: input.type ?? 'cash',
+            initial_balance_cents: input.initialBalanceCents ?? 0,
+          },
+        }),
+        `创建账户「${input.name}」`,
+      )) as LedgerAccount
+    },
+
+    /** 分类树（一级 + 二级）。 */
+    async categories(): Promise<LedgerCategory[]> {
+      return (await ensureOk(await request.get('/api/ledger/categories'), '列出分类')) as LedgerCategory[]
+    },
+
+    /** 取某个一级分类下第一个二级分类的 id，找不到就返回一级本身。 */
+    async categoryIdByName(rootName: string, childName?: string): Promise<number> {
+      const roots = (await ensureOk(await request.get('/api/ledger/categories'), '列出分类')) as LedgerCategory[]
+      const root = roots.find((c) => c.name === rootName && c.kind === 'expense')
+      if (!root) throw new Error(`找不到分类「${rootName}」`)
+      if (!childName) return root.id
+      return root.children.find((c) => c.name === childName)?.id ?? root.id
+    },
+
+    /** 记一笔（支出 / 收入 / 转账）。 */
+    async createLedgerEntry(input: {
+      type: 'expense' | 'income' | 'transfer'
+      amountCents: number
+      categoryId?: number | null
+      accountId?: string | null
+      toAccountId?: string | null
+      note?: string | null
+      occurredAt?: string
+    }): Promise<LedgerEntry> {
+      return (await ensureOk(
+        await request.post('/api/ledger/entries', {
+          data: {
+            type: input.type,
+            amount_cents: input.amountCents,
+            category_id: input.categoryId ?? null,
+            account_id: input.accountId ?? null,
+            to_account_id: input.toAccountId ?? null,
+            note: input.note ?? null,
+            occurred_at: input.occurredAt ?? null,
+          },
+        }),
+        '记一笔',
+      )) as LedgerEntry
     },
 
     async ledgerEntries(): Promise<{ items: LedgerEntry[]; total: number }> {
@@ -166,29 +229,6 @@ export function createApi(request: APIRequestContext) {
         items: LedgerEntry[]
         total: number
       }
-    },
-
-    async createPortfolioItem(input: {
-      title: string
-      description?: string
-      content?: string
-      isPublic?: boolean
-    }): Promise<PortfolioItem> {
-      return (await ensureOk(
-        await request.post('/api/portfolio', {
-          data: {
-            title: input.title,
-            description: input.description ?? '',
-            content: input.content ?? '',
-            is_public: input.isPublic ?? false,
-          },
-        }),
-        '创建作品',
-      )) as PortfolioItem
-    },
-
-    async addRepo(itemId: string, url: string, title = ''): Promise<void> {
-      await ensureOk(await request.post(`/api/portfolio/${itemId}/repos`, { data: { url, title } }), '添加仓库')
     },
 
     async createIssue(input: {

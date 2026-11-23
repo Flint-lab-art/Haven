@@ -1,152 +1,109 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createPinia, setActivePinia } from 'pinia'
+import { describe, expect, it } from 'vitest'
 import {
-  EXPENSE_CATEGORIES,
-  INCOME_CATEGORIES,
-  LEDGER_CATEGORIES,
-  categoriesForType,
-  categoryColor,
-  categoryTone,
+  accountTypeLabel,
   currentMonth,
+  entryTypeLabel,
   formatSignedYuan,
   formatYuan,
-  fromLocalDateTimeInput,
-  monthRange,
+  monthLabel,
   parseYuanToCents,
   shiftMonth,
-  toLocalDateTimeInput,
 } from '@/utils/ledger'
 
 /**
- * 记账页路由与展示工具。
+ * 记账工具：金额格式化与解析、月份运算。
  *
- * 路由部分验证 /ledger 在私有域、需要登录、没有中间列表栏；
- * 工具部分验证「分」的格式化、金额输入和月份边界。
+ * 分类清单已入库（ledger_categories），不再有前端常量需要测。
  */
-const auth = { initialized: true, isLoggedIn: false, refresh: vi.fn(async () => {}) }
 
-vi.mock('@/stores/auth', () => ({ useAuthStore: () => auth }))
-
-async function loadRouter() {
-  vi.resetModules()
-  const mod = await import('@/router/index')
-  return mod.default
-}
-
-beforeEach(() => {
-  vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
-  setActivePinia(createPinia())
-  auth.initialized = true
-  auth.isLoggedIn = false
-})
-
-afterEach(() => {
-  vi.clearAllMocks()
-})
-
-describe('记账路由', () => {
-  it('未登录访问 /ledger 跳登录并保留 redirect', async () => {
-    const router = await loadRouter()
-
-    await router.push('/ledger')
-    expect(router.currentRoute.value.name).toBe('login')
-    expect(router.currentRoute.value.query.redirect).toBe('/ledger')
-  })
-
-  it('已登录可以进入 /ledger，且 section 为 ledger、无列表栏', async () => {
-    auth.isLoggedIn = true
-    const router = await loadRouter()
-
-    await router.push('/ledger')
-    expect(router.currentRoute.value.name).toBe('ledger')
-    expect(router.currentRoute.value.meta.section).toBe('ledger')
-    expect(router.currentRoute.value.meta.noList).toBe(true)
-  })
-
-  it('公开域不注册 /ledger', async () => {
-    const router = await loadRouter()
-    const publicRoutes = router
-      .getRoutes()
-      .filter((record) => record.path.startsWith('/public'))
-      .map((record) => String(record.name ?? ''))
-    expect(publicRoutes).not.toContain('ledger')
-  })
-})
-
-describe('记账展示工具', () => {
-  it('分类保持单层，支出与收入使用各自的大类', () => {
-    expect(EXPENSE_CATEGORIES).toEqual([
-      '餐饮',
-      '购物',
-      '交通',
-      '居家',
-      '娱乐',
-      '医疗',
-      '还款',
-      '订阅',
-      'Token',
-      '未分类',
-    ])
-    expect(INCOME_CATEGORIES).toEqual(['工资', '奖金', '报销', '退款', '红包', '其他收入'])
-    expect(LEDGER_CATEGORIES).toHaveLength(16)
-    expect(categoriesForType('expense')).toEqual(EXPENSE_CATEGORIES)
-    expect(categoriesForType('income')).toEqual(INCOME_CATEGORIES)
-    // 老数据里方向与分类不匹配时，把原值补进选项，避免静默改分类
-    expect(categoriesForType('income', '未分类')).toEqual([...INCOME_CATEGORIES, '未分类'])
-    expect(categoryTone('餐饮')).toBe('food')
-    expect(categoryTone('交通')).toBe('transit')
-    expect(categoryTone('工资')).toBe('salary')
-    expect(categoryTone('退款')).toBe('refund')
-    expect(categoryTone('还款')).toBe('repay')
-    expect(categoryTone('订阅')).toBe('sub')
-    expect(categoryTone('Token')).toBe('token')
-    expect(categoryTone('未知')).toBe('other')
-    // 图表用的颜色与列表色阶一一对应
-    expect(categoryColor('餐饮')).toBe('var(--warning)')
-    expect(categoryColor('工资')).toBe('var(--success)')
-    expect(categoryColor('未知')).toBe('var(--label-3)')
-  })
-
-  it('分格式化为元，整数不显示小数', () => {
+describe('formatYuan', () => {
+  it('整数不显示小数', () => {
     expect(formatYuan(1200)).toBe('¥12')
-    expect(formatYuan(128600)).toBe('¥1,286')
-    expect(formatYuan(1234)).toBe('¥12.34')
-    expect(formatSignedYuan('expense', 1200)).toBe('-¥12')
-    expect(formatSignedYuan('income', 10000)).toBe('+¥100')
+    expect(formatYuan(100000)).toBe('¥1,000')
   })
 
-  it('金额输入支持 ¥ / 元 / 块 与两位小数', () => {
+  it('有角分时补两位', () => {
+    expect(formatYuan(1250)).toBe('¥12.50')
+    expect(formatYuan(1205)).toBe('¥12.05')
+    expect(formatYuan(1)).toBe('¥0.01')
+  })
+
+  it('负数把符号放在 ¥ 前', () => {
+    expect(formatYuan(-1200)).toBe('-¥12')
+    expect(formatYuan(-2500)).toBe('-¥25')
+  })
+
+  it('零', () => {
+    expect(formatYuan(0)).toBe('¥0')
+  })
+})
+
+describe('formatSignedYuan', () => {
+  it('收入带 +，支出带 −，转账不带符号', () => {
+    expect(formatSignedYuan('income', 80000)).toBe('+¥800')
+    expect(formatSignedYuan('expense', 2500)).toBe('-¥25')
+    expect(formatSignedYuan('transfer', 100000)).toBe('¥1,000')
+  })
+})
+
+describe('parseYuanToCents', () => {
+  it('整数与小数', () => {
     expect(parseYuanToCents('12')).toBe(1200)
     expect(parseYuanToCents('12.5')).toBe(1250)
-    expect(parseYuanToCents('¥32')).toBe(3200)
-    expect(parseYuanToCents('32元')).toBe(3200)
+    expect(parseYuanToCents('12.50')).toBe(1250)
     expect(parseYuanToCents('0.01')).toBe(1)
-    expect(parseYuanToCents('12.345')).toBeNull()
-    expect(parseYuanToCents('abc')).toBeNull()
+  })
+
+  it('容忍货币符号与空格', () => {
+    expect(parseYuanToCents('¥12')).toBe(1200)
+    expect(parseYuanToCents('12元')).toBe(1200)
+    expect(parseYuanToCents(' 12 ')).toBe(1200)
+  })
+
+  it('精度不丢：0.1 + 0.2 这类输入走字符串拆分', () => {
+    expect(parseYuanToCents('0.29')).toBe(29)
+    expect(parseYuanToCents('19.99')).toBe(1999)
+    expect(parseYuanToCents('1234.56')).toBe(123456)
+  })
+
+  it('非法输入返回 null', () => {
     expect(parseYuanToCents('')).toBeNull()
+    expect(parseYuanToCents('abc')).toBeNull()
+    expect(parseYuanToCents('12.345')).toBeNull()
+    expect(parseYuanToCents('-5')).toBeNull()
+  })
+})
+
+describe('月份运算', () => {
+  it('currentMonth 补零', () => {
+    expect(currentMonth(new Date(2026, 0, 15))).toBe('2026-01')
+    expect(currentMonth(new Date(2026, 10, 15))).toBe('2026-11')
   })
 
-  it('月份加减跨年', () => {
-    expect(shiftMonth('2026-11', 1)).toBe('2026-12')
-    expect(shiftMonth('2026-12', 1)).toBe('2027-01')
+  it('shiftMonth 跨年正确', () => {
     expect(shiftMonth('2026-01', -1)).toBe('2025-12')
-    expect(currentMonth(new Date(2026, 10, 13))).toBe('2026-11')
+    expect(shiftMonth('2026-12', 1)).toBe('2027-01')
+    expect(shiftMonth('2026-11', -1)).toBe('2026-10')
+    expect(shiftMonth('2026-11', 3)).toBe('2027-02')
   })
 
-  it('月份区间带本地时区偏移，且为左闭右开', () => {
-    const range = monthRange('2026-11')
-    expect(range.from).toMatch(/^2026-11-01T00:00:00[+-]\d{2}:\d{2}$/)
-    expect(range.to).toMatch(/^2026-12-01T00:00:00[+-]\d{2}:\d{2}$/)
-    expect(new Date(range.from).getDate()).toBe(1)
-    expect(new Date(range.to).getMonth()).toBe(11)
+  it('monthLabel 转中文', () => {
+    expect(monthLabel('2026-11')).toBe('2026 年 11 月')
+    expect(monthLabel('2026-01')).toBe('2026 年 1 月')
+  })
+})
+
+describe('类型标签', () => {
+  it('账户类型', () => {
+    expect(accountTypeLabel('cash')).toBe('现金')
+    expect(accountTypeLabel('bank')).toBe('储蓄卡')
+    expect(accountTypeLabel('credit')).toBe('信用卡')
+    expect(accountTypeLabel('ewallet')).toBe('电子钱包')
   })
 
-  it('datetime-local 与带时区 ISO 互转', () => {
-    const input = toLocalDateTimeInput('2026-11-13T12:30:00+08:00')
-    expect(input).toBe('2026-11-13T12:30')
-
-    const iso = fromLocalDateTimeInput('2026-11-13T12:30')
-    expect(iso).toMatch(/^2026-11-13T12:30:00[+-]\d{2}:\d{2}$/)
-    expect(fromLocalDateTimeInput('2026-11-13')).toBeNull()
+  it('流水类型', () => {
+    expect(entryTypeLabel('expense')).toBe('支出')
+    expect(entryTypeLabel('income')).toBe('收入')
+    expect(entryTypeLabel('transfer')).toBe('转账')
   })
 })

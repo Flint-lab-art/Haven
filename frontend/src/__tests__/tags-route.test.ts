@@ -4,8 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 /**
  * 标签页路由（docs/v3/frontend/frontend.md 第十节）。
  *
- * 标签页只读，挂在私有域：未登录要跳登录，登录后能进。
- * jsdom 默认 localhost 被判为私有域，不需要 mock domain。
+ * 标签页只读：未登录要跳登录，登录后能进。
  */
 const auth = { initialized: true, isLoggedIn: false, refresh: vi.fn(async () => {}) }
 

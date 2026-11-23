@@ -1,6 +1,6 @@
 # Haven Frontend
 
-Haven 的前端：Vue 3 + TypeScript + Vite 单页应用。同一份构建产物同时服务公开站点和私有工作台，启动时根据域名选择路由表。
+Haven 的前端：Vue 3 + TypeScript + Vite 单页应用。只有登录后的私有工作台，一张路由表、一份构建产物，部署在什么域名由反向代理决定。
 
 **设计文档在 [`../docs/`](../docs/README.md)**——本文件只讲怎么跑、有哪些能力、有哪些约定。
 
@@ -9,18 +9,15 @@ Haven 的前端：Vue 3 + TypeScript + Vite 单页应用。同一份构建产物
 
 ## 功能
 
-- **私有域**
-  - 仪表盘：笔记 / 字数 / 公开数量、写作热力图、最近编辑、最近 7 天记账图表、文件夹与 Issue 概览
+- **工作台**
+  - 仪表盘：笔记 / 字数 / 写作热力图、最近编辑、最近 7 天记账图表、文件夹与 Issue 概览
   - 笔记工作台：文件夹树、标签筛选、搜索、三栏布局
   - 富文本编辑器：标题、列表、任务列表、表格、代码块（高亮 / 复制）、图片上传、折叠块、颜色、对齐、字数统计、斜杠菜单、气泡菜单
-  - 自动保存（防抖 1 秒）、历史版本与 Diff、回收站、发布 / 撤回
+  - 自动保存（防抖 1 秒）、历史版本与 Diff、回收站
   - 记账：多行输入解析预览（行首可写日期）、确认后按 `batch_id` 幂等写入、月度汇总与支出 / 收入分类排行、每日走势与分类占比图表、明细改分类 / 金额 / 时间
-    - 支出分类：餐饮 / 购物 / 交通 / 居家 / 娱乐 / 医疗 / **还款** / 未分类
+    - 支出分类：餐饮 / 购物 / 交通 / 居家 / 娱乐 / 医疗 / **还款** / Token / 订阅 / 未分类
     - 收入分类：工资 / 奖金 / 报销 / 退款 / 红包 / 其他收入
-  - 标签、作品集、记账、Issue、设置
-- **公开域**
-  - 首页、全部笔记、笔记详情、作品集、作品详情、站内搜索
-  - 只读，无登录入口和后台链接
+  - 标签、记账、Issue、设置（外观、账号安全、登录日志、会话、授信设备、API Token、导入账单）
 - **通用**
   - 命令面板、全局快捷键、多主题、响应式三栏布局
   - 图片粘贴 / 拖拽上传、代码块一键复制、外链安全处理
@@ -32,10 +29,10 @@ Haven 的前端：Vue 3 + TypeScript + Vite 单页应用。同一份构建产物
 | Vue 3.5 | Composition API + `<script setup>` |
 | TypeScript | 严格模式，路径别名 `@` → `src` |
 | Vite 8 | 开发服务器与构建 |
-| Vue Router 4 | 公开 / 私有两套路由 |
+| Vue Router 4 | 单一路由表 + 登录守卫 |
 | Pinia | 登录态、界面状态、主题 |
 | TipTap 3 | 富文本编辑器（ProseMirror） |
-| marked + DOMPurify | 作品集 Markdown 渲染与 HTML 消毒 |
+| marked + DOMPurify | Issue 描述 Markdown 渲染与全部 HTML 消毒 |
 | highlight.js / lowlight | 代码高亮 |
 | Vitest + jsdom | 单元测试 |
 
@@ -94,99 +91,66 @@ pnpm dev
 
 ```text
 src/
-├── main.ts               # 启动：加载运行时配置 → 创建 Pinia / Router → 挂载
+├── main.ts               # 启动：创建 Pinia / Router → 应用主题 → 挂载
 ├── App.vue               # 根组件
-├── config.ts             # 运行时配置（GET /api/app-config）
+├── env.d.ts              # 构建期全局声明（__APP_VERSION__）
 ├── style.css             # 全局样式与 CSS 变量
 ├── api/                  # 每类后端资源一个文件，统一走 client.ts
 │   ├── client.ts         # fetch 封装、ApiError、401 回调
 │   ├── auth.ts           # 登录、TOTP、改密
+│   ├── me.ts             # 当前用户
 │   ├── notes.ts          # 笔记、回收站、历史版本
 │   ├── folders.ts / tags.ts / search.ts / stats.ts
-│   ├── portfolio.ts / issues.ts
+│   ├── issues.ts
 │   ├── ledger.ts         # 解析、批量写入、汇总、明细
-│   ├── sessions.ts / devices.ts / tokens.ts
+│   ├── sessions.ts / devices.ts / tokens.ts / login-logs.ts
 │   └── uploads.ts        # multipart 图片上传
 ├── components/           # 按角色分组，见下方「组件目录」
-├── composables/          # useGlobalShortcuts、useCodeCopy
+├── composables/          # useGlobalShortcuts、useNoteAutoSave、useTreeDrag…
 ├── router/
-│   ├── index.ts          # 公开 / 私有路由表、登录守卫、标题
-│   └── domain.ts         # 当前域名属于公开域还是私有域
+│   ├── index.ts          # 单一路由表、登录守卫、标题
+│   └── meta.ts           # RouteMeta 类型扩展（title / section / public / noList）
 ├── stores/
 │   ├── auth.ts           # 登录态与 401 处理
 │   ├── ui.ts             # 三栏布局共享状态、侧边栏折叠
 │   └── theme.ts          # 主题切换与持久化
 ├── utils/                # 纯函数：markdown、diff、统计、主题、图标…
 ├── views/
-│   ├── private/          # 私有域页面
-│   └── public/           # 公开域页面
+│   └── private/          # 全部页面
 └── __tests__/            # Vitest 单元测试
 ```
 
 ## 路由
 
-### 公开域
-
 | 路径 | 页面 |
 | --- | --- |
-| `/` | 首页 |
-| `/notes` | 全部公开笔记 |
-| `/notes/:id` | 公开笔记详情 |
-| `/search` | 公开搜索 |
-| `/portfolio` | 作品集 |
-| `/portfolio/:id` | 作品详情 |
-| `/:pathMatch(.*)*` | 404 |
-
-公开域不做登录态判断，也没有任何写入口。
-
-### 私有域
-
-| 路径 | 页面 |
-| --- | --- |
-| `/login` | 登录（唯一公开页面） |
+| `/login` | 登录（唯一 `meta.public` 页面） |
 | `/` | 仪表盘 |
 | `/notes` | 工作台（空详情） |
 | `/notes/new` | 新建笔记 |
 | `/notes/:id` | 笔记编辑 |
 | `/search` | 搜索 |
 | `/tags` | 标签 |
-| `/portfolio` | 作品集 |
 | `/ledger` | 记账（汇总、快速记账、明细） |
 | `/issues`、`/issues/:id` | Issue 列表 / 详情 |
 | `/trash` | 回收站 |
 | `/settings` | 设置概览 |
 | `/settings/appearance` | 外观 |
 | `/settings/security` | 账号安全 |
+| `/settings/login-logs` | 登录日志 |
 | `/settings/sessions` | 会话 |
 | `/settings/devices` | 授信设备 |
 | `/settings/tokens` | API Token |
-| `/preview/notes/:id` | 公开笔记预览 |
+| `/settings/import` | 导入账单 |
 | `/:pathMatch(.*)*` | 404 |
 
-除 `/login` 外，私有域路由都要求登录；未登录会跳转到 `/login?redirect=<原路径>`。
+除 `/login` 外，路由都要求登录；未登录会跳转到 `/login?redirect=<原路径>`。
 
-## 公开域 / 私有域判定
+## 域名无关
 
-判定逻辑在 `src/router/domain.ts`：
+`createHavenRouter()` 不接收参数，`src/router/index.ts` 只有一张路由表：应用不知道也没必要知道自己部署在哪个域名，域名与 TLS 都由反向代理决定。启动时不再请求 `/api/app-config`，也没有任何域名配置。
 
-1. 应用启动时先请求 `GET /api/app-config`，读取后端下发的 `private_hosts`
-2. 请求失败（纯静态部署、后端未启动）时，退回构建期变量 `VITE_PRIVATE_HOST`
-3. 两者都没有时：
-
-   - `localhost`、`*.localhost`、IP 地址 → 私有域
-   - 其他域名 → 公开域
-
-因此同一份 `dist/` 可以同时部署到 `note.example.com` 和 `www.example.com`，改域名不需要重新打包。后端配置：
-
-```bash
-HAVEN_PRIVATE_HOSTS=note.example.com,www.example.com
-```
-
-构建期兜底变量（可选，写在 `.env.local`）：
-
-```bash
-VITE_PRIVATE_HOST=note.example.com,www.example.com
-```
+版本号来自构建期注入的 `__APP_VERSION__`（`vite.config.ts` 读取 `package.json`），设置页直接显示，不经网络请求。
 
 ## API 层约定
 
@@ -215,7 +179,7 @@ VITE_PRIVATE_HOST=note.example.com,www.example.com
 | Store | 职责 |
 | --- | --- |
 | `auth` | 启动时 `GET /api/me` 初始化；登录 / 登出；注册全局 401 处理；判断 `isSession` / `canWrite` |
-| `ui` | 侧边栏折叠状态、笔记 / 标签 / 文件夹 / 作品集 / 回收站版本号、跨栏选中项、编辑器保存回调 |
+| `ui` | 侧边栏折叠状态、笔记 / 标签 / 文件夹 / 回收站版本号、跨栏选中项、编辑器保存回调 |
 | `theme` | 主题读写与 `<html data-theme>` 同步 |
 
 持久化使用 `localStorage`：
@@ -229,7 +193,7 @@ VITE_PRIVATE_HOST=note.example.com,www.example.com
 
 - 笔记正文由 TipTap 生成 **HTML**，保存的是 `editor.getHTML()`
 - 阅读态 HTML 先经过 DOMPurify，再补代码高亮、复制按钮、只读复选框、表格包裹等增强
-- 作品集正文仍是 **Markdown**，用 `marked` 渲染后再走同一套消毒流程
+- Issue 描述是 **Markdown**，用 `marked` 渲染后再走同一套消毒流程
 - 图片粘贴 / 拖拽会走 `/api/uploads`，正文只保存相对 URL
 - 编辑器扩展顺序固定；`CodeBlockLowlight` 与 StarterKit 的 `codeBlock` 不能同时启用
 
@@ -245,7 +209,7 @@ VITE_PRIVATE_HOST=note.example.com,www.example.com
 
 - `s 关键词`：按标题搜索笔记
 - `n 标题`：新建笔记并预填标题（会先选择文件夹）
-- 输入 `n` / `d` / `w` / `t` / `g` / `p` / `,` 或直接回车：新建笔记、仪表盘、工作台、标签、回收站、作品集、设置
+- 输入 `n` / `d` / `w` / `t` / `g` / `,` 或直接回车：新建笔记、仪表盘、工作台、标签、回收站、设置
 
 ## 测试
 
@@ -260,7 +224,7 @@ pnpm test         # 单次运行
 pnpm test:watch   # 监听模式
 ```
 
-测试使用 Vitest + jsdom，文件位于 `src/__tests__/*.test.ts`（22 个文件、167 个用例），覆盖纯函数与路由行为：
+测试使用 Vitest + jsdom，文件位于 `src/__tests__/*.test.ts`（31 个文件、237 个用例），覆盖纯函数、路由行为与请求体契约：
 
 | 文件 | 覆盖 |
 | --- | --- |
@@ -281,7 +245,7 @@ pnpm test:watch   # 监听模式
 ```
 
 脚本会先清空 `static/`（避免旧哈希文件残留），再复制 `dist/` 内容。
-生产部署只需要分发 `backend/target/haven-<版本>.jar` 一个文件。
+生产部署只需要分发 `backend/target/haven-<版本>.jar` 一个文件（当前 `haven-2.4.0.jar`）。
 
 `vite.config.ts` 会把 `package.json` 的 `version` 注入为 `__APP_VERSION__`，设置页直接显示这个版本号。
 后端版本在 `backend/pom.xml`，产物名为 `haven-<版本>.jar`（版本号见根目录 `VERSION`）。
@@ -294,6 +258,6 @@ pnpm test:watch   # 监听模式
 - 路径别名统一用 `@/...`，不写 `../../`
 - `src/api/` 不保存状态；跨页面状态放 `stores/`
 - 纯函数放 `src/utils/`，便于单测
-- 新增页面时同步补路由的 `meta.title` 与 `meta.section`（私有域三栏布局依赖 `section`）
+- 新增页面时同步补路由的 `meta.title` 与 `meta.section`（三栏布局依赖 `section`）
 - 所有渲染 HTML 的地方必须先消毒，禁止直接 `v-html` 未处理的内容
 - 测试与实现放在同一个 `src/__tests__/` 目录，文件名以 `.test.ts` 结尾

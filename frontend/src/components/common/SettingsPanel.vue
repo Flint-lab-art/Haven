@@ -7,7 +7,10 @@ const route = useRoute()
 const items = [
   { name: 'settings', label: '概览' },
   { name: 'settings-appearance', label: '外观' },
+  { name: 'settings-budget', label: '预算' },
+  { name: 'settings-accounts', label: '账户' },
   { name: 'settings-security', label: '账号安全' },
+  { name: 'settings-login-logs', label: '登录日志' },
   { name: 'settings-sessions', label: '会话' },
   { name: 'settings-devices', label: '授信设备' },
   { name: 'settings-tokens', label: 'API Token' },

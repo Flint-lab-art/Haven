@@ -4,7 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 /**
  * 回收站路由与侧边栏归属（docs/v2/frontend/frontend.md 第一、二节）。
  *
- * - /trash 与其它私有域页面一样需要登录，未登录跳 /login 并保留 redirect；
+ * - /trash 与其它页面一样需要登录，未登录跳 /login 并保留 redirect；
  * - 路由 meta.section 必须是 'trash'，侧边栏据此高亮，不会误亮「笔记」「作品集」等项。
  */
 const auth = { initialized: true, isLoggedIn: false, refresh: vi.fn(async () => {}) }

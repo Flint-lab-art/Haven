@@ -59,7 +59,6 @@ test('登录后可访问全部业务页面', async ({ page }) => {
   const pages = [
     { path: '/', heading: '仪表盘' },
     { path: '/tags', heading: '标签' },
-    { path: '/portfolio', heading: '作品集' },
     { path: '/ledger', heading: '记账' },
     { path: '/issues', heading: 'Issue' },
     { path: '/settings', heading: '设置' },

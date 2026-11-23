@@ -23,7 +23,7 @@ public interface NotesMapper extends BaseMapper<Notes> {
      */
     @Select("""
             SELECT COALESCE(SUM(char_length(regexp_replace(COALESCE(content, ''), '<[^>]*>', '', 'g'))), 0)::bigint
-            FROM notes
+            FROM note.notes
             WHERE user_id = #{userId} AND deleted_at IS NULL
             """)
     long sumContentLength(@Param("userId") UUID userId);
@@ -31,7 +31,7 @@ public interface NotesMapper extends BaseMapper<Notes> {
     /** 按天统计用户笔记更新数量（热力图用），返回 [day, count]。 */
     @Select("""
             SELECT (updated_at AT TIME ZONE #{zone})::date AS day, COUNT(*) AS cnt
-            FROM notes
+            FROM note.notes
             WHERE user_id = #{userId}
               AND deleted_at IS NULL
               AND updated_at >= #{from}
@@ -47,7 +47,7 @@ public interface NotesMapper extends BaseMapper<Notes> {
     /** 按文件夹统计未删除笔记数量，返回 [folder_id, count]。 */
     @Select("""
             SELECT folder_id, COUNT(*) AS cnt
-            FROM notes
+            FROM note.notes
             WHERE user_id = #{userId}
               AND deleted_at IS NULL
               AND folder_id IS NOT NULL

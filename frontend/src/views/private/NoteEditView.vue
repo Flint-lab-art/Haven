@@ -29,6 +29,7 @@ import { useNoteAutoSave } from '@/composables/useNoteAutoSave'
 import { useUiStore } from '@/stores/ui'
 import { countWords, formatReadingTime } from '@/utils/text-stats'
 import { stripHtml } from '@/utils/html'
+import { History, X } from 'lucide-vue-next'
 
 /** 自动保存防抖时间（ui-design.md 7.5.4）。 */
 
@@ -412,11 +413,7 @@ onBeforeUnmount(() => {
                   aria-label="历史版本"
                   @click="openHistory"
                 >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M3 12a9 9 0 1 0 3-6.7" />
-                    <path d="M3 4v5h5" />
-                    <path d="M12 8v4l3 2" />
-                  </svg>
+                  <History aria-hidden="true" />
                 </button>
 
                 <span class="word-count" :title="`约 ${formatReadingTime(wordCount)}`">
@@ -432,10 +429,7 @@ onBeforeUnmount(() => {
                   aria-label="关闭笔记"
                   @click="closeNote"
                 >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M6 6l12 12" />
-                    <path d="M18 6 6 18" />
-                  </svg>
+                  <X aria-hidden="true" />
                 </button>
               </div>
             </div>

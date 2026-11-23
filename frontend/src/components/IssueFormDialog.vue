@@ -21,6 +21,7 @@ import {
   ISSUE_STATUS_LABEL,
   ISSUE_TYPE_LABEL,
 } from '@/utils/issues'
+import { X } from 'lucide-vue-next'
 
 const props = withDefaults(
     defineProps<{
@@ -129,9 +130,7 @@ async function save(): Promise<void> {
       <header class="modal__head">
         <h2 class="modal__title">{{ issue ? '编辑 Issue' : '新建 Issue' }}</h2>
         <button class="icon-btn" type="button" aria-label="关闭" @click="close">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
-            <path d="M6 6l12 12M18 6 6 18" />
-          </svg>
+          <X aria-hidden="true" />
         </button>
       </header>
 

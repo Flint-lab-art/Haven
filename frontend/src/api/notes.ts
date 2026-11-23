@@ -13,8 +13,6 @@ export interface Note {
   sort_order: number
   title: string
   content: string
-  visibility: 'private' | 'public'
-  published_at: string | null
   created_at: string
   updated_at: string
   tags: TagBrief[]
@@ -26,27 +24,7 @@ export interface NoteSummary {
   sort_order: number
   title: string
   content_preview: string
-  visibility: 'private' | 'public'
-  published_at: string | null
   created_at: string
-  updated_at: string
-  tags: TagBrief[]
-}
-
-export interface PublicNote {
-  id: string
-  title: string
-  content: string
-  published_at: string
-  updated_at: string
-  tags: TagBrief[]
-}
-
-export interface PublicNoteSummary {
-  id: string
-  title: string
-  content_preview: string
-  published_at: string
   updated_at: string
   tags: TagBrief[]
 }
@@ -54,7 +32,6 @@ export interface PublicNoteSummary {
 export interface ListNotesQuery {
   limit?: number
   offset?: number
-  visibility?: 'private' | 'public'
   tag_id?: string
   /** 传空字符串表示收件箱（folder_id IS NULL）；不传表示全部。 */
   folder_id?: string
@@ -154,20 +131,4 @@ export function getVersion(noteId: string, versionId: string): Promise<VersionDe
 
 export function restoreVersion(noteId: string, versionId: string): Promise<Note> {
   return request<Note>(`/api/notes/${noteId}/versions/${versionId}/restore`, { method: 'POST' })
-}
-
-export function publishNote(id: string): Promise<Note> {
-  return request<Note>(`/api/notes/${id}/publish`, { method: 'POST' })
-}
-
-export function unpublishNote(id: string): Promise<Note> {
-  return request<Note>(`/api/notes/${id}/unpublish`, { method: 'POST' })
-}
-
-export function listPublicNotes(limit = 20, offset = 0): Promise<ListResult<PublicNoteSummary>> {
-  return request('/api/public/notes', { query: { limit, offset } })
-}
-
-export function getPublicNote(id: string): Promise<PublicNote> {
-  return request<PublicNote>(`/api/public/notes/${id}`)
 }

@@ -2,7 +2,7 @@ import { createApi } from './api'
 import { expect, test } from './fixtures'
 
 /**
- * 笔记：新建、编辑、自动保存、删除、回收站还原、版本历史、公开与撤回。
+ * 笔记：新建、编辑、自动保存、删除、回收站还原、版本历史。
  *
  * 造数据走 API，**用户可见结果全部用界面断言**。
  * 尤其是自动保存和回收站，它们此前的 bug 都是「接口返回 200 但数据没改」，
@@ -131,32 +131,6 @@ test('历史版本里能查看旧版本的内容差异并还原', async ({ authe
   // 还原成功：对话框关闭，标题变成旧版本的值
   await expect(dialog).toBeHidden()
   await expect(page.getByLabel('标题')).toHaveValue('初版标题')
-})
-
-test('笔记可以公开，公开后撤回为私有', async ({ authedPage: page }) => {
-  const api = createApi(page.request)
-  await api.createNote({ title: '公开一篇', content: '公开内容' })
-
-  await page.goto('/notes')
-  const row = noteRow(page, '公开一篇')
-  await expect(row).toBeVisible()
-
-  await row.getByRole('button', { name: '公开' }).click()
-  // 按钮变成「撤回为私有」即为公开成功
-  await expect(row.getByRole('button', { name: '撤回为私有' })).toBeVisible()
-
-  // 公开接口能读到
-  const pub = await page.request.get('/api/public/notes')
-  const pubBody = (await pub.json()) as { items: { title: string }[] }
-  expect(pubBody.items.map((n) => n.title)).toContain('公开一篇')
-
-  // 撤回
-  await row.getByRole('button', { name: '撤回为私有' }).click()
-  await expect(row.getByRole('button', { name: '公开' })).toBeVisible()
-
-  const after = await page.request.get('/api/public/notes')
-  const afterBody = (await after.json()) as { items: { title: string }[] }
-  expect(afterBody.items.map((n) => n.title)).not.toContain('公开一篇')
 })
 
 test('笔记可移动到其他文件夹', async ({ authedPage: page }) => {

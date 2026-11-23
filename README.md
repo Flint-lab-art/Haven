@@ -1,20 +1,18 @@
 # Haven
 
-Haven 是一个**单用户、自托管**的个人知识中台：私有域写笔记、记账、维护作品集与 Issue；公开域只展示已发布的笔记和作品。
+Haven 是一个**单用户、自托管**的个人知识中台：写笔记、记账、维护 Issue，全部在登录之后。
 
-同一份前端构建产物可以同时部署在公开域和私有域，由后端下发的运行时配置决定当前域名加载哪一套路由。
+只有一个站点：一张路由表、一份构建产物，除登录页外都需要登录。部署在哪个域名由反向代理决定，应用本身不关心。
 
 ## 功能
 
-- **笔记**：文件夹树、标签、富文本编辑、自动保存、历史版本、回收站、发布 / 撤回
-- **公开站点**：首页、全部笔记、笔记详情、作品集、站内搜索（只读，无登录入口）
-- **作品集**：作品条目、多个仓库 / 链接、主仓库标记
+- **笔记**：文件夹树、标签、富文本编辑、自动保存、历史版本、回收站
 - **记账**：手机端一行一笔、解析预览、批量幂等写入、月度汇总与走势图表、事后改分类 / 金额 / 时间
 - **Issue**：Bug / Feature 记录、优先级、状态流转（父子层级已在 V3 迁移中移除）
-- **仪表盘**：笔记总量、字数、公开数量、写作热力图、最近编辑、文件夹与 Issue 概览
+- **仪表盘**：笔记篇数、总字数、写作热力图、最近编辑、文件夹与 Issue 概览
 - **搜索**：基于 PostgreSQL `pg_trgm` 的模糊匹配
 - **图片上传**：编辑器粘贴 / 拖拽上传，按年 / 月归档
-- **账号安全**：Sa-Token 会话、TOTP 两步验证、授信设备、API Token、会话管理
+- **账号安全**：Sa-Token 会话、TOTP 两步验证、授信设备、API Token、会话管理、登录日志（成功 / 失败 / 动态码失败 / 登出）
 - **界面**：三栏布局、可折叠侧边栏、命令面板、快捷键、多套主题
 
 ## 技术栈
@@ -40,10 +38,10 @@ Haven/
 │   ├── src/
 │   │   ├── api/             # 后端接口封装
 │   │   ├── components/      # 布局、编辑器、弹窗等组件
-│   │   ├── router/          # 公开 / 私有路由与域名判定
+│   │   ├── router/          # 单张路由表与登录守卫
 │   │   ├── stores/          # Pinia：登录态、界面状态、主题
 │   │   ├── utils/           # 纯函数工具
-│   │   └── views/           # private / public 页面
+│   │   └── views/           # private/ 页面（含登录页）
 │   └── package.json
 └── README.md
 ```
@@ -120,24 +118,16 @@ VALUES ('admin', '$2a$12$6aVoi9rTYyuC043ykOD0gua8bxwGXvZg07UgpVakcVZkSg6xECNAO')
 
 也可以用任意 BCrypt 工具生成自己的 `$2a$` / `$2b$` / `$2y$` 哈希，再替换上面的值。
 
-## 公开域与私有域
+## 单域名部署
 
-同一份前端产物会部署到两个域名：
+只有一个站点：除 `/login` 外全部页面都要求登录，没有匿名可访问的公开内容。
 
-- **公开域**：只读页面（笔记、作品集、搜索），不显示登录入口和后台链接
-- **私有域**：工作台、仪表盘、设置，除 `/login` 外都需要登录
+- 路由表只有一张（`frontend/src/router/index.ts` 的 `privateRoutes`），启动时不做任何域名判定
+- 前端不读取运行时配置；`GET /api/app-config` 保留为占位端点，只返回 `{ "version": "x.y.z" }`
+- 部署在哪个域名完全由反向代理决定，换域名不需要重新打包前端
 
-域名判定顺序：
-
-1. 启动时请求 `GET /api/app-config`，读取后端配置的 `private_hosts`
-2. 请求失败时退回前端构建期变量 `VITE_PRIVATE_HOST`
-3. 两者都没有时，`localhost` / IP 地址视为私有域，其余视为公开域
-
-后端通过 `HAVEN_PRIVATE_HOSTS` 配置私有域名单，换域名不需要重新打包前端：
-
-```bash
-HAVEN_PRIVATE_HOSTS=note.example.com,www.example.com ./mvnw spring-boot:run
-```
+> 早期版本曾按 hostname 分出「公开域 / 私有域」两套路由，并提供公开笔记与作品集。
+> 这套设计已连同 `notes.visibility` / `portfolio_*` 一起删除（迁移 `V14`）。
 
 ## 常用命令
 
@@ -155,7 +145,7 @@ HAVEN_PRIVATE_HOSTS=note.example.com,www.example.com ./mvnw spring-boot:run
 
 ./scripts/test.sh all            # 前后端都测
 ./scripts/test.sh backend        # spotless + checkstyle + 后端测试
-./scripts/test.sh frontend       # vue-tsc + vitest
+./scripts/test.sh frontend       # vue-tsc + vitest + Playwright E2E
 
 ./scripts/version.sh             # 查看版本号（唯一来源：根目录 VERSION）
 ./scripts/version.sh set 2.2.0   # 改版本并同步到 pom.xml / package.json
@@ -190,7 +180,7 @@ cd backend
 | `build.sh backend` | `cd backend && ./mvnw clean package -DskipTests` |
 | `build.sh all` | 上面两步按顺序执行 |
 | `test.sh backend` | `spotless:check` + `checkstyle:check` + `mvnw test` |
-| `test.sh frontend` | `pnpm exec vue-tsc -b` + `pnpm test` |
+| `test.sh frontend` | `pnpm exec vue-tsc -b` + `pnpm test` + Playwright E2E（会先构建 jar） |
 | `version.sh set X` | 写 `VERSION`，并同步 `pom.xml` 的 `<revision>` 与 `package.json` 的 `version` |
 
 ### 测试数据库
@@ -199,8 +189,8 @@ cd backend
 
 | 模式 | 触发方式 | 说明 |
 | --- | --- | --- |
-| 临时 schema（默认） | 无需配置 | 在本地 PostgreSQL 上建 `haven_test_<随机>` schema，`search_path` 指向它；JVM 退出时自动 `DROP`，上次异常退出的残留 schema 会在下次启动时清理 |
-| Testcontainers | `-Dhaven.test.mode=container`（或 `HAVEN_TEST_MODE=container ./scripts/test.sh backend`） | 需要可用的容器运行时；找不到时自动回退到临时 schema |
+| 独立测试库（默认） | 无需配置（账号需 `CREATEDB`） | 每轮 `DROP + CREATE` 本地 `haven_test_db`，Flyway 从空库完整迁移，与生产路径一致 |
+| Testcontainers | `-Dhaven.test.mode=container`（或 `HAVEN_TEST_MODE=container ./scripts/test.sh backend`） | 需要可用的容器运行时；找不到时自动回退到独立测试库 |
 
 可覆盖的变量：`TEST_DB_URL` / `TEST_DB_USERNAME` / `TEST_DB_PASSWORD`（默认 `jdbc:postgresql://127.0.0.1:5432/dev_db`，账号 `dev`）。
 
@@ -224,7 +214,6 @@ jar 里已包含前端静态资源，部署时只需分发一个文件。
 | --- | --- |
 | `SPRING_PROFILES_ACTIVE` | 设为 `prod` 或自定义 profile |
 | `DB_URL` / `DB_USERNAME` / `DB_PASSWORD` | 生产数据库连接（`application-prod.yaml` 无默认值，缺失即启动失败） |
-| `HAVEN_PRIVATE_HOSTS` | 私有域域名，逗号分隔 |
 | `HAVEN_UPLOAD_DIR` | 上传文件目录，建议挂载持久化卷 |
 | `HAVEN_TOTP_ISSUER` | 动态码发行方名称，默认 `Haven` |
 | `HAVEN_TIME_ZONE` | 业务时区（如 `Asia/Shanghai`），默认取 JVM 时区；影响热力图日界与月度汇总 |
@@ -240,7 +229,7 @@ jar 里已包含前端静态资源，部署时只需分发一个文件。
 
 ## API 约定
 
-- 所有接口以 `/api` 开头；匿名可访问的公开接口在 `/api/public/**` 下
+- 所有接口以 `/api` 开头；除健康检查、登录两步与 `/api/app-config` 外都需要认证（Cookie 会话或 Bearer Token）
 - JSON 字段使用 `snake_case`
 - 列表响应统一为 `{ "items": [...], "total": 0 }`
 - 请求/响应体字段对外统一 `snake_case`；后端用 record DTO 定义契约，响应由全局 `SNAKE_CASE` 序列化策略输出，请求体由前端 `toCamelCaseKeys` 转换后提交
@@ -259,17 +248,20 @@ jar 里已包含前端静态资源，部署时只需分发一个文件。
 - 浏览器会话：Sa-Token Cookie（`havenToken`）
 - 程序调用：`Authorization: Bearer <API Token>`
 
+登录历史在设置页 `/settings/login-logs` 查看：成功、失败（含用户名打错的尝试）、动态码失败、登出各一条记录，带时间、IP 与设备。
+该接口只接受浏览器会话，API Token 会被 403；`session_hash` 永远不出服务端。
+
 完整接口分组见 [backend/README.md](backend/README.md#api-一览)。
 
 ## iOS 快捷指令记账
 
 记账的主力入口是 iOS 快捷指令：说一句「午饭 12」，一次请求直接落库。
 
-1. 在私有域打开 `/settings/tokens`，创建一个 `read_write` Token（明文只显示一次）。
+1. 打开 `/settings/tokens`，创建一个 `read_write` Token（明文只显示一次）。
 2. 在快捷指令 App 新建快捷指令：
    - **听写文本**（语言选中文）
    - **获取 URL 内容**
-     - URL：`https://<私有域>/api/ledger/entries/quick`
+     - URL：`https://<你的域名>/api/ledger/entries/quick`
      - 方法：`POST`
      - 请求头：
        - `Authorization`：`Bearer <Token>`
@@ -322,7 +314,7 @@ jar 里已包含前端静态资源，部署时只需分发一个文件。
 | [versioning.md](docs/versioning.md) | 版本号规则（与标准 SemVer 不同） |
 | [architecture.md](docs/architecture.md) | 分层、请求生命周期、关键决策、已知限制 |
 | [api-conventions.md](docs/api-conventions.md) | 契约、命名、分页、错误码、权限声明 |
-| [auth.md](docs/auth.md) | 双通道认证、TOTP、授权级别、审计、安全清单 |
+| [auth.md](docs/auth.md) | 双通道认证、TOTP、授权级别、登录日志、审计、安全清单 |
 | [data-model.md](docs/data-model.md) | 表结构、约束、索引、迁移规则、金额与时间 |
 | [ledger.md](docs/ledger.md) | 快捷输入解析、分类体系、幂等、统计 |
 | [testing.md](docs/testing.md) | 测试隔离、写测试的套路、常见坑 |

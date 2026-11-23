@@ -15,7 +15,7 @@ import lombok.ToString;
 @Getter
 @Setter
 @ToString(exclude = {"description"})
-@TableName("issues")
+@TableName("issue.issues")
 public class Issues implements Serializable {
 
     @Serial

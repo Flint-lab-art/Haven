@@ -46,7 +46,6 @@ haven:
   # 业务时区：留空取 JVM 时区。配置后热力图日界、月度汇总、YearMonth 都按该时区计算
   time-zone: ${HAVEN_TIME_ZONE:}
   upload-dir: uploads
-  private-hosts: ${HAVEN_PRIVATE_HOSTS:localhost}
   # 登录密码 / TOTP 动态码的失败尝试限制（防暴力破解）
   auth:
     login-max-attempts: 5

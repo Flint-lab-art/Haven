@@ -21,17 +21,25 @@ public class TestDatabaseInitializer implements EnvironmentPostProcessor {
             return;
         }
         TestDatabaseSupport.ensurePrepared();
+
+        // ensurePrepared 返回时连接信息一定已就绪；这里再兜一层，
+        // 万一为空就给出可读的错误，而不是让 Map.of 抛一个没上下文的 NPE。
+        String url = System.getProperty(TestDatabaseSupport.URL_PROPERTY);
+        String user = System.getProperty(TestDatabaseSupport.USERNAME_PROPERTY);
+        String password = System.getProperty(TestDatabaseSupport.PASSWORD_PROPERTY);
+        if (url == null || url.isBlank()) {
+            throw new IllegalStateException(
+                    "测试数据库未就绪：ensurePrepared() 返回但 " + TestDatabaseSupport.URL_PROPERTY + " 仍为空");
+        }
+
         environment
                 .getPropertySources()
                 .addFirst(new MapPropertySource(
                         "havenTestDatasource",
                         Map.of(
-                                "spring.datasource.url",
-                                System.getProperty(TestDatabaseSupport.URL_PROPERTY, ""),
-                                "spring.datasource.username",
-                                System.getProperty(TestDatabaseSupport.USERNAME_PROPERTY, ""),
-                                "spring.datasource.password",
-                                System.getProperty(TestDatabaseSupport.PASSWORD_PROPERTY, ""))));
+                                "spring.datasource.url", url,
+                                "spring.datasource.username", user != null ? user : "",
+                                "spring.datasource.password", password != null ? password : "")));
     }
 
     private boolean isTestProfile(ConfigurableEnvironment environment) {

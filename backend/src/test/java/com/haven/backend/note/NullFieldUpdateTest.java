@@ -156,7 +156,6 @@ class NullFieldUpdateTest {
         note.setUserId(userId);
         note.setTitle("null-field-probe");
         note.setContent("");
-        note.setVisibility("private");
         note.setSearchText("");
         note.setSortOrder(0);
         note.setCreatedAt(OffsetDateTime.now());

@@ -5,7 +5,24 @@
  * 只放图标 / 短标签，所有动作走 TipTap 的 chain().focus()，
  * 不直接改 DOM。按钮的选中态统一用 editor.isActive() 判断。
  */
-import { ref } from 'vue'
+import { ref, type Component } from 'vue'
+import {
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
+  Bold,
+  ChevronsUpDown,
+  CodeXml,
+  Image,
+  Italic,
+  List,
+  ListChecks,
+  ListOrdered,
+  Minus,
+  Quote,
+  Strikethrough,
+  Table,
+} from 'lucide-vue-next'
 import type { Editor } from '@tiptap/vue-3'
 import { pickImage } from '@/utils/editor-image'
 
@@ -29,6 +46,34 @@ function setColor(event: Event): void {
 function pickColor(): void {
   colorInput.value?.click()
 }
+
+/**
+ * 图标动作表：工具栏右半段的纯图标按钮。
+ *
+ * 用一张表而不是 13 段重复模板——新增一个动作只需要加一行，
+ * 标题同时作为 title / aria-label，占位与尺寸由 .tb-btn--icon 统一。
+ */
+type IconAction = {
+  title: string
+  icon: Component
+  run: () => void
+  active?: () => boolean
+}
+
+const iconActions: IconAction[] = [
+  { title: '左对齐', icon: AlignLeft, run: () => chain().setTextAlign('left').run(), active: () => props.editor.isActive({ textAlign: 'left' }) },
+  { title: '居中', icon: AlignCenter, run: () => chain().setTextAlign('center').run(), active: () => props.editor.isActive({ textAlign: 'center' }) },
+  { title: '右对齐', icon: AlignRight, run: () => chain().setTextAlign('right').run(), active: () => props.editor.isActive({ textAlign: 'right' }) },
+  { title: '无序列表', icon: List, run: () => chain().toggleBulletList().run(), active: () => props.editor.isActive('bulletList') },
+  { title: '有序列表', icon: ListOrdered, run: () => chain().toggleOrderedList().run(), active: () => props.editor.isActive('orderedList') },
+  { title: '任务列表', icon: ListChecks, run: () => chain().toggleTaskList().run(), active: () => props.editor.isActive('taskList') },
+  { title: '引用', icon: Quote, run: () => chain().toggleBlockquote().run(), active: () => props.editor.isActive('blockquote') },
+  { title: '代码块', icon: CodeXml, run: () => chain().toggleCodeBlock().run(), active: () => props.editor.isActive('codeBlock') },
+  { title: '插入表格', icon: Table, run: () => chain().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
+  { title: '插入折叠块', icon: ChevronsUpDown, run: () => chain().setDetails().run() },
+  { title: '插入图片', icon: Image, run: () => void pickImage(props.editor) },
+  { title: '分割线', icon: Minus, run: () => chain().setHorizontalRule().run() },
+]
 </script>
 
 <template>
@@ -69,7 +114,7 @@ function pickColor(): void {
         @mousedown.prevent
         @click="chain().toggleBold().run()"
       >
-        <strong>B</strong>
+        <Bold aria-hidden="true" />
       </button>
       <button
         type="button"
@@ -79,7 +124,7 @@ function pickColor(): void {
         @mousedown.prevent
         @click="chain().toggleItalic().run()"
       >
-        <em>I</em>
+        <Italic aria-hidden="true" />
       </button>
       <button
         type="button"
@@ -89,7 +134,7 @@ function pickColor(): void {
         @mousedown.prevent
         @click="chain().toggleStrike().run()"
       >
-        <s>S</s>
+        <Strikethrough aria-hidden="true" />
       </button>
       <button
         type="button"
@@ -99,7 +144,7 @@ function pickColor(): void {
         @mousedown.prevent
         @click="chain().toggleCode().run()"
       >
-        &lt;&gt;
+        <CodeXml aria-hidden="true" />
       </button>
       <button
         type="button"
@@ -125,132 +170,21 @@ function pickColor(): void {
 
     <span class="editor-toolbar__sep" />
 
+    <!-- 图标按钮：28px 见方，与左侧文字按钮同高；aria-label 兼作无障碍名 -->
     <div class="editor-toolbar__group">
       <button
+        v-for="item in iconActions"
+        :key="item.title"
         type="button"
-        class="tb-btn"
-        title="左对齐"
-        :class="{ 'is-active': editor.isActive({ textAlign: 'left' }) }"
+        class="tb-btn tb-btn--icon"
+        :title="item.title"
+        :aria-label="item.title"
+        :aria-pressed="item.active ? item.active() : undefined"
+        :class="{ 'is-active': item.active ? item.active() : false }"
         @mousedown.prevent
-        @click="chain().setTextAlign('left').run()"
+        @click="item.run()"
       >
-        ⬅
-      </button>
-      <button
-        type="button"
-        class="tb-btn"
-        title="居中"
-        :class="{ 'is-active': editor.isActive({ textAlign: 'center' }) }"
-        @mousedown.prevent
-        @click="chain().setTextAlign('center').run()"
-      >
-        ↔
-      </button>
-      <button
-        type="button"
-        class="tb-btn"
-        title="右对齐"
-        :class="{ 'is-active': editor.isActive({ textAlign: 'right' }) }"
-        @mousedown.prevent
-        @click="chain().setTextAlign('right').run()"
-      >
-        ➡
-      </button>
-    </div>
-
-    <span class="editor-toolbar__sep" />
-
-    <div class="editor-toolbar__group">
-      <button
-        type="button"
-        class="tb-btn"
-        title="无序列表"
-        :class="{ 'is-active': editor.isActive('bulletList') }"
-        @mousedown.prevent
-        @click="chain().toggleBulletList().run()"
-      >
-        • 列表
-      </button>
-      <button
-        type="button"
-        class="tb-btn"
-        title="有序列表"
-        :class="{ 'is-active': editor.isActive('orderedList') }"
-        @mousedown.prevent
-        @click="chain().toggleOrderedList().run()"
-      >
-        1. 列表
-      </button>
-      <button
-        type="button"
-        class="tb-btn"
-        title="任务列表"
-        :class="{ 'is-active': editor.isActive('taskList') }"
-        @mousedown.prevent
-        @click="chain().toggleTaskList().run()"
-      >
-        ☑ 任务
-      </button>
-      <button
-        type="button"
-        class="tb-btn"
-        title="引用"
-        :class="{ 'is-active': editor.isActive('blockquote') }"
-        @mousedown.prevent
-        @click="chain().toggleBlockquote().run()"
-      >
-        引用
-      </button>
-    </div>
-
-    <span class="editor-toolbar__sep" />
-
-    <div class="editor-toolbar__group">
-      <button
-        type="button"
-        class="tb-btn"
-        title="代码块"
-        :class="{ 'is-active': editor.isActive('codeBlock') }"
-        @mousedown.prevent
-        @click="chain().toggleCodeBlock().run()"
-      >
-        代码块
-      </button>
-      <button
-        type="button"
-        class="tb-btn"
-        title="插入表格"
-        @mousedown.prevent
-        @click="chain().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()"
-      >
-        表格
-      </button>
-      <button
-        type="button"
-        class="tb-btn"
-        title="插入折叠块"
-        @mousedown.prevent
-        @click="chain().setDetails().run()"
-      >
-        折叠
-      </button>
-      <button
-        type="button"
-        class="tb-btn"
-        title="插入图片"
-        @mousedown.prevent
-        @click="pickImage(editor)"
-      >
-        图片
-      </button>
-      <button
-        type="button"
-        class="tb-btn"
-        title="分割线"
-        @mousedown.prevent
-        @click="chain().setHorizontalRule().run()"
-      >
-        —
+        <component :is="item.icon" aria-hidden="true" />
       </button>
     </div>
   </div>

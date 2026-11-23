@@ -6,8 +6,6 @@ import com.haven.backend.note.dto.NoteDtos.NoteDetail;
 import com.haven.backend.note.dto.NoteDtos.NotePage;
 import com.haven.backend.note.dto.NoteDtos.NoteVersionDetail;
 import com.haven.backend.note.dto.NoteDtos.NoteVersionPage;
-import com.haven.backend.note.dto.NoteDtos.PublicNoteDetail;
-import com.haven.backend.note.dto.NoteDtos.PublicNotePage;
 import com.haven.backend.note.dto.NoteDtos.TrashNotePage;
 import com.haven.backend.note.dto.UpdateNoteRequest;
 import com.haven.backend.note.service.NotesService;
@@ -38,13 +36,12 @@ public class NotesController {
     public NotePage list(
             @RequestParam(defaultValue = "20") int limit,
             @RequestParam(defaultValue = "0") int offset,
-            @RequestParam(required = false) String visibility,
             @RequestParam(required = false) UUID tagId,
             @RequestParam(required = false) UUID folderId,
             @RequestParam(required = false, defaultValue = "false") boolean includeTrash,
             HttpServletRequest request) {
         String userId = AuthInterceptor.requireUserId(request);
-        return notesService.listNotes(userId, limit, offset, visibility, tagId, folderId, includeTrash);
+        return notesService.listNotes(userId, limit, offset, tagId, folderId, includeTrash);
     }
 
     @GetMapping("/api/notes/trash")
@@ -107,18 +104,6 @@ public class NotesController {
         notesService.purgeNote(userId, id);
     }
 
-    @PostMapping("/api/notes/{id}/publish")
-    public NoteDetail publish(@PathVariable UUID id, HttpServletRequest request) {
-        String userId = AuthInterceptor.requireUserId(request);
-        return notesService.publishNote(userId, id);
-    }
-
-    @PostMapping("/api/notes/{id}/unpublish")
-    public NoteDetail unpublish(@PathVariable UUID id, HttpServletRequest request) {
-        String userId = AuthInterceptor.requireUserId(request);
-        return notesService.unpublishNote(userId, id);
-    }
-
     @GetMapping("/api/notes/{id}/versions")
     public NoteVersionPage listVersions(
             @PathVariable UUID id,
@@ -140,18 +125,5 @@ public class NotesController {
     public NoteDetail restoreVersion(@PathVariable UUID id, @PathVariable UUID versionId, HttpServletRequest request) {
         String userId = AuthInterceptor.requireUserId(request);
         return notesService.restoreVersion(userId, id, versionId);
-    }
-
-    // ---- 公开笔记接口（匿名可访问） ----
-
-    @GetMapping("/api/public/notes")
-    public PublicNotePage listPublic(
-            @RequestParam(defaultValue = "20") int limit, @RequestParam(defaultValue = "0") int offset) {
-        return notesService.listPublicNotes(limit, offset);
-    }
-
-    @GetMapping("/api/public/notes/{id}")
-    public PublicNoteDetail getPublic(@PathVariable UUID id) {
-        return notesService.getPublicNote(id);
     }
 }

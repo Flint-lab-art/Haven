@@ -28,8 +28,8 @@ public interface AuthService {
      */
     MeResponse me(String userId, String authType);
 
-    /** 登出（撤销当前会话）。 */
-    void logout();
+    /** 登出（撤销当前会话），并记录一条 logout 登录日志。 */
+    void logout(String userId, String ip, String userAgent);
 
     /** 生成 TOTP secret 与 otpauth URI（不落库）。 */
     TotpSetupResponse setupTotp(String userId);

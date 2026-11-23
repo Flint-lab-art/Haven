@@ -51,15 +51,6 @@ describe('Issue 路由', () => {
     expect(router.currentRoute.value.meta.noList).toBe(true)
   })
 
-  it('公开域不注册 /issues', async () => {
-    const router = await loadRouter()
-    const publicRoutes = router
-        .getRoutes()
-        .filter((record) => record.path.startsWith('/public'))
-        .map((record) => String(record.name ?? ''))
-    expect(publicRoutes).not.toContain('issues')
-  })
-
   it('已登录可以进入 /issues/:id，且 section 为 issues', async () => {
     auth.isLoggedIn = true
     const router = await loadRouter()

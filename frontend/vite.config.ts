@@ -26,6 +26,9 @@ export default defineConfig({
     },
   },
   server: {
+    // 监听所有网卡：默认只绑 localhost，手机 / iPad 在局域网里访问不到。
+    // 用真机测 iOS 手势和毛玻璃效果时必须开这个。
+    host: '0.0.0.0',
     // 固定端口：被占用时直接报错，避免悄悄落到 5174 导致 Caddy 指错端口
     port: 5173,
     strictPort: true,

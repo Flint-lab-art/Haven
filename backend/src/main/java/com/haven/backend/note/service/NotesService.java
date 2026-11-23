@@ -4,8 +4,6 @@ import com.haven.backend.note.dto.NoteDtos.NoteDetail;
 import com.haven.backend.note.dto.NoteDtos.NotePage;
 import com.haven.backend.note.dto.NoteDtos.NoteVersionDetail;
 import com.haven.backend.note.dto.NoteDtos.NoteVersionPage;
-import com.haven.backend.note.dto.NoteDtos.PublicNoteDetail;
-import com.haven.backend.note.dto.NoteDtos.PublicNotePage;
 import com.haven.backend.note.dto.NoteDtos.TrashNotePage;
 import java.util.List;
 import java.util.UUID;
@@ -17,14 +15,7 @@ import java.util.UUID;
  */
 public interface NotesService {
 
-    NotePage listNotes(
-            String userId,
-            Integer limit,
-            Integer offset,
-            String visibility,
-            UUID tagId,
-            UUID folderId,
-            Boolean includeTrash);
+    NotePage listNotes(String userId, Integer limit, Integer offset, UUID tagId, UUID folderId, Boolean includeTrash);
 
     NoteDetail getNote(String userId, UUID noteId);
 
@@ -56,17 +47,9 @@ public interface NotesService {
 
     void emptyTrash(String userId);
 
-    NoteDetail publishNote(String userId, UUID noteId);
-
-    NoteDetail unpublishNote(String userId, UUID noteId);
-
     NoteVersionPage listVersions(String userId, UUID noteId, int limit, int offset);
 
     NoteVersionDetail getVersion(String userId, UUID noteId, UUID versionId);
 
     NoteDetail restoreVersion(String userId, UUID noteId, UUID versionId);
-
-    PublicNotePage listPublicNotes(int limit, int offset);
-
-    PublicNoteDetail getPublicNote(UUID noteId);
 }

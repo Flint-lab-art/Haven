@@ -12,6 +12,20 @@ import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
 import { logout } from '@/api/auth'
+import {
+  ChevronUp,
+  CircleDot,
+  LayoutDashboard,
+  LogOut,
+  NotebookPen,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Search,
+  Settings,
+  Tag,
+  Trash2,
+  Wallet,
+} from 'lucide-vue-next'
 import HavenMark from '@/components/common/HavenMark.vue'
 
 const auth = useAuthStore()
@@ -94,14 +108,8 @@ onBeforeUnmount(() => {
         :aria-expanded="!mini"
         @click="ui.toggleSidebar()"
       >
-        <svg v-if="mini" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="m9 6 6 6-6 6" />
-          <path d="m3 6 6 6-6 6" />
-        </svg>
-        <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="m15 6-6 6 6 6" />
-          <path d="m21 6-6 6 6 6" />
-        </svg>
+        <PanelLeftOpen v-if="mini" aria-hidden="true" />
+        <PanelLeftClose v-else aria-hidden="true" />
       </button>
     </div>
 
@@ -112,10 +120,7 @@ onBeforeUnmount(() => {
       data-tip="仪表盘"
       aria-label="仪表盘"
     >
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M4 11.5 12 4l8 7.5" />
-        <path d="M6 10.5V20h12v-9.5" />
-      </svg>
+      <LayoutDashboard aria-hidden="true" />
       <span>仪表盘</span>
     </RouterLink>
 
@@ -128,11 +133,7 @@ onBeforeUnmount(() => {
       data-tip="笔记"
       aria-label="笔记"
     >
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true">
-        <path d="M6 3h7l5 5v13H6z" />
-        <path d="M13 3v5h5" />
-        <path d="M9 13h6M9 17h6" />
-      </svg>
+      <NotebookPen aria-hidden="true" />
       <span>笔记</span>
     </RouterLink>
 
@@ -143,10 +144,7 @@ onBeforeUnmount(() => {
       data-tip="搜索"
       aria-label="搜索"
     >
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
-        <circle cx="11" cy="11" r="6" />
-        <path d="m16 16 4 4" />
-      </svg>
+      <Search aria-hidden="true" />
       <span>搜索</span>
     </RouterLink>
 
@@ -157,27 +155,8 @@ onBeforeUnmount(() => {
       data-tip="标签"
       aria-label="标签"
     >
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true">
-        <path d="M3 12V5a2 2 0 0 1 2-2h7l9 9-9 9z" />
-        <circle cx="7.5" cy="7.5" r="1.2" fill="currentColor" stroke="none" />
-      </svg>
+      <Tag aria-hidden="true" />
       <span>标签</span>
-    </RouterLink>
-
-    <RouterLink
-      :to="{ name: 'portfolio' }"
-      class="side-link"
-      :class="{ 'side-link--active': section === 'portfolio' }"
-      data-tip="作品集"
-      aria-label="作品集"
-    >
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true">
-        <rect x="3" y="3" width="7" height="7" rx="1" />
-        <rect x="14" y="3" width="7" height="7" rx="1" />
-        <rect x="3" y="14" width="7" height="7" rx="1" />
-        <rect x="14" y="14" width="7" height="7" rx="1" />
-      </svg>
-      <span>作品集</span>
     </RouterLink>
 
     <RouterLink
@@ -187,11 +166,7 @@ onBeforeUnmount(() => {
       data-tip="记账"
       aria-label="记账"
     >
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M4 7.5A2.5 2.5 0 0 1 6.5 5h11A2.5 2.5 0 0 1 20 7.5v9A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5z" />
-        <path d="M4 9h16" />
-        <path d="M15 14h2" />
-      </svg>
+      <Wallet aria-hidden="true" />
       <span>记账</span>
     </RouterLink>
 
@@ -202,10 +177,7 @@ onBeforeUnmount(() => {
       data-tip="Issue"
       aria-label="Issue"
     >
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <circle cx="12" cy="13" r="4.5" />
-        <path d="M12 8.5V6M8.5 9 6 6.5M15.5 9 18 6.5M7.5 13H4M16.5 13H20M8.5 16.5 6 19M15.5 16.5 18 19" />
-      </svg>
+      <CircleDot aria-hidden="true" />
       <span>Issue</span>
     </RouterLink>
 
@@ -218,12 +190,7 @@ onBeforeUnmount(() => {
       data-tip="回收站"
       aria-label="回收站"
     >
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M4 7h16" />
-        <path d="M9 7V4h6v3" />
-        <path d="M6 7l1 13h10l1-13" />
-        <path d="M10 11v6M14 11v6" />
-      </svg>
+      <Trash2 aria-hidden="true" />
       <span>回收站</span>
     </RouterLink>
 
@@ -242,26 +209,17 @@ onBeforeUnmount(() => {
           <span>{{ auth.username ?? '未登录' }}</span>
           <span class="muted">个人空间</span>
         </span>
-        <svg class="user-trigger__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="m6 15 6-6 6 6" />
-        </svg>
+        <ChevronUp class="user-trigger__chevron" aria-hidden="true" />
       </button>
 
       <div v-if="userMenuOpen" class="user-menu" role="menu" aria-label="账户">
         <RouterLink :to="{ name: 'settings' }" class="user-menu__item" role="menuitem" @click="closeUserMenu">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <circle cx="12" cy="12" r="3" />
-            <path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3.9a7 7 0 0 0-2-1.2L14.2 3h-4.4l-.4 2.6a7 7 0 0 0-2 1.2l-2.3-.9-2 3.4 2 1.5a7 7 0 0 0 0 2.4l-2 1.5 2 3.4 2.3-.9a7 7 0 0 0 2 1.2l.4 2.6h4.4l.4-2.6a7 7 0 0 0 2-1.2l2.3.9 2-3.4-2-1.5A7 7 0 0 0 19 12z" />
-          </svg>
+          <Settings aria-hidden="true" />
           设置
         </RouterLink>
 
         <button class="user-menu__item user-menu__item--danger" type="button" role="menuitem" @click="signOut">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3" />
-            <path d="M10 8l-4 4 4 4" />
-            <path d="M6 12h9" />
-          </svg>
+          <LogOut aria-hidden="true" />
           退出登录
         </button>
       </div>

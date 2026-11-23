@@ -7,8 +7,7 @@ public enum AuditTargetType {
     USER("user"),
     SESSION("session"),
     TRUSTED_DEVICE("trusted_device"),
-    TOKEN("token"),
-    NOTE("note");
+    TOKEN("token");
 
     private final String value;
 

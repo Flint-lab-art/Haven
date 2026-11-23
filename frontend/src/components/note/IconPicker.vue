@@ -10,6 +10,8 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { isUploadableImage, listUploads, type UploadedFile } from '@/api/uploads'
 import { BRAND_ICONS, brandColor, searchBrandGroups, type BrandIcon } from '@/utils/brand-icons'
 import { searchEmojiGroups } from '@/utils/emoji'
+import { Plus } from 'lucide-vue-next'
+
 
 type IconTab = 'all' | 'emoji' | 'brand' | 'image'
 
@@ -178,7 +180,7 @@ defineExpose({ asBrand })
           :disabled="disabled"
           @click="pickImageFile"
         >
-          +
+          <Plus aria-hidden="true" />
         </button>
       </div>
 

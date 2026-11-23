@@ -16,7 +16,7 @@ import lombok.experimental.Accessors;
 @Getter
 @Setter
 @ToString
-@TableName("folders")
+@TableName("note.folders")
 @Accessors(chain = true)
 public class Folders implements Serializable {
 

@@ -2,260 +2,279 @@ package com.haven.backend.ledger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.haven.backend.ledger.entity.LedgerCategories;
-import com.haven.backend.ledger.entity.LedgerEntries;
-import com.haven.backend.ledger.mapper.LedgerEntriesMapper;
+import com.haven.backend.auth.entity.Users;
+import com.haven.backend.auth.mapper.UsersMapper;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.TransactionDefinition;
-import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 记账表的数据库约束测试。
+ * 记账表结构的数据库约束：类型组合、金额精度、分类层级、预算唯一性。
  * <p>
- * 这些约束是金额正确性的最后一道防线：即便 service 层校验被改坏，或者有人绕过 API 直接写库，
- * 数据库也必须拒绝非法金额与非法分类。
- * <p>
- * 关键点：PostgreSQL 在事务内触发约束错误后，<b>整个事务会进入 aborted 状态</b>（25P02），
- * 后续语句一律失败。因此每个写入用例都放在<b>独立的子事务</b>里执行，
- * 无论成功还是失败都只回滚这一个子事务，外层测试事务不受影响。
+ * 这些约束是最后一道防线：Service 已经校验过，但绕过 Service 的写入
+ * （脚本、手工 SQL、未来新入口）仍必须被数据库拒绝。
  */
 @SpringBootTest
 @ActiveProfiles("test")
+@Transactional
 class LedgerConstraintTest {
-
-    @Autowired
-    private LedgerEntriesMapper entriesMapper;
 
     @Autowired
     private JdbcTemplate jdbc;
 
     @Autowired
-    private PlatformTransactionManager transactionManager;
+    private UsersMapper usersMapper;
 
-    @Test
-    @DisplayName("0 元与负数金额被数据库拒绝")
-    void nonPositiveAmountIsRejected() {
-        assertInsertRejected(0L);
-        assertInsertRejected(-1L);
-        assertInsertRejected(-100_000L);
+    private UUID newUser() {
+        Users user = new Users();
+        user.setId(UUID.randomUUID());
+        user.setUsername("cons-" + UUID.randomUUID().toString().substring(0, 8));
+        user.setPasswordHash("x");
+        user.setTotpEnabled(false);
+        user.setCreatedAt(OffsetDateTime.now());
+        user.setUpdatedAt(OffsetDateTime.now());
+        usersMapper.insert(user);
+        return user.getId();
+    }
+
+    private UUID newAccount(UUID userId, String name, String type) {
+        return newAccountIn(jdbc, userId, name, type);
+    }
+
+    private UUID newAccountIn(JdbcTemplate jdbc, UUID userId, String name, String type) {
+        UUID id = UUID.randomUUID();
+        jdbc.update(
+                "INSERT INTO ledger.ledger_accounts (id, user_id, name, type) VALUES (?::uuid, ?::uuid, ?, ?)",
+                id.toString(),
+                userId.toString(),
+                name,
+                type);
+        return id;
+    }
+
+    /**
+     * 断言某条写入会被数据库拒绝。
+     * <p>
+     * 约束失败会让当前事务进入 aborted 状态，后续语句全报 25P02。
+     * 所以这里走**自动提交**（不包进任何事务）：失败只影响这一条，
+     * 不会污染外层，也不需要额外借连接开嵌套事务——
+     * 之前用 {@code REQUIRES_NEW} 的做法在连接异常时会留下 idle in transaction，
+     * 让后续断言等到连接超时。
+     */
+    private void assertRejected(String sql, Object... args) {
+        RuntimeException error = null;
+        try {
+            jdbc.execute((org.springframework.jdbc.core.ConnectionCallback<Void>) (connection) -> {
+                boolean original = connection.getAutoCommit();
+                connection.setAutoCommit(true);
+                try (var statement = connection.prepareStatement(sql)) {
+                    for (int i = 0; i < args.length; i++) {
+                        statement.setObject(i + 1, args[i]);
+                    }
+                    statement.executeUpdate();
+                } catch (java.sql.SQLException e) {
+                    throw new RuntimeException(e);
+                } finally {
+                    connection.setAutoCommit(original);
+                }
+                return null;
+            });
+        } catch (RuntimeException e) {
+            error = e;
+        }
+        assertNotNull(error, "预期被数据库拒绝，但写入成功了：" + sql);
     }
 
     @Test
-    @DisplayName("1 分是最小合法金额")
-    void oneCentIsAccepted() {
-        // 在子事务里写入并同事务读回，随后整体回滚
-        long readBack = insertAndReadBackCents(1L);
-
-        assertEquals(1L, readBack);
-    }
-
-    @Test
-    @DisplayName("大额金额不会被截断（bigint 而非 int4）")
-    void largeAmountIsNotTruncated() {
-        // 100 万元；用 int4 存分会溢出
-        long oneMillionYuanInCents = 100_000_000L;
-
-        assertEquals(oneMillionYuanInCents, insertAndReadBackCents(oneMillionYuanInCents));
-    }
-
-    @Test
-    @DisplayName("金额列必须是整数类型（分），不能悄悄变成浮点")
+    @DisplayName("金额列是整数分，不会悄悄变成浮点")
     void amountColumnIsInteger() {
         String dataType = jdbc.queryForObject(
                 "SELECT data_type FROM information_schema.columns "
-                        + "WHERE table_schema = current_schema() "
-                        + "AND table_name = 'ledger_entries' AND column_name = 'amount_cents'",
+                        + "WHERE table_schema = 'ledger' AND table_name = 'ledger_entries' "
+                        + "AND column_name = 'amount_cents'",
                 String.class);
-
         assertEquals("bigint", dataType, "金额必须用整数分存储，避免浮点误差");
     }
 
     @Test
-    @DisplayName("非法分类被数据库拒绝")
-    void unknownCategoryIsRejected() {
-        assertThrows(
-                DataIntegrityViolationException.class,
-                () -> inRolledBackTransaction(() -> insertWithCategory(1200L, "不存在的分类")));
+    @DisplayName("金额必须大于 0")
+    void amountMustBePositive() {
+        UUID uid = newUser();
+        UUID acc = newAccount(uid, "卡", "bank");
+        assertRejected(
+                "INSERT INTO ledger.ledger_entries (user_id, type, amount_cents, category_id, account_id, occurred_at) "
+                        + "VALUES (?::uuid, 'expense', 0, 102, ?::uuid, now())",
+                uid.toString(),
+                acc.toString());
     }
 
     @Test
-    @DisplayName("「还款」是合法分类")
-    void repaymentCategoryIsAccepted() {
-        String category = inRolledBackTransaction(() -> {
-            UUID id = insertWithCategory(200000L, "还款");
-            return jdbc.queryForObject(
-                    "SELECT category FROM ledger_entries WHERE id = ?::uuid", String.class, id.toString());
-        });
+    @DisplayName("转账必须两个账户且不同；不能带分类")
+    void transferShapeIsEnforced() {
+        UUID uid = newUser();
+        UUID a = newAccount(uid, "A", "bank");
+        UUID b = newAccount(uid, "B", "ewallet");
 
-        assertEquals("还款", category);
-    }
+        // 缺少转入账户
+        assertRejected(
+                "INSERT INTO ledger.ledger_entries (user_id, type, amount_cents, account_id, occurred_at) "
+                        + "VALUES (?::uuid, 'transfer', 100, ?::uuid, now())",
+                uid.toString(),
+                a.toString());
 
-    @Test
-    @DisplayName("非法方向被数据库拒绝")
-    void unknownTypeIsRejected() {
-        assertThrows(
-                DataIntegrityViolationException.class,
-                () -> inRolledBackTransaction(() -> insertWithType(1200L, "transfer")));
-    }
+        // 两侧相同
+        assertRejected(
+                "INSERT INTO ledger.ledger_entries "
+                        + "(user_id, type, amount_cents, account_id, to_account_id, occurred_at) "
+                        + "VALUES (?::uuid, 'transfer', 100, ?::uuid, ?::uuid, now())",
+                uid.toString(),
+                a.toString(),
+                a.toString());
 
-    @Test
-    @DisplayName("分类白名单与后端常量保持一致")
-    void categoryWhitelistMatchesJavaConstants() {
-        String definition = jdbc.queryForObject(
-                "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
-                        + "WHERE conname = 'ledger_entries_category_check' "
-                        + "AND connamespace = current_schema()::regnamespace",
-                String.class);
+        // 带分类
+        assertRejected(
+                "INSERT INTO ledger.ledger_entries "
+                        + "(user_id, type, amount_cents, category_id, account_id, to_account_id, occurred_at) "
+                        + "VALUES (?::uuid, 'transfer', 100, 102, ?::uuid, ?::uuid, now())",
+                uid.toString(),
+                a.toString(),
+                b.toString());
 
-        assertNotNull(definition);
-        for (String category : LedgerCategories.ALL) {
-            assertTrue(definition.contains("'" + category + "'"), "数据库约束缺少分类「" + category + "」：" + definition);
-        }
-    }
-
-    // -----------------------------------------------------------------------
-
-    /** 断言写入被拒绝；子事务保证失败只 abort 自己。 */
-    private void assertInsertRejected(long amountCents) {
-        assertThrows(
-                DataIntegrityViolationException.class,
-                () -> inRolledBackTransaction(() -> {
-                    insert(amountCents);
-                    return null;
-                }));
-    }
-
-    /** 在子事务里写入并读回金额，随后回滚。 */
-    private long insertAndReadBackCents(long amountCents) {
-        Long cents = inRolledBackTransaction(() -> {
-            UUID id = insert(amountCents);
-            return jdbc.queryForObject(
-                    "SELECT amount_cents FROM ledger_entries WHERE id = ?::uuid", Long.class, id.toString());
-        });
-        assertNotNull(cents);
-        return cents;
-    }
-
-    /**
-     * 在 REQUIRES_NEW 子事务里执行并总是回滚。
-     * <p>
-     * 子事务隔离了"约束失败导致事务 abort"的副作用，外层测试事务始终可用。
-     */
-    private <T> T inRolledBackTransaction(java.util.function.Supplier<T> action) {
-        TransactionTemplate template = new TransactionTemplate(transactionManager);
-        template.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
-        return template.execute(status -> {
-            try {
-                return action.get();
-            } finally {
-                status.setRollbackOnly();
-            }
-        });
-    }
-
-    private UUID insert(long amountCents) {
-        return insertWithCategory(amountCents, "餐饮");
-    }
-
-    private UUID insertWithCategory(long amountCents, String category) {
-        return insertInternal(amountCents, category, "expense");
-    }
-
-    private UUID insertWithType(long amountCents, String type) {
-        return insertInternal(amountCents, "餐饮", type);
-    }
-
-    private UUID insertInternal(long amountCents, String category, String type) {
-        // 先建用户与批次：V11 起 ledger_entries 有指向 users 和 ledger_batches 的外键，
-        // 测试数据必须自洽，否则任何插入都会因「父记录不存在」失败，
-        // 把真正的约束错误（金额、分类）淹没在外键错误里。
-        UUID userId = UUID.randomUUID();
-        String batchId = "constraint-test-" + UUID.randomUUID();
+        // 合法转账
         jdbc.update(
-                "INSERT INTO users (id, username, password_hash) VALUES (?::uuid, ?, ?)",
-                userId.toString(),
-                "constraint-" + userId,
-                "x");
-        jdbc.update("INSERT INTO ledger_batches (user_id, batch_id) VALUES (?::uuid, ?)", userId.toString(), batchId);
-
-        LedgerEntries entry = new LedgerEntries()
-                .setId(UUID.randomUUID())
-                .setUserId(userId)
-                .setType(type)
-                .setAmountCents(amountCents)
-                .setCategory(category)
-                .setNote("")
-                .setOccurredAt(OffsetDateTime.now())
-                .setBatchId(batchId)
-                .setCreatedAt(OffsetDateTime.now());
-        entriesMapper.insert(entry);
-        return entry.getId();
+                "INSERT INTO ledger.ledger_entries "
+                        + "(user_id, type, amount_cents, account_id, to_account_id, occurred_at) "
+                        + "VALUES (?::uuid, 'transfer', 100, ?::uuid, ?::uuid, now())",
+                uid.toString(),
+                a.toString(),
+                b.toString());
+        assertEquals(
+                1,
+                jdbc.queryForObject(
+                        "SELECT count(*) FROM ledger.ledger_entries WHERE user_id = ?::uuid AND type = 'transfer'",
+                        Integer.class,
+                        uid.toString()));
     }
 
     @Test
-    @DisplayName("删除用户会级联清理记账数据（V11 外键）")
-    void deletingUserCascadesLedgerData() {
-        inRolledBackTransaction(() -> {
-            UUID userId = UUID.randomUUID();
-            jdbc.update(
-                    "INSERT INTO users (id, username, password_hash) VALUES (?::uuid, ?, ?)",
-                    userId.toString(),
-                    "cascade-" + userId,
-                    "x");
-            jdbc.update("INSERT INTO ledger_batches (user_id, batch_id) VALUES (?::uuid, 'b1')", userId.toString());
-            jdbc.update("""
-                    INSERT INTO ledger_entries (user_id, type, amount_cents, category, occurred_at, batch_id)
-                    VALUES (?::uuid, 'expense', 100, '餐饮', now(), 'b1')
-                    """, userId.toString());
-            jdbc.update(
-                    "INSERT INTO ledger_aliases (user_id, alias, category) VALUES (?::uuid, '午餐', '餐饮')",
-                    userId.toString());
+    @DisplayName("支出 / 收入必须有分类且不能有转入账户")
+    void expenseShapeIsEnforced() {
+        UUID uid = newUser();
+        UUID a = newAccount(uid, "A", "bank");
+        UUID b = newAccount(uid, "B", "ewallet");
 
-            jdbc.update("DELETE FROM users WHERE id = ?::uuid", userId.toString());
+        // 缺分类
+        assertRejected(
+                "INSERT INTO ledger.ledger_entries (user_id, type, amount_cents, account_id, occurred_at) "
+                        + "VALUES (?::uuid, 'expense', 100, ?::uuid, now())",
+                uid.toString(),
+                a.toString());
 
-            // 三张表都必须被清空，否则就是遗留的孤儿数据
-            assertEquals(0, count("SELECT count(*) FROM ledger_entries WHERE user_id = ?::uuid", userId));
-            assertEquals(0, count("SELECT count(*) FROM ledger_batches WHERE user_id = ?::uuid", userId));
-            assertEquals(0, count("SELECT count(*) FROM ledger_aliases WHERE user_id = ?::uuid", userId));
-            return null;
-        });
+        // 支出却带了转入账户
+        assertRejected(
+                "INSERT INTO ledger.ledger_entries "
+                        + "(user_id, type, amount_cents, category_id, account_id, to_account_id, occurred_at) "
+                        + "VALUES (?::uuid, 'expense', 100, 102, ?::uuid, ?::uuid, now())",
+                uid.toString(),
+                a.toString(),
+                b.toString());
     }
 
     @Test
-    @DisplayName("明细不能引用不存在的批次")
-    void entryRequiresExistingBatch() {
-        assertThrows(
-                DataIntegrityViolationException.class,
-                () -> inRolledBackTransaction(() -> {
-                    UUID userId = UUID.randomUUID();
-                    jdbc.update(
-                            "INSERT INTO users (id, username, password_hash) VALUES (?::uuid, ?, ?)",
-                            userId.toString(),
-                            "orphan-" + userId,
-                            "x");
-                    // 建了用户但没建批次 b-missing
-                    jdbc.update("""
-                            INSERT INTO ledger_entries (user_id, type, amount_cents, category, occurred_at, batch_id)
-                            VALUES (?::uuid, 'expense', 100, '餐饮', now(), 'b-missing')
-                            """, userId.toString());
-                    return null;
-                }));
+    @DisplayName("流水类型只允许 expense / income / transfer")
+    void typeWhitelistIsEnforced() {
+        UUID uid = newUser();
+        UUID acc = newAccount(uid, "卡", "bank");
+        assertRejected(
+                "INSERT INTO ledger.ledger_entries (user_id, type, amount_cents, category_id, account_id, occurred_at) "
+                        + "VALUES (?::uuid, 'unknown', 100, 102, ?::uuid, now())",
+                uid.toString(),
+                acc.toString());
     }
 
-    private int count(String sql, UUID userId) {
-        Integer n = jdbc.queryForObject(sql, Integer.class, userId.toString());
-        return n == null ? 0 : n;
+    @Test
+    @DisplayName("分类种子：一级 7 支出 + 1 收入，二级都有父")
+    void categorySeedIsConsistent() {
+        List<Short> roots = jdbc.queryForList(
+                "SELECT id FROM ledger.ledger_categories WHERE parent_id IS NULL ORDER BY id", Short.class);
+        assertEquals(
+                List.of((short) 1, (short) 2, (short) 3, (short) 4, (short) 5, (short) 6, (short) 7, (short) 8), roots);
+
+        Integer orphan = jdbc.queryForObject(
+                "SELECT count(*) FROM ledger.ledger_categories c "
+                        + "WHERE c.parent_id IS NOT NULL AND NOT EXISTS "
+                        + "(SELECT 1 FROM ledger.ledger_categories p WHERE p.id = c.parent_id)",
+                Integer.class);
+        assertEquals(0, orphan, "每个二级分类都必须有存在的父级");
+
+        Integer transferChildren = jdbc.queryForObject(
+                "SELECT count(*) FROM ledger.ledger_categories WHERE parent_id IS NOT NULL AND kind = 'transfer'",
+                Integer.class);
+        assertEquals(0, transferChildren);
+    }
+
+    @Test
+    @DisplayName("预算：同月同分类唯一，金额必须大于 0")
+    void budgetConstraintsHold() {
+        UUID uid = newUser();
+        jdbc.update(
+                "INSERT INTO ledger.ledger_budgets (user_id, category_id, month, amount_cents) "
+                        + "VALUES (?::uuid, 1, '2026-11', 100000)",
+                uid.toString());
+
+        // 同月同分类只能有一条
+        assertRejected(
+                "INSERT INTO ledger.ledger_budgets (user_id, category_id, month, amount_cents) "
+                        + "VALUES (?::uuid, 1, '2026-11', 50000)",
+                uid.toString());
+
+        // 预算金额必须大于 0
+        assertRejected(
+                "INSERT INTO ledger.ledger_budgets (user_id, category_id, month, amount_cents) "
+                        + "VALUES (?::uuid, 2, '2026-11', 0)",
+                uid.toString());
+    }
+
+    @Test
+    @DisplayName("账户：同用户下名称不区分大小写唯一")
+    void accountNameIsUniquePerUser() {
+        UUID uid = newUser();
+        newAccount(uid, "Cash", "cash");
+        // 同名账户（忽略大小写）应被拒绝
+        assertRejected(
+                "INSERT INTO ledger.ledger_accounts (id, user_id, name, type) VALUES (?::uuid, ?::uuid, ?, ?)",
+                UUID.randomUUID().toString(),
+                uid.toString(),
+                "cash",
+                "cash");
+    }
+
+    @Test
+    @DisplayName("账户类型只允许 cash / bank / credit / ewallet")
+    void accountTypeWhitelist() {
+        UUID uid = newUser();
+        assertRejected(
+                "INSERT INTO ledger.ledger_accounts (id, user_id, name, type) VALUES (?::uuid, ?::uuid, ?, ?)",
+                UUID.randomUUID().toString(),
+                uid.toString(),
+                "奇怪账户",
+                "bitcoin");
+
+        // 合法类型可以写
+        newAccount(uid, "信用卡", "credit");
+        assertEquals(
+                1,
+                jdbc.queryForObject(
+                        "SELECT count(*) FROM ledger.ledger_accounts WHERE user_id = ?::uuid AND type = 'credit'",
+                        Integer.class,
+                        uid.toString()));
     }
 }

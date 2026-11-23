@@ -4,67 +4,13 @@ import {
   type RouteRecordRaw,
   type Router,
 } from 'vue-router'
-import { detectDomain } from './domain'
 // 副作用导入：注册 RouteMeta 的类型扩展，让 meta 字段有具体类型
 import './meta'
 import { useAuthStore } from '@/stores/auth'
-
-/** 公开域路由（docs/frontend/frontend.md 第三节）：全部匿名可访问，无写入口。 */
-const publicRoutes: RouteRecordRaw[] = [
-  {
-    path: '/',
-    component: () => import('@/components/layout/PublicLayout.vue'),
-    children: [
-      {
-        path: '',
-        name: 'public-home',
-        component: () => import('@/views/public/PublicHome.vue'),
-        meta: { title: 'Haven' },
-      },
-      {
-        // 全部公开笔记（docs/v3/frontend/frontend.md 第五节）
-        path: 'notes',
-        name: 'public-notes',
-        component: () => import('@/views/public/PublicNotes.vue'),
-        meta: { title: '笔记' },
-      },
-      {
-        path: 'notes/:id',
-        name: 'public-note',
-        component: () => import('@/views/public/PublicNote.vue'),
-        meta: { title: '笔记' },
-      },
-      {
-        path: 'search',
-        name: 'public-search',
-        component: () => import('@/views/public/PublicSearch.vue'),
-        meta: { title: '搜索' },
-      },
-      {
-        path: 'portfolio',
-        name: 'public-portfolio',
-        component: () => import('@/views/public/PublicPortfolio.vue'),
-        meta: { title: '作品集' },
-      },
-      {
-        // 作品详情（docs/v3/frontend/frontend.md 第六节）
-        path: 'portfolio/:id',
-        name: 'public-portfolio-detail',
-        component: () => import('@/views/public/PublicPortfolioDetail.vue'),
-        meta: { title: '作品' },
-      },
-      {
-        path: ':pathMatch(.*)*',
-        name: 'public-not-found',
-        component: () => import('@/views/public/PublicNotFound.vue'),
-        meta: { title: '页面不存在' },
-      },
-    ],
-  },
-]
+import mobileRoutes from './mobile'
 
 /**
- * 私有域路由（docs/frontend/frontend.md 第四节）。
+ * 私有路由（docs/frontend/frontend.md 第四节）。
  *
  * 除 `/login` 外全部挂在三栏布局下（ui-design.md 第二节）：
  * `default` 是右侧详情区，`list` 是中间列表栏。
@@ -147,20 +93,14 @@ const privateRoutes: RouteRecordRaw[] = [
         meta: { title: '标签', section: 'tags', noList: true },
       },
       {
-        path: 'portfolio',
-        name: 'portfolio',
-        components: {
-          default: () => import('@/views/private/PortfolioView.vue'),
-          list: () => import('@/components/PortfolioPanel.vue'),
-        },
-        meta: { title: '作品集', section: 'portfolio' },
-      },
-      {
-        // 记账页：手机端落库，电脑端看汇总
+        // 记账页（PC 三栏）：中间栏是明细列表，右侧是汇总与账户
         path: 'ledger',
         name: 'ledger',
-        component: () => import('@/views/private/LedgerView.vue'),
-        meta: { title: '记账', section: 'ledger', noList: true },
+        components: {
+          default: () => import('@/views/private/LedgerView.vue'),
+          list: () => import('@/components/ledger/LedgerListPanel.vue'),
+        },
+        meta: { title: '记账', section: 'ledger' },
       },
       {
         // Issue 面板（docs-ai/v8/frontend/frontend.md）
@@ -219,6 +159,15 @@ const privateRoutes: RouteRecordRaw[] = [
         meta: { title: '账号安全', section: 'settings' },
       },
       {
+        path: 'settings/login-logs',
+        name: 'settings-login-logs',
+        components: {
+          default: () => import('@/views/private/SettingsLoginLogs.vue'),
+          list: () => import('@/components/common/SettingsPanel.vue'),
+        },
+        meta: { title: '登录日志', section: 'settings' },
+      },
+      {
         path: 'settings/sessions',
         name: 'settings-sessions',
         components: {
@@ -246,6 +195,24 @@ const privateRoutes: RouteRecordRaw[] = [
         meta: { title: 'API Token', section: 'settings' },
       },
       {
+        path: 'settings/budget',
+        name: 'settings-budget',
+        components: {
+          default: () => import('@/views/private/SettingsBudget.vue'),
+          list: () => import('@/components/common/SettingsPanel.vue'),
+        },
+        meta: { title: '预算', section: 'settings' },
+      },
+      {
+        path: 'settings/accounts',
+        name: 'settings-accounts',
+        components: {
+          default: () => import('@/views/private/SettingsAccounts.vue'),
+          list: () => import('@/components/common/SettingsPanel.vue'),
+        },
+        meta: { title: '账户', section: 'settings' },
+      },
+      {
         path: 'settings/import',
         name: 'settings-import',
         components: {
@@ -253,16 +220,6 @@ const privateRoutes: RouteRecordRaw[] = [
           list: () => import('@/components/common/SettingsPanel.vue'),
         },
         meta: { title: '导入账单', section: 'settings' },
-      },
-      {
-        // 公开笔记预览（docs/frontend/frontend.md 第四节最后一行，可选）
-        path: 'preview/notes/:id',
-        name: 'note-preview',
-        components: {
-          default: () => import('@/views/private/PreviewNoteView.vue'),
-          list: noteList,
-        },
-        meta: { title: '预览', section: 'notes' },
       },
     ],
   },
@@ -275,22 +232,15 @@ const privateRoutes: RouteRecordRaw[] = [
   },
 ]
 
-export function createHavenRouter(hostname = window.location.hostname): Router {
-  const domain = detectDomain(hostname)
-  const routes = domain === 'private' ? privateRoutes : publicRoutes
-
+export function createHavenRouter(): Router {
   const router = createRouter({
     history: createWebHistory(),
-    routes,
+    // 移动端路由挂在 /m/ 下，与 PC 共用同一份数据层与鉴权守卫
+    routes: [...privateRoutes, ...mobileRoutes],
     scrollBehavior: () => ({ top: 0 }),
   })
 
   router.beforeEach(async (to) => {
-    // 公开域不做登录态判断（docs/frontend/frontend.md 第三节规则）
-    if (domain !== 'private') {
-      return true
-    }
-
     const auth = useAuthStore()
     if (!auth.initialized) {
       await auth.refresh()

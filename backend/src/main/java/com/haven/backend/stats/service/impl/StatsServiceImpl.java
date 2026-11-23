@@ -47,7 +47,6 @@ public class StatsServiceImpl implements StatsService {
     private static final String STATUS_TODO = "todo";
     private static final String STATUS_IN_PROGRESS = "in_progress";
     private static final String STATUS_DONE = "done";
-    private static final String VISIBILITY_PUBLIC = "public";
 
     private final NotesMapper notesMapper;
     private final FoldersMapper foldersMapper;
@@ -74,12 +73,7 @@ public class StatsServiceImpl implements StatsService {
         long totalNotes = notesMapper.selectCount(
                 new LambdaQueryWrapper<Notes>().eq(Notes::getUserId, uid).isNull(Notes::getDeletedAt));
         long totalWords = notesMapper.sumContentLength(uid);
-        long publicNotes = notesMapper.selectCount(new LambdaQueryWrapper<Notes>()
-                .eq(Notes::getUserId, uid)
-                .eq(Notes::getVisibility, VISIBILITY_PUBLIC)
-                .isNotNull(Notes::getPublishedAt)
-                .isNull(Notes::getDeletedAt));
-        return new StatsTotals(totalNotes, totalWords, publicNotes);
+        return new StatsTotals(totalNotes, totalWords);
     }
 
     private StatsWeek buildWeek(UUID uid, OffsetDateTime weekAgo) {
@@ -121,7 +115,7 @@ public class StatsServiceImpl implements StatsService {
                 .orderByDesc(Notes::getUpdatedAt)
                 .last("LIMIT " + RECENT_LIMIT));
         return recent.stream()
-                .map(n -> new RecentNote(n.getId(), n.getTitle(), n.getUpdatedAt(), n.getVisibility()))
+                .map(n -> new RecentNote(n.getId(), n.getTitle(), n.getUpdatedAt()))
                 .collect(Collectors.toList());
     }
 

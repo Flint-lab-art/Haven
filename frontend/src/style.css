@@ -64,7 +64,7 @@
 
   /* 色彩（ui-design.md 3.1） */
   --label: #1a1a1a;
-  --label-2: #8e8e93;
+  --label-2: #6e6e73;
   --label-3: #b0b0b6;
   --label-4: #d1d1d6;
   --sep: #e5e5ea;
@@ -678,6 +678,11 @@ a:hover {
   text-decoration: none;
 }
 
+/* 整行导航不做缩放（会显得整块在抖），按下只加深底色 */
+.side-link:active {
+  background: var(--hover-tint);
+}
+
 .side-link--active {
   background: var(--accent-soft);
   color: var(--accent);
@@ -1282,6 +1287,16 @@ button.tag[aria-pressed='true'] {
   background: var(--danger-soft);
 }
 
+/* ============ 图标 ============
+
+ * 图标统一走 lucide（24 网格、继承 currentColor、描边由组件默认值给出），
+ * 尺寸只在这里给兜底：具体位置的尺寸由各自的组件规则覆盖。
+ * 这里不做 :hover / :active 之类状态，避免与按钮状态打架。
+ */
+svg {
+  flex: none;
+}
+
 /* ============ 按钮 ============ */
 
 .btn {
@@ -1300,9 +1315,10 @@ button.tag[aria-pressed='true'] {
   background: transparent;
   color: var(--label-2);
   text-decoration: none;
-  transition: background-color var(--dur-fast) var(--ease-smooth),
+  transition:
+    background-color var(--dur-fast) var(--ease-smooth),
     color var(--dur-fast) var(--ease-smooth),
-    opacity var(--dur-fast) var(--ease-smooth);
+    transform var(--dur-fast) var(--ease-snappy);
 }
 
 .btn:hover:not(:disabled) {
@@ -1311,8 +1327,9 @@ button.tag[aria-pressed='true'] {
   text-decoration: none;
 }
 
+/* 按下是「陷进去」而不是「变透明」：深色主题下不会有闪一下的感觉 */
 .btn:active:not(:disabled) {
-  opacity: 0.75;
+  transform: scale(0.97);
 }
 
 .btn:disabled {
@@ -1383,11 +1400,19 @@ button.tag[aria-pressed='true'] {
   place-items: center;
   cursor: pointer;
   flex: none;
+  transition:
+    background-color var(--dur-fast) var(--ease-smooth),
+    color var(--dur-fast) var(--ease-smooth),
+    transform var(--dur-fast) var(--ease-snappy);
 }
 
 .icon-btn:hover {
   background: var(--fill);
   color: var(--label);
+}
+
+.icon-btn:active:not(:disabled) {
+  transform: scale(0.94);
 }
 
 .icon-btn svg {
@@ -1737,66 +1762,6 @@ button.tag[aria-pressed='true'] {
   font-style: italic;
 }
 
-/* ============ 作品集（公开域） ============ */
-
-.portfolio-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: var(--sp-3);
-}
-
-.portfolio-card {
-  background: var(--bg);
-  border: 1px solid var(--sep);
-  border-radius: var(--r-lg);
-  padding: var(--sp-4);
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-}
-
-.portfolio-card__title {
-  font: var(--text-headline);
-  color: var(--label);
-}
-
-.portfolio-card__desc {
-  font: var(--text-subheadline);
-  color: var(--label-2);
-  line-height: 1.6;
-  flex: 1;
-}
-
-.repo-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font: var(--text-footnote-med);
-  color: var(--accent);
-  background: var(--accent-soft);
-  border-radius: var(--r-sm);
-  padding: 3px 8px;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.repo-link:hover {
-  text-decoration: none;
-  background: var(--accent);
-  color: var(--on-accent);
-}
-
-.repo-link--primary {
-  background: var(--accent);
-  color: var(--on-accent);
-}
-
-.repo-link--primary:hover {
-  background: var(--accent-hover);
-}
-
 /* ============ 登录 ============ */
 
 .auth-shell {
@@ -2029,8 +1994,16 @@ button.tag[aria-pressed='true'] {
   color: var(--accent);
 }
 
+/* 纯图标按钮：28px 见方，不靠字号撑高度 */
 .tb-btn--icon {
-  font-size: 12px;
+  min-width: 28px;
+  padding: 0;
+}
+
+/* 工具栏里的图标统一 15px：比 12px 文字略大，和 28px 按钮同高 */
+.tb-btn svg {
+  width: 15px;
+  height: 15px;
 }
 
 .tb-color-input {
@@ -2386,7 +2359,6 @@ ul[data-type='taskList'] li[data-checked='true'] > div {
 
 .md-body p {
   margin: 0;
-  line-height: 1.78;
 }
 
 .md-body h1,
@@ -2399,18 +2371,16 @@ ul[data-type='taskList'] li[data-checked='true'] > div {
   color: var(--label);
 }
 
+/*
+ * 只在这里管段落间距；字号统一由后面「阅读态标题与正文」一节定义，
+ * 避免同一个 selector 出现两套字号（后者覆盖前者，前者就成了死规则）。
+ */
 .md-body h1 {
-  font-size: 28px;
   margin-top: var(--sp-8);
 }
 
 .md-body h2 {
-  font-size: 22px;
   margin-top: var(--sp-6);
-}
-
-.md-body h3 {
-  font-size: 19px;
 }
 
 .md-body ul,
@@ -5082,82 +5052,6 @@ select:focus-visible {
 
   .home-hero__title {
     font-size: 26px;
-  }
-}
-
-/* ============ 公开作品详情（docs/v3/frontend/frontend.md 第六节） ============ */
-
-.portfolio-back {
-  padding: var(--sp-8) 0 0;
-  font: var(--text-footnote);
-}
-
-.portfolio-back a {
-  color: var(--label-2);
-}
-
-.portfolio-back a:hover {
-  color: var(--accent);
-  text-decoration: none;
-}
-
-.portfolio-detail {
-  padding: var(--sp-6) 0 var(--sp-16);
-}
-
-.portfolio-detail__head {
-  padding-bottom: var(--sp-6);
-  border-bottom: 1px solid var(--sep);
-  margin-bottom: var(--sp-8);
-}
-
-.portfolio-detail__title {
-  font: var(--text-large-title);
-  letter-spacing: -0.5px;
-  color: var(--label);
-}
-
-.portfolio-detail__sub {
-  margin-top: var(--sp-2);
-  font: var(--text-callout);
-  color: var(--label-2);
-}
-
-/* 列表页作品标题可点击进入详情 */
-.public-project__link {
-  color: inherit;
-}
-
-.public-project__link:hover {
-  color: var(--accent);
-  text-decoration: none;
-}
-
-/* 详情页的仓库胶囊是外链 */
-.repo-pill--link {
-  text-decoration: none;
-}
-
-.repo-pill--link:hover {
-  text-decoration: none;
-  opacity: 0.8;
-}
-
-/* 作品编辑：基本信息在左、仓库链接在右，避免右侧大片留白 */
-.portfolio-editor {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--sp-4);
-  align-items: start;
-}
-
-/*
- * 两列各需至少约 300px；详情区宽度 = 窗口 − 侧栏 240 − 列表栏 320，
- * 所以窗口窄于 ~1200px 时退化为单列，避免输入框被挤变形。
- */
-@media (max-width: 1200px) {
-  .portfolio-editor {
-    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -8107,4 +8001,3715 @@ select:focus-visible {
   .import-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
+
+/* ============ 记账（v2：账户 / 两级分类 / 预算） ============ */
+
+/* emoji 图标：统一字号与对齐，避免父级 bold 影响字形 */
+.cat-icon {
+  flex: none;
+  font-size: 1.1em;
+  line-height: 1;
+  font-weight: normal;
+  font-variant-emoji: emoji;
+}
+
+/* 工具栏：月份切换 + 记一笔 */
+.ledger-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+
+.ledger-month__label {
+  min-width: 108px;
+  text-align: center;
+  font: var(--text-headline);
+  color: var(--label);
+}
+
+/* 账户余额 */
+.ledger-accounts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+}
+
+.ledger-account {
+  flex: 1 1 160px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-3);
+  border: 1px solid var(--sep);
+  border-radius: var(--r-md);
+  background: var(--fill);
+}
+
+.ledger-account__name {
+  font: var(--text-footnote-med);
+  color: var(--label);
+}
+
+.ledger-account__type {
+  font: var(--text-caption);
+  color: var(--label-3);
+}
+
+.ledger-account__balance {
+  margin-top: 2px;
+  font: 700 18px/1.2 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  color: var(--label);
+}
+
+.ledger-account__balance--debt {
+  color: var(--danger);
+}
+
+/* 预算进度 */
+.ledger-budget {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.ledger-budget__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.ledger-budget__title {
+  font: var(--text-footnote-med);
+  color: var(--label);
+}
+
+.ledger-budget__numbers {
+  font: var(--text-footnote);
+  font-variant-numeric: tabular-nums;
+  color: var(--label-2);
+}
+
+.ledger-budget__numbers.is-over,
+.ledger-budget__item .is-over {
+  color: var(--danger);
+}
+
+.ledger-budget__bar {
+  height: 6px;
+  border-radius: var(--r-capsule);
+  background: var(--fill-3);
+  overflow: hidden;
+}
+
+.ledger-budget__fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width var(--dur-base) var(--ease-smooth);
+}
+
+.ledger-budget__fill--over {
+  background: var(--danger);
+}
+
+.ledger-budget__items {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ledger-budget__item {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  font: var(--text-caption);
+  color: var(--label-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 筛选行 */
+.ledger-filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin: var(--sp-4) 0 var(--sp-3);
+}
+
+/* 按天分组 */
+.ledger-days {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+.ledger-day__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-1) var(--sp-2);
+}
+
+.ledger-day__label {
+  font: var(--text-footnote-med);
+  color: var(--label);
+}
+
+.ledger-day__weekday,
+.ledger-day__sum {
+  font: var(--text-caption);
+  color: var(--label-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger-day__sum {
+  margin-left: auto;
+}
+
+/* 明细行 */
+.ledger-entry__icon {
+  width: 22px;
+  text-align: center;
+  font-size: 1.15em;
+}
+
+.ledger-entry__amount {
+  min-width: 88px;
+  text-align: right;
+  font: 600 15px/1.3 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  color: var(--label);
+}
+
+.ledger-entry__amount.is-income {
+  color: var(--success);
+}
+
+.ledger-entry__amount.is-transfer {
+  color: var(--label-2);
+}
+
+.ledger-entry__actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-smooth);
+}
+
+.ledger-entry:hover .ledger-entry__actions,
+.ledger-entry:focus-within .ledger-entry__actions {
+  opacity: 1;
+}
+
+/* ============ 分类选择：一级行 + 二级折叠胶囊 ============ */
+
+.cat-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: var(--sp-1);
+  border: 1px solid var(--sep);
+  border-radius: var(--r-md);
+  background: var(--bg);
+}
+
+.cat-picker__root {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  font: var(--text-subheadline);
+  color: var(--label);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-smooth);
+}
+
+.cat-picker__root:hover {
+  background: var(--fill);
+}
+
+/* 选中一级：浅色底 + 强调色文字 */
+.cat-picker__root--active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* 选中的是它的二级：一级只作提示，不算选中 */
+.cat-picker__root--parent {
+  color: var(--label);
+  font-weight: 600;
+}
+
+.cat-picker__name {
+  flex: 1;
+  min-width: 0;
+}
+
+.cat-picker__chevron {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--label-3);
+  transition: transform var(--dur-fast) var(--ease-smooth);
+}
+
+.cat-picker__chevron--open {
+  transform: rotate(180deg);
+}
+
+.cat-picker__children {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 2px var(--sp-2) var(--sp-2) calc(var(--sp-3) + 22px);
+}
+
+.cat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  border: 1px solid var(--sep);
+  border-radius: var(--r-capsule);
+  background: var(--bg);
+  font: var(--text-caption);
+  color: var(--label-2);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease-smooth),
+    background-color var(--dur-fast) var(--ease-smooth),
+    color var(--dur-fast) var(--ease-smooth);
+}
+
+.cat-pill:hover {
+  border-color: var(--sep-strong);
+  color: var(--label);
+}
+
+.cat-pill--active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ============ 记账录入对话框 ============ */
+
+.ledger-entry-dialog {
+  max-width: 520px;
+  width: calc(100% - var(--sp-8));
+}
+
+.ledger-entry-dialog__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  max-height: min(70vh, 640px);
+  overflow-y: auto;
+}
+
+/* 分段控件：支出 / 收入 / 转账 */
+.segmented__btn {
+  flex: 1;
+  padding: 6px 12px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  font: var(--text-subheadline);
+  color: var(--label-2);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease-smooth),
+    color var(--dur-fast) var(--ease-smooth);
+}
+
+.segmented__btn.is-active {
+  background: var(--bg);
+  color: var(--label);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.input--amount {
+  font: 700 24px/1.2 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.5px;
+}
+
+/* ============ 移动端（/m/）：iOS PWA ============ */
+
+/*
+ * 高度用 100dvh：iOS Safari 地址栏会伸缩，100vh 会算错，
+ * 表现为内容被底栏盖住或底部留白。
+ */
+.m-app {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  /* 任何子元素横向溢出都会让整页可左右拖动，表现为「点了之后页面漂了一下」 */
+  overflow-x: hidden;
+  background: var(--bg-grouped);
+  overflow: hidden;
+}
+
+.m-main {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  /*
+   * 底部留白放在滚动容器内部，而不是 .m-app 的 padding：
+   * 后者会让内容提前结束，悬浮 tab 背后只剩纯背景色，
+   * 毛玻璃没有可透的东西，看起来就是一个半透明色块。
+   */
+  padding-bottom: calc(56px + var(--sp-6) + env(safe-area-inset-bottom, 0px));
+}
+
+.m-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  padding: calc(var(--sp-4) + env(safe-area-inset-top, 0px)) var(--sp-4) var(--sp-10);
+}
+
+/* 大标题：iOS 风格的大号粗体标题 */
+.m-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.m-title {
+  margin: 0;
+  font: 700 28px/1.2 var(--font-ui);
+  letter-spacing: -0.6px;
+  color: var(--label);
+}
+
+.m-month {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.m-month__label {
+  min-width: 92px;
+  text-align: center;
+  font: var(--text-subheadline);
+  color: var(--label-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.m-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--label-2);
+  cursor: pointer;
+}
+
+.m-icon-btn:active {
+  background: var(--fill);
+}
+
+.m-icon-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* 卡片：成组内容的白底容器 */
+.m-card {
+  border-radius: var(--r-lg);
+  background: var(--bg);
+  padding: var(--sp-3);
+}
+
+/* 汇总三格 */
+.m-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-2);
+  padding: var(--sp-4) var(--sp-3);
+  border-radius: var(--r-lg);
+  background: var(--bg);
+}
+
+.m-summary__cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.m-summary__label {
+  font: var(--text-caption);
+  color: var(--label-2);
+}
+
+.m-summary__value {
+  font: 700 17px/1.25 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  color: var(--label);
+}
+
+.m-summary__value--income {
+  color: var(--success);
+}
+
+/* 预算 */
+.m-budget__head {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  font: var(--text-footnote);
+  color: var(--label-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.m-budget__bar {
+  height: 6px;
+  margin-top: var(--sp-2);
+  border-radius: var(--r-capsule);
+  background: var(--fill-3);
+  overflow: hidden;
+}
+
+.m-budget__fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width var(--dur-base) var(--ease-smooth);
+}
+
+.m-budget__fill--over {
+  background: var(--danger);
+}
+
+.m-over {
+  color: var(--danger);
+}
+
+/* 按天分组 */
+.m-days {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.m-day__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-1) var(--sp-2);
+  font: var(--text-footnote-med);
+  color: var(--label-2);
+}
+
+.m-day__weekday {
+  font: var(--text-caption);
+  color: var(--label-3);
+}
+
+.m-day__sum {
+  margin-left: auto;
+  font: var(--text-caption);
+  color: var(--label-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 列表 */
+.m-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-radius: var(--r-lg);
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.m-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-smooth);
+}
+
+.m-row + .m-row {
+  border-top: 1px solid var(--sep);
+}
+
+/* 可点击才给按压反馈；静态行（账户、Issue）点了什么都不发生，不该有视觉变化 */
+.m-row:active:not(.m-row--static) {
+  background: var(--fill);
+}
+
+.m-row--static {
+  cursor: default;
+}
+
+.m-row__icon {
+  width: 26px;
+  text-align: center;
+  font-size: 1.2em;
+}
+
+.m-row__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.m-row__title {
+  font: var(--text-subheadline);
+  color: var(--label);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.m-row__sub {
+  font: var(--text-caption);
+  color: var(--label-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.m-row__amount {
+  flex: none;
+  font: 600 16px/1.3 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  color: var(--label);
+}
+
+.m-row__amount--income {
+  color: var(--success);
+}
+
+.m-row__amount--transfer {
+  color: var(--label-2);
+}
+
+.m-row__amount--debt {
+  color: var(--danger);
+}
+
+.m-row__actions {
+  flex: none;
+  display: flex;
+  gap: var(--sp-1);
+}
+
+/* 悬浮记账按钮 */
+.m-fab {
+  position: fixed;
+  right: calc(var(--sp-4) + env(safe-area-inset-right, 0px));
+  bottom: calc(52px + var(--sp-6) + env(safe-area-inset-bottom, 0px));
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.22);
+  cursor: pointer;
+  transition: transform var(--dur-fast) var(--ease-smooth);
+}
+
+.m-fab:active {
+  transform: scale(0.94);
+}
+
+.m-fab svg {
+  width: 24px;
+  height: 24px;
+}
+
+/* 底部 tab */
+/*
+ * 底部 tab：iOS 26 液态玻璃质感。
+ *
+ * 和旧版（贴边全宽 + 1px 顶边框）的区别：
+ * - **悬浮胶囊**：四周留空，像浮在内容上的一层玻璃，而不是把屏幕切一刀；
+ * - **多层质感**：强模糊 + 高饱和 + 顶部高光边 + 内阴影，
+ *   光打上去有厚度感，不是一张半透明色纸；
+ * - **选中态用色块**：iOS 26 的 tab 选中是玻璃上的一个亮块，而不是只改字色。
+ */
+.m-tabbar {
+  position: fixed;
+  /* 宽度收窄：不是撑满整行，而是居中的一条胶囊 */
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(360px, calc(100% - 2 * var(--sp-4)));
+  bottom: calc(var(--sp-3) + env(safe-area-inset-bottom, 0px));
+  z-index: 30;
+  display: grid;
+  /* 四个 tab；切换 tab 数量时这里也要跟着改 */
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
+  height: 52px;
+  padding: 4px;
+  border-radius: var(--r-capsule);
+  /* 只留 45% 底色：再高就变成「不透明条」，看不出玻璃 */
+  background: color-mix(in srgb, var(--bg) 45%, transparent);
+  backdrop-filter: saturate(180%) blur(24px);
+  -webkit-backdrop-filter: saturate(180%) blur(24px);
+  /* 高光边 + 外投影 + 内阴影：三层叠出「玻璃厚度」 */
+  box-shadow:
+    inset 0 1px 0 0 color-mix(in srgb, #fff 55%, transparent),
+    inset 0 -1px 0 0 color-mix(in srgb, #000 6%, transparent),
+    0 8px 28px color-mix(in srgb, #000 16%, transparent);
+}
+
+/* 深色主题下高光要收，否则会发灰一块 */
+:root[data-theme='dark'] .m-tabbar {
+  background: color-mix(in srgb, var(--bg) 58%, transparent);
+  box-shadow:
+    inset 0 1px 0 0 color-mix(in srgb, #fff 12%, transparent),
+    inset 0 -1px 0 0 color-mix(in srgb, #000 30%, transparent),
+    0 8px 28px color-mix(in srgb, #000 45%, transparent);
+}
+
+
+.m-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  /* 四个 tab 后每格变窄，强制不换行，否则「我的」会被挤到第二行 */
+  white-space: nowrap;
+  min-width: 0;
+  border-radius: var(--r-capsule);
+  font: var(--text-caption);
+  color: var(--label-2);
+  text-decoration: none;
+  transition:
+    color var(--dur-base) var(--ease-smooth),
+    background-color var(--dur-base) var(--ease-smooth);
+}
+
+/* 选中：玻璃上浮起一块亮片（半透明 + 内高光），不是纯色块 */
+.m-tab--active {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  box-shadow: inset 0 1px 0 0 color-mix(in srgb, #fff 40%, transparent);
+}
+
+.m-tab svg {
+  width: 22px;
+  height: 22px;
+}
+
+.m-tab--active {
+  color: var(--accent);
+}
+
+.m-tab:hover {
+  text-decoration: none;
+}
+
+/* 金额：视觉主角，大字居中，货币符小一号 */
+.m-amount {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 4px;
+  padding: var(--sp-2) 0;
+}
+
+.m-amount__currency {
+  font: 600 22px/1 var(--font-ui);
+  color: var(--label-3);
+}
+
+.m-amount__value {
+  font: 700 40px/1.1 var(--font-ui);
+  letter-spacing: -1.2px;
+  color: var(--label);
+  font-variant-numeric: tabular-nums;
+  transition: color var(--dur-fast) var(--ease-smooth);
+}
+
+/* 还没输入时显示灰色 0，提示「这里要填数」 */
+.m-amount__value--empty {
+  color: var(--label-4);
+}
+
+/* 账户：胶囊横排，和分类网格同一视觉语言 */
+.m-accounts-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.m-accounts-row__label {
+  flex: none;
+  width: 28px;
+  font: var(--text-caption);
+  color: var(--label-3);
+}
+
+.m-accounts-row__pills {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  padding: 2px 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.m-accounts-row__pills::-webkit-scrollbar {
+  display: none;
+}
+
+.m-acc-pill {
+  flex: none;
+  padding: 6px 14px;
+  border: 1px solid var(--sep);
+  border-radius: var(--r-capsule);
+  background: var(--bg);
+  font: var(--text-footnote);
+  color: var(--label-2);
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease-smooth),
+    background-color var(--dur-fast) var(--ease-smooth),
+    color var(--dur-fast) var(--ease-smooth);
+}
+
+.m-acc-pill:active {
+  transform: scale(0.96);
+}
+
+.m-acc-pill--active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* 备注 + 时间：同一行，备注吃满剩余宽度，时间靠右 */
+.m-extra-note {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 40px;
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--bg);
+}
+
+.m-extra-note svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--label-3);
+}
+
+.m-extra-note__input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  font: var(--text-subheadline);
+  color: var(--label);
+}
+
+.m-extra-note__input:focus {
+  outline: none;
+}
+
+.m-extra-note__input::placeholder {
+  color: var(--label-3);
+}
+
+/* 时间：胶囊按钮，和备注同高；展开后按钮用强调色提示 */
+.m-extra-time {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 40px;
+  padding: 0 var(--sp-3);
+  border: none;
+  border-radius: var(--r-md);
+  background: var(--bg);
+  font: var(--text-footnote);
+  color: var(--label-2);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-smooth);
+}
+
+.m-extra-time svg {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  color: var(--label-3);
+}
+
+.m-extra-time--open,
+.m-extra-time--open svg {
+  color: var(--accent);
+}
+
+/* 备注与时间：键盘正上方的一行 */
+.m-sheet__extras {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/* ============ 时间选择弹窗 ============ */
+
+.m-picker-backdrop {
+  position: fixed;
+  inset: 0;
+  /* 盖在记账抽屉（40）之上 */
+  z-index: 50;
+  display: flex;
+  align-items: flex-end;
+  background: rgb(0 0 0 / 0.32);
+}
+
+.m-picker {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-4) calc(var(--sp-4) + env(safe-area-inset-bottom, 0px));
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  background: var(--bg-grouped);
+  animation: m-sheet-in var(--dur-base) var(--ease-smooth);
+}
+
+.m-picker__grab {
+  width: 36px;
+  height: 5px;
+  margin: 0 auto;
+  border-radius: var(--r-capsule);
+  background: var(--sep-strong);
+}
+
+.m-picker__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.m-picker__title {
+  font: var(--text-footnote-med);
+  color: var(--label);
+}
+
+.m-picker__action {
+  padding: 6px 4px;
+  border: none;
+  background: transparent;
+  font: var(--text-subheadline);
+  color: var(--label-2);
+  cursor: pointer;
+}
+
+.m-picker__action--primary {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/*
+ * 四列等宽滚轮。
+ *
+ * 容器加上下渐隐遮罩（mask），中间叠一条选中条，
+ * 这样才有「转轮」的观感，而不是三个并排的长列表。
+ */
+.m-picker__wheels {
+  position: relative;
+  display: grid;
+  /* 三列等宽：日 / 时 / 分 */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  height: 212px;
+  padding: var(--sp-2) var(--sp-1) var(--sp-1);
+  border-radius: var(--r-md);
+  background: var(--bg);
+  -webkit-mask-image: linear-gradient(
+    180deg,
+    transparent 0,
+    #000 22%,
+    #000 78%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(180deg, transparent 0, #000 22%, #000 78%, transparent 100%);
+}
+
+/* 中间选中条：盖在滚轮上而非滚轮内部，滚动时不跟着动 */
+.m-picker__wheels::after {
+  content: '';
+  position: absolute;
+  left: var(--sp-2);
+  right: var(--sp-2);
+  /* 单位标题占位后，选中条落在滚轮可见区的正中 */
+  top: calc(50% + 10px);
+  height: 38px;
+  transform: translateY(-50%);
+  border-radius: var(--r-sm);
+  background: var(--accent-soft);
+  pointer-events: none;
+}
+
+/* 每列 = 顶部单位标题 + 滚轮本体 */
+.m-wheel-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.m-wheel__unit {
+  flex: none;
+  padding-bottom: var(--sp-1);
+  text-align: center;
+  /* 比普通 caption 大一档、深一档：要能当列标题读，又不能抢滚轮的注意力 */
+  font: 600 13px/1.3 var(--font-ui);
+  color: var(--label-2);
+  letter-spacing: 0.02em;
+}
+
+.m-wheel {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 72px 0;
+  scrollbar-width: none;
+  scroll-snap-type: y mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+
+.m-wheel::-webkit-scrollbar {
+  display: none;
+}
+
+.m-wheel__item {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  height: 38px;
+  padding: 0 4px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  font: 500 17px/1 var(--font-ui);
+  color: var(--label-2);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  scroll-snap-align: center;
+  transition: color var(--dur-fast) var(--ease-smooth);
+}
+
+/* 选中项只改文字颜色：底色由中间那条选中条统一给，避免叠加成两层色块 */
+.m-wheel__item--active {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* ============ 数字键盘 ============ */
+
+/*
+ * 左 3×4 数字区 + 右侧竖长「保存」。
+ * 用 CSS Grid 而不是 flex，是为了让保存键精确跨 4 行高度。
+ */
+.m-keypad {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 1.15fr);
+  grid-template-rows: repeat(4, 1fr);
+  gap: 6px;
+  margin-top: var(--sp-1);
+}
+
+.m-keypad__digits {
+  display: contents;
+}
+
+/* 退格固定在右上角：第 4 列第 1 行，正好是拇指自然落点 */
+.m-key--back {
+  grid-column: 4;
+  grid-row: 1;
+}
+
+.m-key {
+  grid-row: span 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 52px;
+  border: none;
+  border-radius: var(--r-md);
+  background: var(--bg);
+  font: 500 24px/1 var(--font-ui);
+  color: var(--label);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-smooth);
+  /* 双击退格清空时避免选中文字 */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.m-key:active {
+  background: var(--fill-3);
+}
+
+.m-key--muted {
+  background: var(--fill);
+  color: var(--label-2);
+}
+
+.m-key--muted svg {
+  width: 24px;
+  height: 24px;
+}
+
+/* 保存键：右侧一列的后 3 行（第 1 行让给右上角的退格） */
+.m-keypad__save {
+  grid-column: 4;
+  grid-row: 2 / span 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--r-md);
+  background: var(--accent);
+  font: 600 17px/1.2 var(--font-ui);
+  color: var(--on-accent);
+  cursor: pointer;
+  transition: opacity var(--dur-fast) var(--ease-smooth);
+}
+
+.m-keypad__save:active {
+  opacity: 0.82;
+}
+
+.m-keypad__save:disabled {
+  opacity: 0.5;
+}
+
+/* ============ 移动端分类：下钻式网格 ============ */
+
+.m-cats {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.m-cats__grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.m-cat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 62px;
+  padding: var(--sp-2) 4px;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  background: var(--bg);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease-smooth),
+    background-color var(--dur-fast) var(--ease-smooth),
+    transform var(--dur-fast) var(--ease-smooth);
+}
+
+.m-cat:active {
+  transform: scale(0.96);
+}
+
+.m-cat__icon {
+  font-size: 20px;
+  line-height: 1;
+  font-variant-emoji: emoji;
+}
+
+.m-cat__name {
+  font: var(--text-caption);
+  color: var(--label-2);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 选中：强调色背景 + 边框，一眼能看出当前选了什么 */
+.m-cat--active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.m-cat--active .m-cat__name {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* 返回上一级 */
+.m-cats__back {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px var(--sp-2) 4px 0;
+  border: none;
+  background: transparent;
+  font: var(--text-footnote-med);
+  color: var(--label-2);
+  cursor: pointer;
+}
+
+.m-cats__back svg {
+  width: 16px;
+  height: 16px;
+}
+
+.m-cats__back-icon {
+  font-size: 15px;
+  font-variant-emoji: emoji;
+}
+
+/* 底部抽屉 */
+.m-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: flex-end;
+  background: rgb(0 0 0 / 0.32);
+}
+
+/*
+ * 抽屉本身不滚动：键盘要始终贴在底部，
+ * 内容超出时只让分类区自己滚（见 .m-cats__grid）。
+ */
+.m-sheet {
+  width: 100%;
+  max-height: 92dvh;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-4) calc(var(--sp-3) + env(safe-area-inset-bottom, 0px));
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  background: var(--bg-grouped);
+  overflow: hidden;
+  animation: m-sheet-in var(--dur-base) var(--ease-smooth);
+}
+
+/* 分类网格限高：账户多、分类多时不把金额和键盘挤出屏幕 */
+.m-sheet .m-cats {
+  min-height: 0;
+}
+
+@keyframes m-sheet-in {
+  from {
+    transform: translateY(12%);
+    opacity: 0.6;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* 抽屉顶部的小横条：iOS 手势提示 */
+.m-sheet__grab {
+  width: 36px;
+  height: 5px;
+  margin: 0 auto var(--sp-1);
+  border-radius: var(--r-capsule);
+  background: var(--sep-strong);
+}
+
+.m-segmented {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--r-md);
+  background: var(--fill);
+}
+
+.m-segmented__btn {
+  flex: 1;
+  padding: 7px 12px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  font: var(--text-subheadline);
+  color: var(--label-2);
+  cursor: pointer;
+}
+
+.m-segmented__btn.is-active {
+  background: var(--bg);
+  color: var(--label);
+  font-weight: 600;
+}
+
+.m-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.m-label {
+  font: var(--text-caption);
+  color: var(--label-2);
+}
+
+.m-input,
+.m-select {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--sep);
+  border-radius: var(--r-md);
+  background: var(--bg);
+  font: var(--text-subheadline);
+  color: var(--label);
+}
+
+.m-primary-btn {
+  width: 100%;
+  min-height: 46px;
+  margin-top: var(--sp-1);
+  border: none;
+  border-radius: var(--r-md);
+  background: var(--accent);
+  font: 600 16px/1.2 var(--font-ui);
+  color: var(--on-accent);
+  cursor: pointer;
+}
+
+.m-primary-btn:disabled {
+  opacity: 0.6;
+}
+
+.m-danger-btn {
+  width: 100%;
+  min-height: 46px;
+  border: none;
+  border-radius: var(--r-md);
+  background: var(--bg);
+  font: 600 16px/1.2 var(--font-ui);
+  color: var(--danger);
+  cursor: pointer;
+}
+
+.m-text-btn {
+  padding: 4px 8px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  font: var(--text-footnote);
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.m-text-btn--danger {
+  color: var(--danger);
+}
+
+/* 「我的」菜单 */
+.m-menu {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+.m-menu__row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  color: inherit;
+  text-decoration: none;
+}
+
+.m-menu__row + .m-menu__row {
+  border-top: 1px solid var(--sep);
+}
+
+.m-menu__row:active {
+  background: var(--fill);
+}
+
+.m-menu__row:hover {
+  text-decoration: none;
+}
+
+.m-menu__row svg {
+  width: 16px;
+  height: 16px;
+  margin-left: auto;
+  color: var(--label-3);
+}
+
+.m-menu__label {
+  font: var(--text-subheadline);
+  color: var(--label);
+}
+
+.m-menu__hint {
+  margin-left: auto;
+  font: var(--text-caption);
+  color: var(--label-3);
+}
+
+/* 账户行：上下两排，避免名称+余额+按钮挤在一窄行里横向溢出 */
+.m-acc {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--sp-3) var(--sp-4);
+}
+
+.m-acc + .m-acc {
+  border-top: 1px solid var(--sep);
+}
+
+.m-acc__top,
+.m-acc__bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+.m-acc__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--text-subheadline);
+  color: var(--label);
+}
+
+.m-acc__balance {
+  flex: none;
+  font: 600 17px/1.3 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  color: var(--label);
+}
+
+.m-acc__balance--debt {
+  color: var(--danger);
+}
+
+.m-acc__type {
+  font: var(--text-caption);
+  color: var(--label-2);
+}
+
+.m-acc__actions {
+  display: flex;
+  gap: var(--sp-1);
+}
+
+.m-account-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.m-account-head__name {
+  font: var(--text-headline);
+  color: var(--label);
+}
+
+.m-account-head__sub {
+  font: var(--text-caption);
+  color: var(--label-2);
+}
+
+.m-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.m-empty {
+  padding: var(--sp-12) var(--sp-4);
+  text-align: center;
+}
+
+.m-empty__title {
+  margin: 0 0 var(--sp-1);
+  font: var(--text-headline);
+  color: var(--label);
+}
+
+.m-empty__text {
+  margin: 0;
+  font: var(--text-subheadline);
+  color: var(--label-2);
+}
+
+.m-notice {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  font: var(--text-footnote);
+}
+
+.m-notice--error {
+  background: color-mix(in srgb, var(--danger) 12%, var(--bg));
+  color: var(--danger);
+}
+
+/* 引导型提示：点进账户页 */
+.m-notice--hint {
+  display: block;
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg));
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.m-notice--hint:hover {
+  text-decoration: none;
+}
+
+.m-hint {
+  margin: 0;
+  font: var(--text-caption);
+  color: var(--label-3);
+}
+
+.m-badge {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: var(--r-capsule);
+  background: var(--fill);
+  font: var(--text-caption);
+  color: var(--label-2);
+}
+
+/* ============ 左滑删除行 ============ */
+
+/* 容器裁掉滑出部分，并让删除按钮垫在内容层下面 */
+.m-swipe {
+  position: relative;
+  overflow: hidden;
+}
+
+.m-swipe__action {
+  position: absolute;
+  inset: 0 0 0 auto;
+  display: flex;
+}
+
+.m-swipe__btn {
+  width: 100%;
+  border: none;
+  background: var(--danger);
+  font: 600 15px/1 var(--font-ui);
+  color: #fff;
+  cursor: pointer;
+}
+
+.m-swipe__content {
+  position: relative;
+  background: var(--bg);
+  transition: transform var(--dur-base) var(--ease-smooth);
+  /* 横滑时不触发浏览器的纵向滚动抢夺 */
+  touch-action: pan-y;
+}
+
+/* 拖动中要跟手，不能有过渡 */
+.m-swipe__content--dragging {
+  transition: none;
+}
+
+/* 左滑露出的删除区不参与行内的分隔线 */
+.m-list > li + li .m-row {
+  border-top: 1px solid var(--sep);
+}
+
+/* 行内有 SwipeRow 时，分隔线由 li 控制，行本身不再画 */
+.m-list .m-swipe .m-row {
+  border-top: none;
+}
+
+/* ============ 移动端：我的 / 统计 ============ */
+
+/* 身份卡：头像 + 昵称 + 本月收支 */
+.m-profile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  padding: var(--sp-4);
+}
+
+.m-profile__head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.m-profile__avatar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg));
+  font: 700 22px/1 var(--font-ui);
+  color: var(--accent);
+}
+
+.m-profile__id {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.m-profile__name {
+  font: 600 18px/1.25 var(--font-ui);
+  color: var(--label);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.m-profile__sub {
+  font: var(--text-caption);
+  color: var(--label-2);
+}
+
+.m-profile__stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-2);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--sep);
+}
+
+.m-profile__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.m-profile__stat-label {
+  font: var(--text-caption);
+  color: var(--label-3);
+}
+
+.m-profile__stat-value {
+  font: 600 17px/1.25 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  color: var(--label);
+}
+
+.m-profile__stat-value--income {
+  color: var(--success);
+}
+
+/* 分组标题：iOS 设置式的小写灰字 */
+.m-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.m-group__title {
+  margin: 0;
+  padding: 0 var(--sp-2);
+  font: var(--text-caption);
+  color: var(--label-3);
+}
+
+/*
+ * 结余卡片。
+ *
+ * 不用纯白底：白卡片在大字号旁边会显得空。
+ * 改成一层很淡的强调色渐变，让金额所在的区域有自己的「重量」，
+ * 又不像实色块那样压过下面的图表。
+ */
+.m-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-4);
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--accent) 12%, var(--bg)) 0%,
+    var(--bg) 62%
+  );
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+/* 深色主题下强调色混进深底会发灰，降低混色比例、提高边框对比 */
+:root[data-theme='dark'] .m-hero {
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--accent) 16%, var(--bg)) 0%,
+    var(--bg) 68%
+  );
+  border-color: color-mix(in srgb, var(--accent) 26%, transparent);
+}
+
+.m-hero__label {
+  font: var(--text-caption);
+  color: var(--label-2);
+}
+
+.m-hero__value {
+  font: 700 40px/1.1 var(--font-ui);
+  letter-spacing: -1.4px;
+  font-variant-numeric: tabular-nums;
+  color: var(--label);
+}
+
+.m-hero__value--negative {
+  color: var(--danger);
+}
+
+.m-hero__meta {
+  margin: var(--sp-3) 0 0;
+  padding-top: var(--sp-3);
+  border-top: 1px solid color-mix(in srgb, var(--accent) 14%, var(--sep));
+  font: var(--text-footnote);
+  color: var(--label-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.m-hero__meta strong {
+  color: var(--label);
+  font-weight: 600;
+}
+
+.m-hero__meta-income {
+  color: var(--success) !important;
+}
+
+.m-hero__dot {
+  margin: 0 5px;
+  color: var(--label-3);
+}
+
+/* 统计页：图表区块 */
+.m-stat-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-3);
+}
+
+.m-stat-block__title {
+  margin: 0;
+  font: 600 15px/1.3 var(--font-ui);
+  color: var(--label);
+}
+
+/* 分类明细：上排「名称 · 金额 · 占比」，下排进度条，有预算再跟一行 */
+.m-cat-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.m-cat-row {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.m-cat-row__top {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+}
+
+.m-cat-row__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--text-subheadline);
+  color: var(--label);
+}
+
+.m-cat-row__amount {
+  font: 600 14px/1.3 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  color: var(--label);
+}
+
+.m-cat-row__pct {
+  width: 34px;
+  text-align: right;
+  font: var(--text-caption);
+  font-variant-numeric: tabular-nums;
+  color: var(--label-3);
+}
+
+.m-cat-row__bar {
+  height: 5px;
+  border-radius: var(--r-capsule);
+  background: var(--fill-3);
+  overflow: hidden;
+}
+
+.m-cat-row__fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+/* 超支：进度条与百分比一起变红，一眼看到哪项最危险 */
+.m-cat-row__fill--over {
+  background: var(--danger);
+}
+
+.m-cat-row__pct.is-over {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.m-cat-row__budget {
+  margin: 0;
+  font: var(--text-caption);
+  color: var(--label-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.m-cat-row__budget.is-over {
+  color: var(--danger);
+}
+
+.m-hint--danger {
+  color: var(--danger);
+}
+
+/* 超支提醒：只在超了才出现 */
+.m-notice--warn {
+  background: color-mix(in srgb, var(--danger) 10%, var(--bg));
+  color: var(--danger);
+}
+
+.m-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-4);
+}
+
+/* ============ 统计页：粒度切换与分粒度图表 ============ */
+
+/*
+ * 顶部导航：一行承载「上一段 / 当前视图 / 下一段」。
+ *
+ * 中间块由两部分组成：粒度徽章 + 区间文字。
+ * 它既是当前状态的显示，也是切换粒度的入口——
+ * 少一行控件，眼睛不用在两个风格不同的块之间跳。
+ */
+.m-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 4px;
+  border-radius: var(--r-capsule);
+  background: var(--fill);
+}
+
+.m-nav__arrow {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--label-2);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-smooth);
+}
+
+.m-nav__arrow:active {
+  background: var(--fill-3);
+}
+
+.m-nav__arrow svg {
+  width: 17px;
+  height: 17px;
+}
+
+/* 到头时隐藏但仍占位：中心标题不会因箭头消失而偏移 */
+.m-nav__arrow--hidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.m-nav__center {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 var(--sp-2);
+  border: none;
+  border-radius: var(--r-capsule);
+  background: var(--bg);
+  cursor: pointer;
+}
+
+/* 粒度徽章：小色块，一眼看出当前在看周还是年 */
+.m-nav__badge {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: var(--r-capsule);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  font: 600 12px/1.4 var(--font-ui);
+  color: var(--accent);
+}
+
+.m-nav__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--text-footnote-med);
+  color: var(--label);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 粒度选择弹层 */
+.m-granularity-sheet {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-4) calc(var(--sp-4) + env(safe-area-inset-bottom, 0px));
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  background: var(--bg-grouped);
+  animation: m-sheet-in var(--dur-base) var(--ease-smooth);
+}
+
+.m-granularity-list {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--r-lg);
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.m-granularity-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 52px;
+  padding: 0 var(--sp-4);
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.m-granularity-item + .m-granularity-item {
+  border-top: 1px solid var(--sep);
+}
+
+.m-granularity-item__name {
+  flex: none;
+  font: var(--text-subheadline);
+  color: var(--label);
+}
+
+.m-granularity-item__hint {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--text-caption);
+  color: var(--label-3);
+}
+
+.m-granularity-item svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--accent);
+}
+
+.m-granularity-item--active .m-granularity-item__name {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ============ 统计图表（折线 / 柱状） ============ */
+
+.m-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.m-chart__legend {
+  display: flex;
+  gap: var(--sp-3);
+}
+
+.m-chart__legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: var(--text-caption);
+  color: var(--label-2);
+}
+
+.m-chart__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.m-chart__dot--expense {
+  background: var(--accent);
+}
+
+.m-chart__dot--income {
+  background: var(--success);
+}
+
+/*
+ * 图表本体。preserveAspectRatio="none" 让 SVG 横向拉伸填满容器，
+ * 高度由 CSS 固定——否则宽屏下图形会跟着变高，比例失真。
+ */
+.m-chart__svg {
+  width: 100%;
+  height: 132px;
+  display: block;
+  overflow: visible;
+}
+
+.m-chart__baseline {
+  stroke: var(--sep);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+/* 折线：线宽用 non-scaling-stroke，避免横向拉伸后变粗 */
+.m-chart__line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.m-chart__line--expense {
+  stroke: var(--accent);
+}
+
+.m-chart__line--income {
+  stroke: var(--success);
+}
+
+.m-chart__area {
+  stroke: none;
+}
+
+.m-chart__area--expense {
+  fill: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.m-chart__area--income {
+  fill: color-mix(in srgb, var(--success) 12%, transparent);
+}
+
+.m-chart__bar--expense {
+  fill: var(--accent);
+}
+
+.m-chart__bar--income {
+  fill: var(--success);
+}
+
+/*
+ * 横轴标签：绝对定位在图表下方，按点的横坐标百分比摆放，
+ * 与上面的 SVG 对齐。只显示抽样后的几个，避免叠成一团。
+ */
+.m-chart__labels {
+  position: relative;
+  height: 16px;
+}
+
+.m-chart__label {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  font: var(--text-caption);
+  color: var(--label-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ============ 左滑删除行 ============ */
+
+/* 容器裁掉滑出部分，并让删除按钮垫在内容层下面 */
+.m-swipe {
+  position: relative;
+  overflow: hidden;
+}
+
+.m-swipe__action {
+  position: absolute;
+  inset: 0 0 0 auto;
+  display: flex;
+}
+
+.m-swipe__btn {
+  width: 100%;
+  border: none;
+  background: var(--danger);
+  font: 600 15px/1 var(--font-ui);
+  color: #fff;
+  cursor: pointer;
+}
+
+.m-swipe__content {
+  position: relative;
+  background: var(--bg);
+  transition: transform var(--dur-base) var(--ease-smooth);
+  /* 横滑时不触发浏览器的纵向滚动抢夺 */
+  touch-action: pan-y;
+}
+
+/* 拖动中要跟手，不能有过渡 */
+.m-swipe__content--dragging {
+  transition: none;
+}
+
+/* 左滑露出的删除区不参与行内的分隔线 */
+.m-list > li + li .m-row {
+  border-top: 1px solid var(--sep);
+}
+
+/* 行内有 SwipeRow 时，分隔线由 li 控制，行本身不再画 */
+.m-list .m-swipe .m-row {
+  border-top: none;
+}
+
+/* ============ 移动端：我的 / 统计 ============ */
+
+/* 身份卡：头像 + 昵称 + 本月收支 */
+.m-profile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  padding: var(--sp-4);
+}
+
+.m-profile__head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.m-profile__avatar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg));
+  font: 700 22px/1 var(--font-ui);
+  color: var(--accent);
+}
+
+.m-profile__id {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.m-profile__name {
+  font: 600 18px/1.25 var(--font-ui);
+  color: var(--label);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.m-profile__sub {
+  font: var(--text-caption);
+  color: var(--label-2);
+}
+
+.m-profile__stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-2);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--sep);
+}
+
+.m-profile__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.m-profile__stat-label {
+  font: var(--text-caption);
+  color: var(--label-3);
+}
+
+.m-profile__stat-value {
+  font: 600 17px/1.25 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  color: var(--label);
+}
+
+.m-profile__stat-value--income {
+  color: var(--success);
+}
+
+/* 分组标题：iOS 设置式的小写灰字 */
+.m-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.m-group__title {
+  margin: 0;
+  padding: 0 var(--sp-2);
+  font: var(--text-caption);
+  color: var(--label-3);
+}
+
+/*
+ * 结余卡片。
+ *
+ * 不用纯白底：白卡片在大字号旁边会显得空。
+ * 改成一层很淡的强调色渐变，让金额所在的区域有自己的「重量」，
+ * 又不像实色块那样压过下面的图表。
+ */
+.m-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-4);
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--accent) 12%, var(--bg)) 0%,
+    var(--bg) 62%
+  );
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+/* 深色主题下强调色混进深底会发灰，降低混色比例、提高边框对比 */
+:root[data-theme='dark'] .m-hero {
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--accent) 16%, var(--bg)) 0%,
+    var(--bg) 68%
+  );
+  border-color: color-mix(in srgb, var(--accent) 26%, transparent);
+}
+
+.m-hero__label {
+  font: var(--text-caption);
+  color: var(--label-2);
+}
+
+.m-hero__value {
+  font: 700 40px/1.1 var(--font-ui);
+  letter-spacing: -1.4px;
+  font-variant-numeric: tabular-nums;
+  color: var(--label);
+}
+
+.m-hero__value--negative {
+  color: var(--danger);
+}
+
+.m-hero__meta {
+  margin: var(--sp-3) 0 0;
+  padding-top: var(--sp-3);
+  border-top: 1px solid color-mix(in srgb, var(--accent) 14%, var(--sep));
+  font: var(--text-footnote);
+  color: var(--label-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.m-hero__meta strong {
+  color: var(--label);
+  font-weight: 600;
+}
+
+.m-hero__meta-income {
+  color: var(--success) !important;
+}
+
+.m-hero__dot {
+  margin: 0 5px;
+  color: var(--label-3);
+}
+
+/* 统计页：图表区块 */
+.m-stat-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-3);
+}
+
+.m-stat-block__title {
+  margin: 0;
+  font: 600 15px/1.3 var(--font-ui);
+  color: var(--label);
+}
+
+/* 分类明细：上排「名称 · 金额 · 占比」，下排进度条，有预算再跟一行 */
+.m-cat-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.m-cat-row {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.m-cat-row__top {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+}
+
+.m-cat-row__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--text-subheadline);
+  color: var(--label);
+}
+
+.m-cat-row__amount {
+  font: 600 14px/1.3 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  color: var(--label);
+}
+
+.m-cat-row__pct {
+  width: 34px;
+  text-align: right;
+  font: var(--text-caption);
+  font-variant-numeric: tabular-nums;
+  color: var(--label-3);
+}
+
+.m-cat-row__bar {
+  height: 5px;
+  border-radius: var(--r-capsule);
+  background: var(--fill-3);
+  overflow: hidden;
+}
+
+.m-cat-row__fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+/* 超支：进度条与百分比一起变红，一眼看到哪项最危险 */
+.m-cat-row__fill--over {
+  background: var(--danger);
+}
+
+.m-cat-row__pct.is-over {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.m-cat-row__budget {
+  margin: 0;
+  font: var(--text-caption);
+  color: var(--label-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.m-cat-row__budget.is-over {
+  color: var(--danger);
+}
+
+.m-hint--danger {
+  color: var(--danger);
+}
+
+/* 超支提醒：只在超了才出现 */
+.m-notice--warn {
+  background: color-mix(in srgb, var(--danger) 10%, var(--bg));
+  color: var(--danger);
+}
+
+.m-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-4);
+}
+
+/* ============ 统计页：粒度切换与分粒度图表 ============ */
+
+/*
+ * 顶部导航：一行承载「上一段 / 当前视图 / 下一段」。
+ *
+ * 中间块由两部分组成：粒度徽章 + 区间文字。
+ * 它既是当前状态的显示，也是切换粒度的入口——
+ * 少一行控件，眼睛不用在两个风格不同的块之间跳。
+ */
+.m-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 4px;
+  border-radius: var(--r-capsule);
+  background: var(--fill);
+}
+
+.m-nav__arrow {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--label-2);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-smooth);
+}
+
+.m-nav__arrow:active {
+  background: var(--fill-3);
+}
+
+.m-nav__arrow svg {
+  width: 17px;
+  height: 17px;
+}
+
+/* 到头时隐藏但仍占位：中心标题不会因箭头消失而偏移 */
+.m-nav__arrow--hidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.m-nav__center {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 var(--sp-2);
+  border: none;
+  border-radius: var(--r-capsule);
+  background: var(--bg);
+  cursor: pointer;
+}
+
+/* 粒度徽章：小色块，一眼看出当前在看周还是年 */
+.m-nav__badge {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: var(--r-capsule);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  font: 600 12px/1.4 var(--font-ui);
+  color: var(--accent);
+}
+
+.m-nav__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--text-footnote-med);
+  color: var(--label);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 粒度选择弹层 */
+.m-granularity-sheet {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-4) calc(var(--sp-4) + env(safe-area-inset-bottom, 0px));
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  background: var(--bg-grouped);
+  animation: m-sheet-in var(--dur-base) var(--ease-smooth);
+}
+
+.m-granularity-list {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--r-lg);
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.m-granularity-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 52px;
+  padding: 0 var(--sp-4);
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.m-granularity-item + .m-granularity-item {
+  border-top: 1px solid var(--sep);
+}
+
+.m-granularity-item__name {
+  flex: none;
+  font: var(--text-subheadline);
+  color: var(--label);
+}
+
+.m-granularity-item__hint {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--text-caption);
+  color: var(--label-3);
+}
+
+.m-granularity-item svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--accent);
+}
+
+.m-granularity-item--active .m-granularity-item__name {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* 区块标题后的小注：说明数据口径，比如「按月折算」 */
+.m-stat-block__note {
+  margin-left: 6px;
+  font: var(--text-caption);
+  font-weight: 400;
+  color: var(--label-3);
+}
+
+/* ============ 移动端设置：外观 / 登录日志 ============ */
+
+/* 主题卡片：两列网格，比 PC 的四列更适配竖屏 */
+.m-theme-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-3);
+}
+
+.m-theme-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-2);
+  border: 2px solid transparent;
+  border-radius: var(--r-lg);
+  background: var(--bg);
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease-smooth);
+}
+
+.m-theme-card--active {
+  border-color: var(--accent);
+}
+
+/* 缩略图：用该主题的三种色画一个极简界面 */
+.m-theme-card__preview {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  height: 64px;
+  padding: 8px;
+  border-radius: var(--r-md);
+  background: var(--swatch-bg);
+  overflow: hidden;
+}
+
+.m-theme-card__bar {
+  width: 36%;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--swatch-accent);
+}
+
+.m-theme-card__line {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--swatch-fg);
+  opacity: 0.28;
+}
+
+.m-theme-card__line--long {
+  width: 82%;
+}
+
+.m-theme-card__line--short {
+  width: 46%;
+}
+
+.m-theme-card__foot {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 2px;
+}
+
+.m-theme-card__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--text-footnote);
+  color: var(--label);
+  text-align: left;
+}
+
+.m-theme-card__check {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--accent);
+}
+
+/* 登录日志：每条两行，靠分隔线区分，不画独立卡片 */
+.m-log-list {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+.m-log {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: var(--sp-3) var(--sp-4);
+}
+
+.m-log + .m-log {
+  border-top: 1px solid var(--sep);
+}
+
+.m-log__top {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+}
+
+.m-log__event {
+  font: var(--text-subheadline);
+  color: var(--label);
+}
+
+/* 失败用红色：和统计页「超支」同一语义 */
+.m-log__event--fail {
+  color: var(--danger);
+}
+
+.m-log__method {
+  font: var(--text-caption);
+  color: var(--label-3);
+}
+
+.m-log__time {
+  margin-left: auto;
+  font: var(--text-caption);
+  color: var(--label-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.m-log__meta {
+  margin: 0;
+  font: var(--text-caption);
+  color: var(--label-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.m-log-more {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-2);
+}
+
+/* ============ 移动端 Issue ============ */
+
+/* 次级标题：详情/新建页标题栏要留出返回按钮和右操作 */
+.m-title--sm {
+  flex: 1;
+  min-width: 0;
+  font-size: 20px;
+  letter-spacing: -0.3px;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* tab 上的条数 */
+.m-segmented__count {
+  margin-left: 4px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+
+/* Issue 列表行 */
+.m-issue-list {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+.m-issue-list > li + li .m-issue {
+  border-top: 1px solid var(--sep);
+}
+
+.m-issue {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--sp-3) var(--sp-4);
+  color: inherit;
+  text-decoration: none;
+}
+
+.m-issue:active {
+  background: var(--fill);
+}
+
+.m-issue:hover {
+  text-decoration: none;
+}
+
+.m-issue__top {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.m-issue__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--text-subheadline);
+  color: var(--label);
+}
+
+.m-issue__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 类型 / 状态 / 优先级都用同一种小胶囊，靠颜色区分语义 */
+.m-issue__type,
+.m-issue__status,
+.m-issue__priority {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: var(--r-capsule);
+  font: var(--text-caption);
+  white-space: nowrap;
+}
+
+.m-issue__type--bug {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: var(--danger);
+}
+
+.m-issue__type--feature {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
+
+.m-issue__status--todo {
+  background: var(--fill);
+  color: var(--label-2);
+}
+
+.m-issue__status--in_progress {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
+
+.m-issue__status--done {
+  background: color-mix(in srgb, var(--success) 14%, transparent);
+  color: var(--success);
+}
+
+/* 优先级沿用全局的 priorityTone 语义：high 红、medium 橙、low 灰 */
+.m-issue__priority--high {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: var(--danger);
+}
+
+.m-issue__priority--medium {
+  background: color-mix(in srgb, #f5a623 18%, transparent);
+  color: #b26b00;
+}
+
+.m-issue__priority--low {
+  background: var(--fill);
+  color: var(--label-3);
+}
+
+/* 详情页 */
+.m-issue-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-4);
+}
+
+.m-issue-detail__tags {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.m-issue-detail__title {
+  margin: 0;
+  font: 700 20px/1.35 var(--font-ui);
+  letter-spacing: -0.3px;
+  color: var(--label);
+}
+
+.m-issue-detail__body {
+  margin: 0;
+  font: var(--text-subheadline);
+  color: var(--label);
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* 表单：多行文本与纵向按钮组 */
+.m-textarea {
+  width: 100%;
+  min-height: 120px;
+  padding: var(--sp-3);
+  border: 1px solid var(--sep);
+  border-radius: var(--r-md);
+  background: var(--bg);
+  font: var(--text-subheadline);
+  color: var(--label);
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.m-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.m-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+/* ============ 设置 · 账户（PC） ============ */
+
+.ledger-account-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+/* 三个字段并排；窄屏自动折行 */
+.ledger-account-form__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--sp-3);
+}
+
+.ledger-account-form__actions {
+  margin-left: auto;
+}
+
+/* ============ 记账（PC 三栏） ============ */
+
+/* 中间栏：筛选固定、明细滚动 */
+.list-panel .ledger-filters--compact {
+  display: flex;
+  gap: 6px;
+  padding: 0 var(--sp-3) var(--sp-2);
+  margin: 0;
+}
+
+.select--sm {
+  min-height: 30px;
+  padding: 0 8px;
+  font: var(--text-footnote);
+  flex: 1;
+  min-width: 0;
+}
+
+/* 明细区：吃满剩余高度，内部滚动 */
+.ledger-rows {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 var(--sp-2) var(--sp-4);
+}
+
+.ledger-list-hint {
+  padding: var(--sp-8) var(--sp-3);
+  text-align: center;
+}
+
+/* 按天分组：日期头 sticky，滚动时始终知道在看哪天 */
+.ledger-day-group {
+  margin-top: var(--sp-3);
+}
+
+.ledger-day-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: var(--sp-1) var(--sp-2);
+  background: var(--bg);
+  font: var(--text-caption);
+  color: var(--label-2);
+}
+
+.ledger-day-head__weekday {
+  color: var(--label-3);
+}
+
+.ledger-day-head__sum {
+  margin-left: auto;
+  color: var(--label-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 明细行：整行可点，hover 有反馈 */
+.ledger-list-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2);
+  border: none;
+  border-radius: var(--r-md);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-smooth);
+}
+
+.ledger-list-row:hover {
+  background: var(--fill);
+}
+
+.ledger-list-row__icon {
+  width: 24px;
+  text-align: center;
+  font-size: 1.1em;
+}
+
+.ledger-list-row__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.ledger-list-row__title {
+  font: var(--text-subheadline);
+  color: var(--label);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ledger-list-row__sub {
+  font: var(--text-caption);
+  color: var(--label-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ledger-list-row__amount {
+  flex: none;
+  font: 600 14px/1.3 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  color: var(--label);
+}
+
+.ledger-list-row__amount--income {
+  color: var(--success);
+}
+
+.ledger-list-row__amount--transfer {
+  color: var(--label-2);
+}
+
+.ledger-list-foot {
+  flex: none;
+  padding: var(--sp-2) var(--sp-3);
+  border-top: 1px solid var(--sep);
+  font: var(--text-caption);
+  color: var(--label-3);
+  text-align: center;
+}
+
+/* 右侧详情区 */
+.ledger-detail-pane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  max-width: none;
+}
+
+/* 结余：大字号 + 下方三列细数据 */
+.ledger-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-5);
+  border-radius: var(--r-lg);
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--accent) 10%, var(--bg-elevated)) 0%,
+    var(--bg-elevated) 62%
+  );
+  border: 1px solid color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.ledger-hero__label {
+  font: var(--text-caption);
+  color: var(--label-2);
+}
+
+.ledger-hero__value {
+  font: 700 36px/1.12 var(--font-ui);
+  letter-spacing: -1.2px;
+  font-variant-numeric: tabular-nums;
+  color: var(--label);
+}
+
+.ledger-hero__value--negative {
+  color: var(--danger);
+}
+
+.ledger-hero__split {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-3);
+  margin-top: var(--sp-3);
+  padding-top: var(--sp-3);
+  border-top: 1px solid color-mix(in srgb, var(--accent) 12%, var(--sep));
+}
+
+.ledger-hero__item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.ledger-hero__item-label {
+  font: var(--text-caption);
+  color: var(--label-3);
+}
+
+.ledger-hero__item-value {
+  font: 600 15px/1.3 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  color: var(--label);
+}
+
+.ledger-hero__item-value--income {
+  color: var(--success);
+}
+
+/* 区块通用 */
+.ledger-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.ledger-block__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.ledger-block__title {
+  margin: 0;
+  font: 600 14px/1.3 var(--font-ui);
+  color: var(--label);
+}
+
+.ledger-block__meta {
+  font: var(--text-caption);
+  color: var(--label-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger-block__meta.is-over {
+  color: var(--danger);
+}
+
+/* 账户列表：一行一个，名称左、余额右 */
+.ledger-acc-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.ledger-acc-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ledger-acc-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-1) 0;
+}
+
+.ledger-acc-row + .ledger-acc-row {
+  border-top: 1px solid var(--sep);
+}
+
+.ledger-acc-row__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--text-subheadline);
+  color: var(--label-2);
+}
+
+.ledger-acc-row__balance {
+  flex: none;
+  font: 600 15px/1.3 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  color: var(--label);
+}
+
+.ledger-acc-row__balance--debt {
+  color: var(--danger);
+}
+
+/* 对话框里删除按钮靠左、取消靠右 */
+.modal__actions-lead {
+  margin-right: auto;
+}
+
+/* ============ 账户图标 ============ */
+
+.acc-icon-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.acc-icon-picker__hint {
+  margin: 0;
+  font: var(--text-caption);
+  color: var(--label-3);
+}
+
+.acc-icon-picker__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
+  gap: var(--sp-2);
+}
+
+.acc-icon-picker__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: var(--sp-2) 4px;
+  border: 1px solid var(--sep);
+  border-radius: var(--r-md);
+  background: var(--bg);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease-smooth),
+    background-color var(--dur-fast) var(--ease-smooth);
+}
+
+.acc-icon-picker__item:hover {
+  border-color: var(--sep-strong);
+  background: var(--fill);
+}
+
+.acc-icon-picker__item--active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/*
+ * 图标容器：固定 28×28，内容按 object-fit: contain 等比缩放。
+ *
+ * 不按 viewBox 铺满：银行 logo 内容占满画布、支付类图标四周留白多，
+ * 铺满会让两者视觉重量差一截。固定容器 + contain 之后，
+ * 内容偏小的图标再用各自配置里的 scale 单独放大。
+ */
+.acc-icon-picker__media {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+}
+
+.acc-icon-picker--compact .acc-icon-picker__media {
+  width: 24px;
+  height: 24px;
+}
+
+.acc-icon-picker__media img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  /* scale 变换以中心为原点，放大时不偏移 */
+  transform-origin: center;
+}
+
+.acc-icon-picker__label {
+  font: var(--text-caption);
+  color: var(--label-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.acc-icon-picker__item--active .acc-icon-picker__label {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* 头像：列表行里的小块 */
+.acc-avatar {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  vertical-align: -3px;
+}
+
+.acc-avatar--sm {
+  width: 20px;
+  height: 20px;
+  font: 600 11px/1 var(--font-ui);
+  margin-right: 6px;
+}
+
+.acc-avatar--md {
+  width: 30px;
+  height: 30px;
+  font: 600 14px/1 var(--font-ui);
+  margin-right: var(--sp-2);
+}
+
+/* 无图标时用名称首字：底色由 inline style 给 */
+.acc-avatar:not(.acc-avatar--icon) {
+  border-radius: 50%;
+}
+
+.acc-avatar--icon {
+  background: transparent;
+}
+
+.acc-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transform-origin: center;
+}
+
+/* 移动端账户胶囊里也要留出间距 */
+.m-acc-pill .acc-avatar {
+  margin-right: 5px;
+  vertical-align: -4px;
+}
+
+/* ============ 设置 · 预算 ============ */
+
+.budget-row {
+  gap: var(--sp-3);
+}
+
+.budget-row__icon {
+  width: 22px;
+  text-align: center;
+  font-size: 1.15em;
+}
+
+/* 输入框固定在右侧，多行对齐 */
+.budget-row__input {
+  flex: none;
+  width: 112px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.budget-row__unit {
+  flex: none;
+  width: 16px;
+  font: var(--text-caption);
+  color: var(--label-3);
+}
+
+/* ============ 移动端设置 · 预算 ============ */
+
+.m-budget-list {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+.m-budget-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+}
+
+.m-budget-item + .m-budget-item {
+  border-top: 1px solid var(--sep);
+}
+
+.m-budget-item__icon {
+  width: 22px;
+  text-align: center;
+  font-size: 1.1em;
+}
+
+.m-budget-item__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.m-budget-item__name {
+  font: var(--text-subheadline);
+  color: var(--label);
+}
+
+.m-budget-item__sub {
+  font: var(--text-caption);
+  color: var(--label-3);
+}
+
+/* 输入靠右、数字底对齐，扫一眼就能比对 */
+.m-budget-item__input {
+  flex: none;
+  width: 92px;
+  min-height: 34px;
+  padding: 0 var(--sp-2);
+  border: none;
+  border-radius: var(--r-sm);
+  background: var(--fill);
+  font: var(--text-subheadline);
+  color: var(--label);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.m-budget-item__input:focus {
+  outline: none;
+  background: var(--bg);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+/* ============ 移动端：总览卡（账户 / 预算共用） ============ */
+
+.m-total {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-4);
+  border-radius: var(--r-lg);
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--accent) 14%, var(--bg)) 0%,
+    var(--bg) 64%
+  );
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.m-total__label {
+  font: var(--text-caption);
+  color: var(--label-2);
+}
+
+.m-total__value {
+  font: 700 34px/1.12 var(--font-ui);
+  letter-spacing: -1.1px;
+  font-variant-numeric: tabular-nums;
+  color: var(--label);
+}
+
+.m-total__value--negative {
+  color: var(--danger);
+}
+
+.m-total__bar {
+  height: 5px;
+  margin-top: var(--sp-3);
+  border-radius: var(--r-capsule);
+  background: color-mix(in srgb, var(--label) 10%, transparent);
+  overflow: hidden;
+}
+
+.m-total__fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width var(--dur-base) var(--ease-smooth);
+}
+
+.m-total__fill--over {
+  background: var(--danger);
+}
+
+.m-total__meta {
+  margin: var(--sp-2) 0 0;
+  font: var(--text-caption);
+  color: var(--label-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.m-total__dot {
+  margin: 0 5px;
+  color: var(--label-3);
+}
+
+/* ============ 移动端：账户卡片列表 ============ */
+
+.m-acc-cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* 每个账户一张独立卡片，不是挤在同一个大白块里 */
+.m-acc-card {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border: none;
+  border-radius: var(--r-lg);
+  background: var(--bg);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-smooth);
+}
+
+.m-acc-card:active {
+  background: var(--fill);
+}
+
+/* 归档账户整体降透明度，一眼区分 */
+.m-acc-card--archived {
+  opacity: 0.55;
+}
+
+.m-acc-card__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.m-acc-card__name {
+  font: var(--text-subheadline);
+  color: var(--label);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.m-acc-card__type {
+  font: var(--text-caption);
+  color: var(--label-3);
+}
+
+.m-acc-card__balance {
+  flex: none;
+  font: 600 16px/1.3 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  color: var(--label);
+}
+
+.m-acc-card__balance--debt {
+  color: var(--danger);
+}
+
+/* 抽屉里的实时预览 */
+.m-acc-preview {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-lg);
+  background: var(--bg);
+}
+
+.m-acc-preview__info {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.m-acc-preview__name {
+  font: 600 16px/1.3 var(--font-ui);
+  color: var(--label);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.m-acc-preview__type {
+  font: var(--text-caption);
+  color: var(--label-3);
+}
+
+/* 编辑时的归档 / 删除：放在保存按钮下方，与主操作分开 */
+.m-acc-sheet-actions {
+  display: flex;
+  justify-content: center;
+  gap: var(--sp-6);
+  padding-top: var(--sp-1);
+}
+
+/* 预算行：已设置的输入框底色加深，与「未设置」区分 */
+.m-budget-item__input--set {
+  color: var(--label);
+  font-weight: 600;
+}
+
+.m-budget-item__sub--over {
+  color: var(--danger);
+}
+
+/* ============ 移动端：iOS 大标题（滚动收起） ============ */
+
+/*
+ * 头部固定在滚动容器顶部，标题字号随滚动从 28px 收到 17px。
+ *
+ * 为什么要 sticky：滚动后标题要一直可见，当作导航栏用。
+ * 为什么用 sticky 而不是 fixed：fixed 会脱离文档流，
+ * 内容会从标题底下穿过去，还得手工补 padding；sticky 天然占位。
+ */
+.m-page-head {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  /* 与页面背景同色，滚动时内容从标题下方滑过而不会透出 */
+  background: color-mix(in srgb, var(--bg-grouped) 88%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  /* 向上补足安全区，向下留一点呼吸 */
+  padding: calc(var(--sp-3) + env(safe-area-inset-top, 0px)) 0 var(--sp-2);
+  margin: calc(-1 * var(--sp-4)) calc(-1 * var(--sp-4)) 0;
+  padding-inline: var(--sp-4);
+  transition: padding var(--dur-fast) var(--ease-smooth);
+}
+
+/*
+ * 滚动驱动动画：0% 在顶部（大标题），100% 是滚过 64px 后（紧凑标题）。
+ *
+ * 用 scroll(nearest block)：取最近的滚动祖先的纵向滚动进度。
+ * 这里的最近滚动祖先就是 `.m-main`。
+ */
+@keyframes m-page-head-shrink {
+  from {
+    padding-block: calc(var(--sp-3) + env(safe-area-inset-top, 0px)) var(--sp-2);
+    min-height: 0;
+  }
+  to {
+    padding-block: calc(var(--sp-2) + env(safe-area-inset-top, 0px)) var(--sp-2);
+    min-height: 0;
+  }
+}
+
+@keyframes m-page-head-title-shrink {
+  from {
+    font-size: 28px;
+    letter-spacing: -0.6px;
+  }
+  to {
+    font-size: 17px;
+    letter-spacing: -0.1px;
+  }
+}
+
+@supports (animation-timeline: scroll()) {
+  .m-page-head {
+    animation: m-page-head-shrink linear both;
+    animation-timeline: scroll(nearest block);
+    animation-range: 0 64px;
+  }
+
+  .m-page-head__title {
+    animation: m-page-head-title-shrink linear both;
+    animation-timeline: scroll(nearest block);
+    animation-range: 0 64px;
+  }
+}
+
+.m-page-head__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  min-height: 36px;
+}
+
+.m-page-head__title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font: 700 28px/1.2 var(--font-ui);
+  letter-spacing: -0.6px;
+  color: var(--label);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

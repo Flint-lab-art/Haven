@@ -63,7 +63,7 @@ class AuditRecorderTest {
                 .thenThrow(new DataAccessResourceFailureException("db down"));
         AuditRecorder recorder = new AuditRecorder(auditEventsMapper, CLOCK);
 
-        assertDoesNotThrow(() -> recorder.record(null, "bob", AuditEventType.LOGIN_FAILURE, null, null, null, null));
+        assertDoesNotThrow(() -> recorder.record(null, "bob", AuditEventType.TOKEN_REVOKED, null, null, null, null));
     }
 
     @Test
@@ -71,7 +71,7 @@ class AuditRecorderTest {
     void blanksNullFields() {
         AuditRecorder recorder = new AuditRecorder(auditEventsMapper, CLOCK);
 
-        recorder.record(null, null, AuditEventType.LOGIN_FAILURE, null, null, null, null);
+        recorder.record(null, null, AuditEventType.TOKEN_REVOKED, null, null, null, null);
 
         ArgumentCaptor<AuditEvents> captor = ArgumentCaptor.forClass(AuditEvents.class);
         verify(auditEventsMapper).insert(captor.capture());

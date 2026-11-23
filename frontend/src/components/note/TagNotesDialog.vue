@@ -9,6 +9,8 @@ import { ApiError } from '@/api/client'
 import { listTagNotes, type Tag } from '@/api/tags'
 import type { NoteSummary } from '@/api/notes'
 import { formatRelative } from '@/utils/format'
+import { X } from 'lucide-vue-next'
+
 
 const props = defineProps<{
   open: boolean
@@ -83,9 +85,7 @@ onBeforeUnmount(() => {
       <header class="tag-notes-modal__head">
         <h2 class="tag-notes-modal__title">{{ tag.name }}</h2>
         <button class="icon-btn" type="button" aria-label="关闭" @click="emit('close')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
-            <path d="M6 6l12 12M18 6 6 18" />
-          </svg>
+          <X aria-hidden="true" />
         </button>
       </header>
 

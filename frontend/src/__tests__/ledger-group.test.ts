@@ -20,10 +20,16 @@ function entry(overrides: Partial<LedgerEntry> & { occurred_at: string }): Ledge
     id: Math.random().toString(36).slice(2),
     type: 'expense',
     amount_cents: 1000,
-    category: '餐饮',
+    category_id: 1,
+    category_name: '餐饮',
+    root_category_name: '餐饮',
+    account_id: 'acc-1',
+    account_name: '现金',
+    to_account_id: null,
+    to_account_name: null,
     note: '',
-    batch_id: 'b',
     created_at: overrides.occurred_at,
+    updated_at: overrides.occurred_at,
     ...overrides,
   }
 }

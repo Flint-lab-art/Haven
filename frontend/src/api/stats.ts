@@ -5,7 +5,6 @@ import { request } from './client'
 export interface StatsTotals {
   notes: number
   words: number
-  public_notes: number
 }
 
 /** 本周动态。 */
@@ -25,7 +24,6 @@ export interface RecentNote {
   id: string
   title: string
   updated_at: string
-  visibility: string
 }
 
 /** 一个文件夹及其笔记数。 */

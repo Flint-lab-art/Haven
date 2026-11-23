@@ -67,7 +67,6 @@ describe('命令别名匹配', () => {
     { key: 'workbench', alias: 'w', label: '打开工作台' },
     { key: 'tags', alias: 't', label: '打开标签' },
     { key: 'trash', alias: 'g', label: '打开回收站' },
-    { key: 'portfolio', alias: 'p', label: '打开作品集' },
     { key: 'settings', alias: ',', label: '打开设置' },
   ]
 
@@ -83,7 +82,6 @@ describe('命令别名匹配', () => {
     expect(filter('w')[0].key).toBe('workbench')
     expect(filter('t')[0].key).toBe('tags')
     expect(filter('g')[0].key).toBe('trash')
-    expect(filter('p')[0].key).toBe('portfolio')
     expect(filter(',')[0].key).toBe('settings')
   })
 
@@ -93,7 +91,7 @@ describe('命令别名匹配', () => {
   })
 
   it('英文 key 前缀也能匹配', () => {
-    expect(filter('port').map((c) => c.key)).toContain('portfolio')
+    expect(filter('set').map((c) => c.key)).toEqual(['settings'])
   })
 
   it('空输入返回全部命令', () => {

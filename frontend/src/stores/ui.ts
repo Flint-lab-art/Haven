@@ -36,16 +36,12 @@ export const useUiStore = defineStore('ui', () => {
   const tagsVersion = ref(0)
   /** 文件夹增删改后 +1。 */
   const foldersVersion = ref(0)
-  /** 作品集增删改后 +1。 */
-  const portfolioVersion = ref(0)
   /** 回收站增删改后 +1（docs/v2/frontend/frontend.md 第三节）。 */
   const trashVersion = ref(0)
   /** 最近一次在目录树里移动的笔记；编辑器据此同步 folder_id。 */
   const lastNoteMove = ref<{ id: string; folderId: string | null; seq: number } | null>(null)
 
   const selectedTagId = ref<string | null>(null)
-  const selectedPortfolioId = ref<string | null>(null)
-  const portfolioCreating = ref(false)
   /** 回收站里选中的笔记。 */
   const selectedTrashId = ref<string | null>(null)
 
@@ -70,10 +66,6 @@ export const useUiStore = defineStore('ui', () => {
     }
   }
 
-  function portfolioChanged(): void {
-    portfolioVersion.value += 1
-  }
-
   function trashChanged(): void {
     trashVersion.value += 1
   }
@@ -86,25 +78,12 @@ export const useUiStore = defineStore('ui', () => {
     selectedTagId.value = id
   }
 
-  function selectPortfolio(id: string | null): void {
-    selectedPortfolioId.value = id
-    portfolioCreating.value = false
-  }
-
-  function startPortfolioCreate(): void {
-    selectedPortfolioId.value = null
-    portfolioCreating.value = true
-  }
-
   function toggleSidebar(): void {
     sidebarMini.value = !sidebarMini.value
     writeSidebarMini(sidebarMini.value)
   }
 
-  /**
-   * 编辑器注册的「立即保存」回调。
-   * 目录树里点公开/撤回时先把当前笔记的草稿落库，避免公开旧内容。
-   */
+  /** 编辑器注册的「立即保存」回调，离开前先落库未保存的草稿。 */
   let noteFlush: (() => Promise<boolean>) | null = null
 
   function registerNoteFlush(fn: (() => Promise<boolean>) | null): void {
@@ -120,23 +99,17 @@ export const useUiStore = defineStore('ui', () => {
     notesVersion,
     tagsVersion,
     foldersVersion,
-    portfolioVersion,
     lastNoteMove,
     selectedTagId,
-    selectedPortfolioId,
-    portfolioCreating,
     notesChanged,
     tagsChanged,
     foldersChanged,
     noteMoved,
-    portfolioChanged,
     trashVersion,
     selectedTrashId,
     trashChanged,
     selectTrash,
     selectTag,
-    selectPortfolio,
-    startPortfolioCreate,
     toggleSidebar,
     registerNoteFlush,
     flushNote,

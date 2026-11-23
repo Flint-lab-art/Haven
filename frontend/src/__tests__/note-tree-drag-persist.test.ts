@@ -21,8 +21,6 @@ vi.mock('@/api/folders', () => ({
 vi.mock('@/api/notes', () => ({
   listNotes: vi.fn(),
   deleteNote: vi.fn(),
-  publishNote: vi.fn(),
-  unpublishNote: vi.fn(),
   updateNote: vi.fn(),
 }))
 vi.mock('@/api/uploads', () => ({
@@ -74,8 +72,6 @@ function note(seed: NoteSeed) {
     folder_id: seed.folder_id,
     sort_order: seed.sort_order,
     content_preview: '',
-    visibility: 'private' as const,
-    published_at: null,
     created_at: '',
     updated_at: '',
     tags: [],

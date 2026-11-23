@@ -20,10 +20,14 @@
 | `ClockConfig` | `config/` | 提供 `Clock` bean，业务时区可配 |
 | `WebConfig` | `config/` | SPA 路由回退，保留 Spring 的路径校验 |
 | `MybatisPlusConfig` | `config/` | 分页插件、`uuid` TypeHandler 注册 |
-| `SaTokenConfigure` | `auth/config/` | 注册 `AuthInterceptor`，排除公开路径 |
+| `SaTokenConfigure` | `auth/config/` | 注册 `AuthInterceptor`，排除匿名路径（目前只放行 `/api/health`、登录两步与 `/api/app-config`） |
 | `AuthInterceptor` | `auth/interceptor/` | 双通道认证 + 权限校验 |
 | `GlobalExceptionHandler` | `exception/` | 统一错误契约 |
-| `AuditRecorder` | `audit/` | 审计事件写入（尽力而为） |
+| `AuditRecorder` | `audit/` | 非登录类审计事件写入（尽力而为） |
+| `LoginLogRecorder` | `auth/service/` | 登录日志写入（`REQUIRES_NEW` 独立事务） |
+
+**匿名排除列表只有 `/api/app-config`（外加健康检查与登录两步）**，没有任何 `/api/public/**`
+式的开放面。新增匿名端点要显式加进去，并且想清楚是否需要限流。
 
 ### WebConfig 的 SPA 回退
 
@@ -112,6 +116,9 @@ int off = Math.max(offset, 0);
 
 新增代码优先用 `Page<T>` 或 Mapper 参数化分页。
 
+登录日志是个例外：`LoginLogServiceImpl` 用 `Math.clamp(limit, 1, 200)`，因为设置页一次拉 50 条，
+通用上限 100 会把分页做得很难看。
+
 ## 5. 并发与幂等
 
 | 场景 | 现状 | 备注 |
@@ -153,7 +160,6 @@ private UUID userId;
 | --- | --- |
 | `SPRING_PROFILES_ACTIVE` | `dev` / `prod` |
 | `DB_URL` / `DB_USERNAME` / `DB_PASSWORD` | 数据源 |
-| `HAVEN_PRIVATE_HOSTS` | 私有域域名，逗号分隔 |
 | `HAVEN_UPLOAD_DIR` | 上传目录 |
 | `HAVEN_TOTP_ISSUER` | 动态码发行方 |
 | `HAVEN_TIME_ZONE` | 业务时区 |
@@ -167,5 +173,6 @@ private UUID userId;
 2. `BackendApplication` 的 `@MapperScan` 加 `com.haven.backend.bookmark.mapper`
 3. 迁移脚本 `V<n>__bookmark.sql`
 4. 前端 `api/bookmark.ts` + 路由 + 页面
-5. 需要的话在 `SaTokenConfigure` 的排除列表加公开路径
+5. 需要的话在 `SaTokenConfigure` 的排除列表加匿名路径（默认什么都不加）
 6. 文档：`docs/` 补一节，`backend/README.md` 的 API 表补行
+7. 新表加进 `frontend/e2e/start-server.mjs` 的 `E2E_TABLES` 与 `fixtures.ts` 的清理 SQL

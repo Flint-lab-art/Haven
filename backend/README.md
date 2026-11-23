@@ -32,13 +32,14 @@ src/main/java/com/haven/backend/
 ├── BackendApplication.java       # 启动类，@MapperScan 注册各领域 mapper
 ├── audit/                        # 审计事件（AuditRecorder + 事件枚举）
 ├── auth/
-│   ├── config/                   # AuthInterceptor 注册
-│   ├── controller/               # 登录、TOTP、会话、授信设备、API Token
-│   ├── dto/                      # AuthDtos + 各请求 record
-│   ├── entity/                   # Users、Tokens、SaToken、PendingTotp、TrustedDevices、AuditEvents
+│   ├── LoginLogEventType.java    # 登录日志事件枚举
+│   ├── config/                   # AuthInterceptor 注册 + 匿名路径放行
+│   ├── controller/               # 登录、TOTP、会话、授信设备、API Token、登录日志
+│   ├── dto/                      # AuthDtos / LoginLogDtos + 各请求 record
+│   ├── entity/                   # Users、Tokens、SaToken、PendingTotp、TrustedDevices、AuditEvents、LoginLogs
 │   ├── interceptor/              # AuthInterceptor + RequiredAccess + @RequireAccess
 │   ├── mapper/
-│   ├── service/ + impl/          # AuthService、AuthSessionOpener、LoginAttemptLimiter 等
+│   ├── service/ + impl/          # AuthService、AuthSessionOpener、LoginAttemptLimiter、LoginLogRecorder 等
 │   └── util/                     # ApiTokenUtil、TotpUtil
 ├── config/                       # ClockConfig、WebConfig、MybatisPlusConfig
 ├── dto/                          # ApiError、PageResponse
@@ -53,12 +54,11 @@ src/main/java/com/haven/backend/
 ├── note/
 │   ├── controller/               # 笔记、版本、文件夹、标签、搜索、上传
 │   ├── dto/                      # NoteDtos、FolderDtos、各请求 record
-│   ├── entity/                   # Notes、NoteVersions、Folders、Tags、NoteTags、NoteVisibility
+│   ├── entity/                   # Notes、NoteVersions、Folders、Tags、NoteTags
 │   ├── mapper/
 │   └── service/ + impl/
-├── portfolio/                    # controller / dto / entity / mapper / service
 ├── stats/                        # controller / dto / service（只读聚合）
-├── system/                       # 健康检查、运行时前端配置
+├── system/                       # 健康检查、运行时前端配置（只返回版本号）
 └── typehandler/                  # UuidTypeHandler、UuidListTypeHandler
 ```
 
@@ -108,7 +108,7 @@ cd backend
 ./mvnw spring-boot:run
 ```
 
-默认监听 `8080`，首次启动 Flyway 会执行 V1–V10 全部迁移。
+默认监听 `8080`，首次启动 Flyway 会执行 V1–V15 全部迁移。
 
 ```bash
 curl http://127.0.0.1:8080/api/health
@@ -140,7 +140,6 @@ VALUES ('admin', '$2a$12$...');
 | --- | --- | --- |
 | `spring.datasource.url/username/password` | `${DB_URL:...}` / `${DB_USERNAME:dev}` / `${DB_PASSWORD:123456}` | dev 有默认值，prod 无默认值（缺失即启动失败） |
 | `spring.servlet.multipart.max-file-size` | `10MB` | 单文件上限 |
-| `haven.private-hosts` | `${HAVEN_PRIVATE_HOSTS:localhost}` | 私有域域名，逗号分隔，由 `/api/app-config` 下发 |
 | `haven.totp.issuer` | `Haven` | 动态码发行方 |
 | `haven.upload-dir` | `uploads` | 上传根目录 |
 | `haven.time-zone` | 空（取 JVM 时区） | 业务时区，影响热力图日界与月度汇总 |
@@ -161,7 +160,6 @@ VALUES ('admin', '$2a$12$...');
 | --- | --- |
 | `SPRING_PROFILES_ACTIVE` | `dev` / `prod` |
 | `DB_URL` / `DB_USERNAME` / `DB_PASSWORD` | 数据源 |
-| `HAVEN_PRIVATE_HOSTS` | 私有域，逗号分隔 |
 | `HAVEN_UPLOAD_DIR` | 上传目录 |
 | `HAVEN_TOTP_ISSUER` | 动态码发行方 |
 | `HAVEN_TIME_ZONE` | 业务时区（如 `Asia/Shanghai`） |
@@ -169,6 +167,8 @@ VALUES ('admin', '$2a$12$...');
 | `LOG_PATH` | prod 日志目录 |
 
 > Sa-Token 配置放在 `application.yaml`（不在 dev 里），切换 profile 不会丢。
+
+> 没有域名相关配置：一张路由表、一份构建产物，部署在什么域名由反向代理决定。
 
 ## 认证与安全
 
@@ -204,6 +204,9 @@ Controller 用 `AuthInterceptor.requireUserId(request)` 读取。
 3. 启用 TOTP 且设备未授信 → 写 `pending_totp`（5 分钟），返回 `totpRequired: true` + `tempToken`
 4. `POST /api/auth/login/totp` 校验动态码，通过后建会话
 5. 勾选信任设备 → 写 30 天 HttpOnly Cookie
+6. `POST /api/auth/logout` 写登出日志后注销会话
+
+登录成功 / 失败 / 动态码失败 / 登出都写 `login_logs`（`LoginLogRecorder` 用 `REQUIRES_NEW`，登录失败抛 401 也不会把日志一起回滚）；这些不进 `audit_events`，后者只留非登录安全事件。
 
 ### 改密的影响面
 
@@ -220,10 +223,11 @@ Controller 用 `AuthInterceptor.requireUserId(request)` 读取。
 /api/auth/login
 /api/auth/login/totp
 /api/app-config
-/api/public/**
 /api/me          ← 在拦截器里按"可选认证"处理，无凭证返回 anonymous
 /uploads/**      ← 不在 /api 前缀下，由 UploadsStaticController 直接托管
 ```
+
+放行列表见 `auth/config/SaTokenConfigure.java`；新增匿名端点必须加进去，否则会被 `AuthInterceptor` 拦成 401。
 
 ## 数据库
 
@@ -241,6 +245,11 @@ Controller 用 `AuthInterceptor.requireUserId(request)` 读取。
 | V8 | 版本表加 `updated_at` / `window_started_at` |
 | V9 | `portfolio_items.is_public`（默认 false） |
 | V10 | 支出新增「还款」分类 |
+| V11 | 记账三表补指向 `users` 的外键 |
+| V12 | 支出新增「Token」分类 |
+| V13 | 支出新增「订阅」分类 |
+| V14 | **删除公开站点与作品集**：`DROP TABLE portfolio_repos / portfolio_items`，`notes` 删 `visibility` / `published_at`，删 `idx_notes_public` |
+| V15 | `login_logs`（登录审计） |
 
 已执行的迁移**不再修改**，修正一律新增版本。
 
@@ -253,10 +262,10 @@ Controller 用 `AuthInterceptor.requireUserId(request)` 读取。
 | `tokens` | API Token（只存 SHA-256 + 展示前缀） |
 | `trusted_devices` | 授信设备（只存哈希，30 天） |
 | `sa_token` | Sa-Token 的表结构；**当前未启用 JDBC 存储，实际会话在内存** |
-| `audit_events` | 安全审计（已接入 12 类事件） |
+| `audit_events` | 安全审计（已接入 8 类事件：TOTP、改密、会话、授信设备、Token） |
+| `login_logs` | 登录审计：成功 / 失败 / 动态码失败 / 登出，含用户名快照、IP、UA、失败原因 |
 | `folders` / `notes` / `tags` / `note_tags` | 笔记、目录、标签 |
 | `note_versions` | 版本快照（含合并窗口锚点） |
-| `portfolio_items` / `portfolio_repos` | 作品集与链接 |
 | `issues` / `issue_status_events` | Issue 与状态事件 |
 | `ledger_batches` / `ledger_entries` / `ledger_aliases` | 记账 |
 
@@ -272,8 +281,9 @@ Controller 用 `AuthInterceptor.requireUserId(request)` 读取。
 | --- | --- | --- |
 | POST | `/api/auth/login` | 匿名 |
 | POST | `/api/auth/login/totp` | 匿名 |
-| POST | `/api/auth/logout` | 登录 |
+| POST | `/api/auth/logout` | 登录（同时写 `logout` 登录日志） |
 | GET | `/api/me` | 匿名可用 |
+| GET | `/api/auth/login-logs` | SESSION，`limit`（默认 20）/ `offset` |
 | POST | `/api/auth/totp/setup` | SESSION |
 | POST | `/api/auth/totp/verify` | SESSION |
 | POST | `/api/auth/totp/disable` | SESSION |
@@ -295,7 +305,7 @@ Controller 用 `AuthInterceptor.requireUserId(request)` 读取。
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/notes` | 列表，`visibility` / `tagId` / `folderId` / `includeTrash` / `limit` / `offset` |
+| GET | `/api/notes` | 列表，`tagId` / `folderId` / `includeTrash` / `limit` / `offset` |
 | GET | `/api/notes/trash` | 回收站 |
 | GET | `/api/notes/{id}` | 详情 |
 | POST | `/api/notes` | 新建 |
@@ -304,8 +314,6 @@ Controller 用 `AuthInterceptor.requireUserId(request)` 读取。
 | DELETE | `/api/notes/trash` | 清空回收站 |
 | POST | `/api/notes/{id}/restore` | 还原 |
 | DELETE | `/api/notes/{id}/purge` | 永久删除 |
-| POST | `/api/notes/{id}/publish` | 发布 |
-| POST | `/api/notes/{id}/unpublish` | 撤回 |
 | GET | `/api/notes/{id}/versions` | 版本列表 |
 | GET | `/api/notes/{id}/versions/{versionId}` | 版本详情 |
 | POST | `/api/notes/{id}/versions/{versionId}/restore` | 还原版本 |
@@ -323,18 +331,11 @@ Controller 用 `AuthInterceptor.requireUserId(request)` 读取。
 | DELETE | `/api/tags/{id}` | 删除 |
 | GET | `/api/tags/{id}/notes` | 标签下的笔记 |
 
-### 搜索 / 作品集 / Issue / 统计
+### 搜索 / Issue / 统计
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/search` | 私有搜索，`q` / `type` / 分页 |
-| GET | `/api/portfolio/{id}` | 作品详情 |
-| POST | `/api/portfolio` | 新建作品 |
-| PATCH | `/api/portfolio/{id}` | 更新作品 |
-| DELETE | `/api/portfolio/{id}` | 删除作品 |
-| POST | `/api/portfolio/{id}/repos` | 添加链接 |
-| PATCH | `/api/portfolio/{id}/repos/{repoId}` | 更新链接 |
-| DELETE | `/api/portfolio/{id}/repos/{repoId}` | 删除链接 |
+| GET | `/api/search` | 搜索，`q` / `type` / 分页 |
 | GET | `/api/issues` | Issue 列表，可按 `status` |
 | GET | `/api/issues/{id}` | 详情（`{ issue, status_events }`） |
 | POST | `/api/issues` | 新建 |
@@ -395,17 +396,12 @@ Controller 用 `AuthInterceptor.requireUserId(request)` 读取。
 
 一行都没解析出来时返回 `200`、`created: false`、`total: 0`，原因在 `errors` 里，不写空批次。
 
-### 公开接口
+### 运维 / 元信息
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/public/notes` | 已发布笔记列表 |
-| GET | `/api/public/notes/{id}` | 已发布笔记详情 |
-| GET | `/api/public/search` | 公开搜索 |
-| GET | `/api/public/portfolio` | **仅 `is_public=true`** 的作品 |
-| GET | `/api/public/portfolio/{id}` | 公开作品详情（未公开返回 404） |
-| GET | `/api/app-config` | 运行时配置 `{ version, private_hosts }` |
-| GET | `/api/health` | 健康检查 |
+| GET | `/api/health` | 健康检查（匿名） |
+| GET | `/api/app-config` | 匿名，只返回 `{ version }`（占位，用于探活与排查前端产物版本） |
 
 ### 上传
 
@@ -438,7 +434,7 @@ Controller 用 `AuthInterceptor.requireUserId(request)` 读取。
 
 ```bash
 ./scripts/build.sh all           # 前端 → static → 打包 jar
-java -jar backend/target/haven-2.1.0.jar
+java -jar backend/target/haven-2.4.0.jar
 ```
 
 也可以单独执行：
@@ -484,7 +480,7 @@ prod 下日志同时写控制台和 `${LOG_PATH}`（默认 `./logs`）：`<app>.
 ./mvnw test
 ```
 
-**不读写开发库的业务表**。默认在同一 PostgreSQL 实例建临时 schema（`haven_test_<随机>`），
+**不读写开发库的业务表**。默认在同一 PostgreSQL 实例重建独立测试库（`haven_test_db`，账号需 `CREATEDB`），
 JVM 退出时自动 `DROP`；也可用 `-Dhaven.test.mode=container` 走 Testcontainers。
 
 可用 `TEST_DB_URL` / `TEST_DB_USERNAME` / `TEST_DB_PASSWORD` 指定实例。详见

@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, effectScope, ref } from 'vue'
-import type { LedgerCategory } from '@/api/ledger'
 import { isValidMonth, useLedgerData } from '@/composables/useLedgerData'
 
 /**
@@ -10,16 +9,17 @@ import { isValidMonth, useLedgerData } from '@/composables/useLedgerData'
  * 会把上一个月的明细盖到当前月份上。
  */
 vi.mock('@/api/ledger', () => ({
-  getLedgerSummary: vi.fn(),
-  listLedgerEntries: vi.fn(),
+  getSummary: vi.fn(),
+  listEntries: vi.fn(),
 }))
 
-const { getLedgerSummary, listLedgerEntries } = await import('@/api/ledger')
+const { getSummary, listEntries } = await import('@/api/ledger')
 
 function setup() {
   const month = ref('2026-01')
-  const typeFilter = ref<'' | 'expense' | 'income'>('')
-  const categoryFilter = ref<LedgerCategory | ''>('')
+  const typeFilter = ref<'' | 'expense' | 'income' | 'transfer'>('')
+  const categoryId = ref<number | null>(null)
+  const accountId = ref<string | null>(null)
   const error = ref('')
 
   const scope = effectScope()
@@ -30,7 +30,8 @@ function setup() {
       api = useLedgerData({
         month,
         typeFilter,
-        categoryFilter,
+        categoryId,
+        accountId,
         error,
         messageOf: (_err, fallback) => fallback,
       })
@@ -39,7 +40,7 @@ function setup() {
   })
   scope.run(() => app.mount(document.createElement('div')))
 
-  return { api, month, typeFilter, categoryFilter, error, scope }
+  return { api, month, typeFilter, categoryId, accountId, error, scope }
 }
 
 describe('isValidMonth', () => {
@@ -67,14 +68,14 @@ describe('useLedgerData', () => {
 
     await api.reload()
 
-    expect(getLedgerSummary).not.toHaveBeenCalled()
-    expect(listLedgerEntries).not.toHaveBeenCalled()
+    expect(getSummary).not.toHaveBeenCalled()
+    expect(listEntries).not.toHaveBeenCalled()
   })
 
   it('加载汇总与明细', async () => {
     const { api } = setup()
-    vi.mocked(getLedgerSummary).mockResolvedValue({ month: '2026-01' } as never)
-    vi.mocked(listLedgerEntries).mockResolvedValue({ items: [{ id: 'e1' }], total: 1 } as never)
+    vi.mocked(getSummary).mockResolvedValue({ month: '2026-01' } as never)
+    vi.mocked(listEntries).mockResolvedValue({ items: [{ id: 'e1' }], total: 1 } as never)
 
     await api.reload()
 
@@ -84,45 +85,64 @@ describe('useLedgerData', () => {
   })
 
   it('分类筛选会带进查询条件', async () => {
-    const { api, categoryFilter } = setup()
-    vi.mocked(getLedgerSummary).mockResolvedValue({} as never)
-    vi.mocked(listLedgerEntries).mockResolvedValue({ items: [], total: 0 } as never)
+    const { api, categoryId } = setup()
+    vi.mocked(getSummary).mockResolvedValue({} as never)
+    vi.mocked(listEntries).mockResolvedValue({ items: [], total: 0 } as never)
 
-    categoryFilter.value = '餐饮'
+    categoryId.value = 102
     await api.reload()
 
-    const query = vi.mocked(listLedgerEntries).mock.calls[0][0] as Record<string, unknown>
-    expect(query.category).toBe('餐饮')
+    const query = vi.mocked(listEntries).mock.calls[0][0] as Record<string, unknown>
+    expect(query.category_id).toBe(102)
   })
 
-  it('收支方向也会带进查询条件', async () => {
-    const { api, typeFilter } = setup()
-    vi.mocked(getLedgerSummary).mockResolvedValue({} as never)
-    vi.mocked(listLedgerEntries).mockResolvedValue({ items: [], total: 0 } as never)
+  it('收支方向与账户也会带进查询条件', async () => {
+    const { api, typeFilter, accountId } = setup()
+    vi.mocked(getSummary).mockResolvedValue({} as never)
+    vi.mocked(listEntries).mockResolvedValue({ items: [], total: 0 } as never)
 
     typeFilter.value = 'income'
+    accountId.value = 'acc-1'
     await api.reload()
 
-    const query = vi.mocked(listLedgerEntries).mock.calls[0][0] as Record<string, unknown>
+    const query = vi.mocked(listEntries).mock.calls[0][0] as Record<string, unknown>
     expect(query.type).toBe('income')
-    // 不限方向时不该带 type，否则后端会按空串过滤
-    expect(query.category).toBeUndefined()
+    expect(query.account_id).toBe('acc-1')
+    // 不限分类时不该带 category_id，否则后端会按空值过滤
+    expect(query.category_id).toBeUndefined()
+  })
+
+  it('按月份带上下界', async () => {
+    const { api, month } = setup()
+    month.value = '2026-03'
+    vi.mocked(getSummary).mockResolvedValue({} as never)
+    vi.mocked(listEntries).mockResolvedValue({ items: [], total: 0 } as never)
+
+    await api.reload()
+
+    const query = vi.mocked(listEntries).mock.calls[0][0] as Record<string, unknown>
+    const from = new Date(query.from as string)
+    const to = new Date(query.to as string)
+    expect(from.getMonth()).toBe(2) // 3 月
+    expect(from.getDate()).toBe(1)
+    expect(to.getMonth()).toBe(3) // 下个月 1 号
+    expect(to.getDate()).toBe(1)
   })
 
   it('快速切月份时丢弃过期响应', async () => {
     const { api, month } = setup()
-    vi.mocked(getLedgerSummary).mockResolvedValue({} as never)
+    vi.mocked(getSummary).mockResolvedValue({} as never)
 
     // 第一次请求（1 月）挂起
     let resolveJan!: (v: unknown) => void
-    vi.mocked(listLedgerEntries).mockImplementationOnce(
+    vi.mocked(listEntries).mockImplementationOnce(
       () => new Promise((resolve) => (resolveJan = resolve as (v: unknown) => void)),
     ) as never
     const janPromise = api.loadEntries()
 
     // 切到 2 月并立即完成
     month.value = '2026-02'
-    vi.mocked(listLedgerEntries).mockResolvedValueOnce({
+    vi.mocked(listEntries).mockResolvedValueOnce({
       items: [{ id: 'feb' }],
       total: 1,
     } as never)
@@ -138,17 +158,23 @@ describe('useLedgerData', () => {
     expect(api.total.value).toBe(1)
   })
 
-  it('applyEntry 就地替换一条明细', async () => {
+  it('applyEntry 就地替换、removeEntry 就地移除', async () => {
     const { api } = setup()
-    vi.mocked(getLedgerSummary).mockResolvedValue({} as never)
-    vi.mocked(listLedgerEntries).mockResolvedValue({
-      items: [{ id: 'e1', category: '餐饮' }],
-      total: 1,
+    vi.mocked(getSummary).mockResolvedValue({} as never)
+    vi.mocked(listEntries).mockResolvedValue({
+      items: [
+        { id: 'e1', category_name: '午餐' },
+        { id: 'e2', category_name: '打车' },
+      ],
+      total: 2,
     } as never)
     await api.reload()
 
-    api.applyEntry({ id: 'e1', category: '购物' } as never)
+    api.applyEntry({ id: 'e1', category_name: '晚餐' } as never)
+    expect(api.entries.value[0]).toMatchObject({ category_name: '晚餐' })
 
-    expect(api.entries.value[0]).toMatchObject({ category: '购物' })
+    api.removeEntry('e1')
+    expect(api.entries.value.map((e) => e.id)).toEqual(['e2'])
+    expect(api.total.value).toBe(1)
   })
 })

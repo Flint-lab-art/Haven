@@ -8,8 +8,6 @@ export interface SearchNoteHit {
   sort_order: number
   title: string
   content_preview: string
-  visibility?: 'private' | 'public'
-  published_at: string | null
   created_at: string
   updated_at: string
   tags: { id: string; name: string }[]

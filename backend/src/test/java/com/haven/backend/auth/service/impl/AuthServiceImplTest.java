@@ -14,6 +14,7 @@ import com.haven.backend.auth.mapper.PendingTotpMapper;
 import com.haven.backend.auth.mapper.UsersMapper;
 import com.haven.backend.auth.service.ApiTokenService;
 import com.haven.backend.auth.service.LoginAttemptLimiter;
+import com.haven.backend.auth.service.LoginLogRecorder;
 import com.haven.backend.auth.service.TrustedDeviceService;
 import com.haven.backend.exception.BizException;
 import java.time.Clock;
@@ -54,6 +55,9 @@ class AuthServiceImplTest {
     private com.haven.backend.audit.AuditRecorder auditRecorder;
 
     @Mock
+    private LoginLogRecorder loginLogRecorder;
+
+    @Mock
     private LoginAttemptLimiter attemptLimiter;
 
     private AuthServiceImpl authService;
@@ -67,7 +71,8 @@ class AuthServiceImplTest {
                 apiTokenService,
                 attemptLimiter,
                 FIXED_CLOCK,
-                auditRecorder);
+                auditRecorder,
+                loginLogRecorder);
         ReflectionTestUtils.setField(authService, "totpIssuer", "Haven");
         when(attemptLimiter.totpMaxAttempts()).thenReturn(5);
     }

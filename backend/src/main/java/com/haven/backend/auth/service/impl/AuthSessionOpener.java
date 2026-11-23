@@ -2,14 +2,13 @@ package com.haven.backend.auth.service.impl;
 
 import cn.dev33.satoken.stp.StpUtil;
 import cn.dev33.satoken.stp.parameter.SaLoginParameter;
-import com.haven.backend.audit.AuditEventType;
-import com.haven.backend.audit.AuditRecorder;
-import com.haven.backend.audit.AuditTargetType;
+import com.haven.backend.auth.LoginLogEventType;
 import com.haven.backend.auth.dto.LoginOutcome;
 import com.haven.backend.auth.dto.LoginRequest;
 import com.haven.backend.auth.dto.LoginTotpRequest;
 import com.haven.backend.auth.dto.PasswordChangeRequest;
 import com.haven.backend.auth.interceptor.AuthInterceptor;
+import com.haven.backend.auth.service.LoginLogRecorder;
 import com.haven.backend.auth.util.ApiTokenUtil;
 import java.time.Clock;
 import java.time.OffsetDateTime;
@@ -32,7 +31,7 @@ public class AuthSessionOpener {
 
     private final AuthServiceImpl authService;
     private final Clock clock;
-    private final AuditRecorder auditRecorder;
+    private final LoginLogRecorder loginLogRecorder;
 
     /** 登录第一步：校验密码，按需写入待验证 TOTP 记录并建立会话。 */
     public LoginOutcome login(LoginRequest req, String ip, String ua, String trustedDeviceToken) {
@@ -50,20 +49,22 @@ public class AuthSessionOpener {
         }
 
         openSession(precheck.userId(), ua, true);
-        auditRecorder.record(
+        loginLogRecorder.record(
+                LoginLogEventType.LOGIN_SUCCESS,
                 UUID.fromString(precheck.userId()),
                 precheck.body().user().username(),
-                AuditEventType.LOGIN_SUCCESS,
-                AuditTargetType.USER,
-                UUID.fromString(precheck.userId()),
+                "password",
+                true,
+                null,
                 ip,
-                ua);
+                ua,
+                sessionHash());
         return new LoginOutcome(precheck.body(), null);
     }
 
     /** 登录第二步：校验动态码，作废临时记录并建立会话。 */
     public LoginOutcome loginTotp(LoginTotpRequest req, String ip, String ua) {
-        AuthServiceImpl.TotpPrecheck precheck = authService.totpPrecheck(req);
+        AuthServiceImpl.TotpPrecheck precheck = authService.totpPrecheck(req, ip, ua);
         authService.consumePendingTotp(precheck.pendingId());
 
         String effectiveUa = ua != null && !ua.isBlank() ? ua : precheck.userAgent();
@@ -71,14 +72,16 @@ public class AuthSessionOpener {
 
         String rawDeviceToken =
                 precheck.trustDevice() ? authService.createTrustedDevice(precheck.userId(), effectiveUa) : null;
-        auditRecorder.record(
+        loginLogRecorder.record(
+                LoginLogEventType.LOGIN_SUCCESS,
                 UUID.fromString(precheck.userId()),
                 precheck.body().user().username(),
-                AuditEventType.LOGIN_SUCCESS,
-                AuditTargetType.USER,
-                UUID.fromString(precheck.userId()),
+                "totp",
+                true,
+                null,
                 ip,
-                effectiveUa);
+                effectiveUa,
+                sessionHash());
         return new LoginOutcome(precheck.body(), rawDeviceToken);
     }
 
@@ -98,5 +101,11 @@ public class AuthSessionOpener {
                 .setTerminalExtra(AuthInterceptor.EXTRA_USER_AGENT, userAgent != null ? userAgent : "")
                 .setTerminalExtra(AuthInterceptor.EXTRA_TOTP_VERIFIED, totpVerified);
         StpUtil.login(userId, parameter);
+    }
+
+    /** 当前会话 Token 的哈希；只用于登录日志关联，不落明文。 */
+    private static String sessionHash() {
+        String token = StpUtil.getTokenValue();
+        return token != null && !token.isBlank() ? ApiTokenUtil.hash(token) : null;
     }
 }

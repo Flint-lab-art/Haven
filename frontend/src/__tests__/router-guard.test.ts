@@ -2,11 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 
 /**
- * 私有域路由守卫（docs/frontend/frontend.md 第四节）：
+ * 路由守卫（docs/frontend/implementation.md 第四节）：
  * 除 /login 外全部需要登录，包括未知路径。
  *
- * jsdom 默认 hostname 是 localhost，正好被 detectDomain 判成私有域。
- * 路由表在模块加载时选定，所以每个用例先 resetModules 再动态 import。
+ * 现在只有一张路由表，登录守卫对所有页面一视同仁。
+ * 每个用例先 resetModules 再动态 import，避免共享同一份路由实例。
  */
 const auth = { initialized: true, isLoggedIn: false, refresh: vi.fn(async () => {}) }
 
@@ -30,7 +30,7 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-describe('私有域路由守卫', () => {
+describe('路由守卫', () => {
   it('未登录访问未知路径要先跳登录，而不是直接展示 404', async () => {
     const router = await loadRouter()
 

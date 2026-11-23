@@ -7,12 +7,12 @@
  * 数据由后端按天补零，这里只负责几何与悬停提示。
  */
 import { computed, ref, useId } from 'vue'
-import type { LedgerDailyPoint } from '@/api/ledger'
+import type { DailyPoint } from '@/api/ledger'
 import { formatYuan } from '@/utils/ledger'
 
 const props = withDefaults(
   defineProps<{
-    points: LedgerDailyPoint[]
+    points: DailyPoint[]
     /** 仪表盘用紧凑高度。 */
     compact?: boolean
   }>(),

@@ -2,9 +2,6 @@ package com.haven.backend.note.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
-import com.haven.backend.audit.AuditEventType;
-import com.haven.backend.audit.AuditRecorder;
-import com.haven.backend.audit.AuditTargetType;
 import com.haven.backend.exception.BizException;
 import com.haven.backend.note.dto.NoteDtos.NoteDetail;
 import com.haven.backend.note.dto.NoteDtos.NotePage;
@@ -12,16 +9,12 @@ import com.haven.backend.note.dto.NoteDtos.NoteSummary;
 import com.haven.backend.note.dto.NoteDtos.NoteVersionDetail;
 import com.haven.backend.note.dto.NoteDtos.NoteVersionPage;
 import com.haven.backend.note.dto.NoteDtos.NoteVersionSummary;
-import com.haven.backend.note.dto.NoteDtos.PublicNoteDetail;
-import com.haven.backend.note.dto.NoteDtos.PublicNotePage;
-import com.haven.backend.note.dto.NoteDtos.PublicNoteSummary;
 import com.haven.backend.note.dto.NoteDtos.TagBrief;
 import com.haven.backend.note.dto.NoteDtos.TrashNotePage;
 import com.haven.backend.note.dto.NoteDtos.TrashNoteSummary;
 import com.haven.backend.note.entity.Folders;
 import com.haven.backend.note.entity.NoteTags;
 import com.haven.backend.note.entity.NoteVersions;
-import com.haven.backend.note.entity.NoteVisibility;
 import com.haven.backend.note.entity.Notes;
 import com.haven.backend.note.entity.Tags;
 import com.haven.backend.note.mapper.FoldersMapper;
@@ -48,7 +41,6 @@ public class NotesServiceImpl implements NotesService {
 
     private final NotesMapper notesMapper;
     private final Clock clock;
-    private final AuditRecorder auditRecorder;
     private final NoteTagsMapper noteTagsMapper;
     private final TagsMapper tagsMapper;
     private final NoteVersionsMapper noteVersionsMapper;
@@ -60,13 +52,7 @@ public class NotesServiceImpl implements NotesService {
 
     @Override
     public NotePage listNotes(
-            String userId,
-            Integer limit,
-            Integer offset,
-            String visibility,
-            UUID tagId,
-            UUID folderId,
-            Boolean includeTrash) {
+            String userId, Integer limit, Integer offset, UUID tagId, UUID folderId, Boolean includeTrash) {
         UUID uid = UUID.fromString(userId);
         int lim = Math.clamp(limit != null ? limit : 20, 1, 100);
         int off = Math.max(offset != null ? offset : 0, 0);
@@ -74,9 +60,6 @@ public class NotesServiceImpl implements NotesService {
         var wrapper = new LambdaQueryWrapper<Notes>().eq(Notes::getUserId, uid);
         if (!Boolean.TRUE.equals(includeTrash)) {
             wrapper.isNull(Notes::getDeletedAt);
-        }
-        if (visibility != null && !visibility.isBlank()) {
-            wrapper.eq(Notes::getVisibility, visibility);
         }
         if (folderId != null) {
             wrapper.eq(Notes::getFolderId, folderId);
@@ -142,7 +125,6 @@ public class NotesServiceImpl implements NotesService {
         note.setUserId(uid);
         note.setTitle(title != null ? title : "");
         note.setContent(content != null ? content : "");
-        note.setVisibility(NoteVisibility.PRIVATE);
         note.setFolderId(folderId);
         note.setSortOrder(maxOrder + 1);
         note.setSearchText(buildSearchText(note.getTitle(), note.getContent()));
@@ -326,34 +308,6 @@ public class NotesServiceImpl implements NotesService {
     }
 
     @Override
-    @Transactional
-    public NoteDetail publishNote(String userId, UUID noteId) {
-        UUID uid = UUID.fromString(userId);
-        Notes note = getOwnedNote(uid, noteId);
-        note.setVisibility(NoteVisibility.PUBLIC);
-        if (note.getPublishedAt() == null) {
-            note.setPublishedAt(OffsetDateTime.now(clock));
-        }
-        note.setUpdatedAt(OffsetDateTime.now(clock));
-        notesMapper.updateById(note);
-        auditRecorder.record(uid, null, AuditEventType.NOTE_PUBLISHED, AuditTargetType.NOTE, note.getId(), null, null);
-        return buildNoteDetail(note, uid);
-    }
-
-    @Override
-    @Transactional
-    public NoteDetail unpublishNote(String userId, UUID noteId) {
-        UUID uid = UUID.fromString(userId);
-        Notes note = getOwnedNote(uid, noteId);
-        note.setVisibility(NoteVisibility.PRIVATE);
-        note.setUpdatedAt(OffsetDateTime.now(clock));
-        notesMapper.updateById(note);
-        auditRecorder.record(
-                uid, null, AuditEventType.NOTE_UNPUBLISHED, AuditTargetType.NOTE, note.getId(), null, null);
-        return buildNoteDetail(note, uid);
-    }
-
-    @Override
     public NoteVersionPage listVersions(String userId, UUID noteId, int limit, int offset) {
         UUID uid = UUID.fromString(userId);
         getOwnedNote(uid, noteId); // 确认归属
@@ -428,55 +382,6 @@ public class NotesServiceImpl implements NotesService {
         return buildNoteDetail(note, uid);
     }
 
-    @Override
-    public PublicNotePage listPublicNotes(int limit, int offset) {
-        int lim = Math.clamp(limit, 1, 100);
-        int off = Math.max(offset, 0);
-        // 先查总数（不带 ORDER BY）
-        var countWrapper = new LambdaQueryWrapper<Notes>()
-                .eq(Notes::getVisibility, NoteVisibility.PUBLIC)
-                .isNotNull(Notes::getPublishedAt)
-                .isNull(Notes::getDeletedAt);
-        long total = notesMapper.selectCount(countWrapper);
-        // 再查列表（带 ORDER BY 和分页）
-        var listWrapper = new LambdaQueryWrapper<Notes>()
-                .eq(Notes::getVisibility, NoteVisibility.PUBLIC)
-                .isNotNull(Notes::getPublishedAt)
-                .isNull(Notes::getDeletedAt)
-                .orderByDesc(Notes::getPublishedAt)
-                .last("LIMIT " + lim + " OFFSET " + off);
-        List<Notes> notes = notesMapper.selectList(listWrapper);
-        Map<UUID, List<TagBrief>> tagsByNote = loadTags(noteUserId(notes), notes);
-        List<PublicNoteSummary> items = notes.stream()
-                .map(n -> new PublicNoteSummary(
-                        n.getId(),
-                        n.getTitle(),
-                        preview(n.getContent()),
-                        n.getPublishedAt(),
-                        n.getUpdatedAt(),
-                        tagsByNote.getOrDefault(n.getId(), List.of())))
-                .collect(Collectors.toList());
-        return new PublicNotePage(items, total);
-    }
-
-    @Override
-    public PublicNoteDetail getPublicNote(UUID noteId) {
-        Notes note = notesMapper.selectById(noteId);
-        if (note == null
-                || note.getDeletedAt() != null
-                || !NoteVisibility.PUBLIC.equals(note.getVisibility())
-                || note.getPublishedAt() == null) {
-            throw BizException.notFound("笔记不存在或未公开");
-        }
-        return new PublicNoteDetail(
-                note.getId(),
-                note.getTitle(),
-                note.getContent(),
-                note.getPublishedAt(),
-                note.getUpdatedAt(),
-                loadTags(note.getUserId(), List.of(note)).getOrDefault(note.getId(), List.of()));
-    }
-
     // ---- 内部方法 ----
 
     private Notes getOwnedNote(UUID userId, UUID noteId) {
@@ -508,7 +413,6 @@ public class NotesServiceImpl implements NotesService {
     /**
      * 一次查询取回多条笔记的标签并分组，避免列表页逐条查关联（N+1）。
      *
-     * @param userId 为 null 时不按标签归属过滤（仅用于已确认的公开笔记）
      */
     private Map<UUID, List<TagBrief>> loadTags(UUID userId, List<Notes> notes) {
         if (notes.isEmpty()) {
@@ -520,16 +424,6 @@ public class NotesServiceImpl implements NotesService {
             result.computeIfAbsent(row.noteId(), k -> new ArrayList<>()).add(new TagBrief(row.tagId(), row.tagName()));
         }
         return result;
-    }
-
-    /**
-     * 公开接口跨作者查询，返回 null 表示不按标签归属过滤。
-     * <p>
-     * 公开列表里的笔记可能属于不同作者，取单条笔记 authors 会漏标签，
-     * 因此只按 note 批量过滤；标签本身已在可见性校验中确认属于公开笔记。
-     */
-    private static UUID noteUserId(List<Notes> notes) {
-        return null;
     }
 
     /**
@@ -630,8 +524,6 @@ public class NotesServiceImpl implements NotesService {
                 n.getSortOrder(),
                 n.getTitle(),
                 preview(n.getContent()),
-                n.getVisibility(),
-                n.getPublishedAt(),
                 n.getCreatedAt(),
                 n.getUpdatedAt(),
                 tags != null ? tags : List.of());
@@ -650,8 +542,6 @@ public class NotesServiceImpl implements NotesService {
                 n.getSortOrder(),
                 n.getTitle(),
                 n.getContent(),
-                n.getVisibility(),
-                n.getPublishedAt(),
                 n.getCreatedAt(),
                 n.getUpdatedAt(),
                 tags);

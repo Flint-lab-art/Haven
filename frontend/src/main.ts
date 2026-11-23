@@ -4,15 +4,11 @@ import { createPinia } from 'pinia'
 import 'highlight.js/styles/github-dark-dimmed.css'
 import './style.css'
 import App from './App.vue'
-import { loadRuntimeConfig } from './config'
 import { createHavenRouter } from './router'
 import { useAuthStore } from './stores/auth'
 import { useThemeStore } from './stores/theme'
 
-async function bootstrap(): Promise<void> {
-  // 先取运行时配置：同一份构建产物按域名决定加载公开路由还是私有路由
-  await loadRuntimeConfig()
-
+function bootstrap(): void {
   const pinia = createPinia()
   const router = createHavenRouter()
 
@@ -33,4 +29,4 @@ async function bootstrap(): Promise<void> {
   app.mount('#app')
 }
 
-void bootstrap()
+bootstrap()

@@ -10,7 +10,7 @@ import { RouterLink } from 'vue-router'
 import HeatmapChart from '@/components/HeatmapChart.vue'
 import LedgerDonutChart from '@/components/LedgerDonutChart.vue'
 import LedgerTrendChart from '@/components/LedgerTrendChart.vue'
-import { getLedgerTrend, type LedgerTrend } from '@/api/ledger'
+import { getSummary, getTrend, type LedgerSummary, type LedgerTrend } from '@/api/ledger'
 import { getStats, type StatsSnapshot } from '@/api/stats'
 import { listTags, type Tag } from '@/api/tags'
 import { formatRelative } from '@/utils/format'
@@ -22,6 +22,8 @@ const data = ref<StatsSnapshot | null>(null)
 const tags = ref<Tag[]>([])
 /** 记账：最近 7 天；单独加载失败不影响仪表盘其余区块。 */
 const ledger = ref<LedgerTrend | null>(null)
+/** 仪表盘圆环用当月分类拆分；趋势接口不含分类。 */
+const ledgerSummary = ref<LedgerSummary | null>(null)
 const loading = ref(true)
 const error = ref('')
 
@@ -30,21 +32,18 @@ const ledgerBalance = computed(
   () => (ledger.value?.total_income_cents ?? 0) - (ledger.value?.total_expense_cents ?? 0),
 )
 
-/** 圆环优先展示支出分类；只有收入时退回收入分类。 */
+/** 圆环优先展示本月支出分类；只有收入时退回收入分类。 */
 const ledgerDonut = computed(() => {
-  const trend = ledger.value
-  if (!trend) return { items: [], label: '支出' }
-  if (trend.category_ranking.length > 0) {
-    return { items: trend.category_ranking, label: '支出' }
+  const month = ledgerSummary.value
+  if (!month) return { items: [], label: '支出' }
+  if (month.expense_by_category.length > 0) {
+    return { items: month.expense_by_category, label: '支出' }
   }
-  return { items: trend.income_category_ranking, label: '收入' }
+  return { items: month.income_by_category, label: '收入' }
 })
 
 /** 统计字段：主数字用原值，其余用缩写。 */
-const totals = computed(() => ({
-  notes: data.value?.totals.notes ?? 0,
-  publicNotes: data.value?.totals.public_notes ?? 0,
-}))
+const totalNotes = computed(() => data.value?.totals.notes ?? 0)
 const totalWords = computed(() => formatWords(data.value?.totals.words ?? 0))
 const weekCreated = computed(() => data.value?.week.created ?? 0)
 
@@ -95,14 +94,16 @@ async function load(): Promise<void> {
   loading.value = true
   error.value = ''
   try {
-    const [statsResult, tagResult, ledgerResult] = await Promise.allSettled([
+    const [statsResult, tagResult, ledgerResult, summaryResult] = await Promise.allSettled([
       getStats(),
       listTags(),
-      getLedgerTrend(7),
+      getTrend(7),
+      getSummary(),
     ])
     if (statsResult.status === 'fulfilled') data.value = statsResult.value
     if (tagResult.status === 'fulfilled') tags.value = tagResult.value.items
     if (ledgerResult.status === 'fulfilled') ledger.value = ledgerResult.value
+    if (summaryResult.status === 'fulfilled') ledgerSummary.value = summaryResult.value
     if (statsResult.status === 'rejected') throw statsResult.reason
   } catch {
     error.value = '统计数据加载失败'
@@ -145,7 +146,7 @@ onMounted(() => void load())
           <div class="stat-cell stat-cell--hero">
             <span v-if="loading" class="skeleton skeleton--title" style="display: block; width: 60px; height: 36px; margin: 0 auto"></span>
             <template v-else>
-              <span class="stat-cell__value">{{ totals.notes }}</span>
+              <span class="stat-cell__value">{{ totalNotes }}</span>
               <span class="stat-cell__label">篇笔记</span>
             </template>
           </div>
@@ -159,17 +160,13 @@ onMounted(() => void load())
           </div>
 
           <div class="stat-cell">
-            <span v-if="loading" class="skeleton skeleton--title" style="display: block; width: 24px; height: 24px; margin: 0 auto"></span>
+            <span v-if="loading" class="skeleton skeleton--title" style="display: block; width: 44px; height: 24px; margin: 0 auto"></span>
             <template v-else>
-              <span class="stat-cell__value">{{ totals.publicNotes }}</span>
-              <span class="stat-cell__label">篇公开</span>
+              <span class="stat-cell__value">{{ weekCreated }}</span>
+              <span class="stat-cell__label">篇本周新建</span>
             </template>
           </div>
         </div>
-
-        <p v-if="!loading" class="stat-foot">
-          本周新建 <strong>{{ weekCreated }}</strong> 篇
-        </p>
       </section>
 
       <section class="home-panel">

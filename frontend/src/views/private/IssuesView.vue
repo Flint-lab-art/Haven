@@ -20,6 +20,8 @@ import {
   ISSUE_TYPE_LABEL,
   priorityTone,
 } from '@/utils/issues'
+import { Check } from 'lucide-vue-next'
+
 
 type StatusFilter = 'all' | IssueStatus
 
@@ -158,18 +160,7 @@ onMounted(() => void load())
             @click.stop="toggleDone(issue)"
             @keydown.stop
         >
-          <svg
-              v-if="issue.status === 'done'"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.4"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-          >
-            <path d="m5 12.5 4.2 4.2L19 7" />
-          </svg>
+          <Check v-if="issue.status === 'done'" aria-hidden="true" />
           <span
               v-else-if="issue.status === 'in_progress'"
               class="issue-status__dot"

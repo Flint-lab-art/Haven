@@ -50,14 +50,13 @@ entity/       POJO，与表一一对应
 
 | 包 | 职责 |
 | --- | --- |
-| `auth` | 登录、会话、TOTP、授信设备、API Token |
-| `audit` | 审计事件记录（横切） |
+| `auth` | 登录、会话、TOTP、授信设备、API Token、登录日志 |
+| `audit` | 非登录类审计事件记录（横切） |
 | `note` | 笔记、文件夹、标签、搜索、上传 |
 | `ledger` | 记账 |
 | `issue` | 需求 / Bug |
-| `portfolio` | 作品集 |
 | `stats` | 首页统计（只读聚合，跨领域） |
-| `system` | 健康检查、运行时前端配置 |
+| `system` | 健康检查、`/api/app-config` 占位 |
 | `exception` | 全局异常处理 |
 | `config` | Web、MyBatis、Clock 等基础设施配置 |
 | `dto` | 跨领域通用 DTO（`PageResponse`、`ApiError`） |
@@ -72,7 +71,7 @@ HTTP 请求
   │
   ├─ Servlet Filter
   │
-  ├─ AuthInterceptor.preHandle           ← /api/** 注册，排除公开路径
+  ├─ AuthInterceptor.preHandle           ← /api/** 注册，excludePathPatterns 放行匿名路径
   │    ├─ 通道 1：Authorization: Bearer <API Token>
   │    └─ 通道 2：Sa-Token 会话（Cookie）
   │    └─ RequiredAccess.require(...)    ← 按 @RequireAccess 或 HTTP 方法兜底
@@ -99,6 +98,18 @@ boolean session = AuthInterceptor.isSession(request);    // 浏览器会话 or T
 
 这样 Controller 对"凭证怎么来的"无感知，Token 与 Session 走同一条业务路径。
 
+### 匿名端点只有三个
+
+`SaTokenConfigure.excludePathPatterns` 当前只放行：
+
+| 路径 | 理由 |
+| --- | --- |
+| `/api/health` | 部署探活 |
+| `/api/auth/login`、`/api/auth/login/totp` | 登录本身 |
+| `/api/app-config` | 占位端点，只返回 `{ "version": "x.y.z" }`，方便排查前端产物版本 |
+
+除此之外 `/api/**` 全部需要认证。新增匿名端点要显式加进这份列表，否则会被拦成 401。
+
 ## 4. 前端结构
 
 ```text
@@ -106,23 +117,23 @@ src/
 ├── api/          # 每个后端领域一个文件，只做请求 + 类型
 ├── stores/       # Pinia：auth（登录态）、theme、ui（布局状态）
 ├── composables/  # 可复用逻辑（快捷键、代码复制）
-├── router/       # 公开域 / 私有域两套路由表
+├── router/       # 一张路由表（privateRoutes）+ 登录守卫
 ├── utils/        # 纯函数：格式化、Markdown、Diff、记账展示
-├── views/        # private/ 与 public/ 两组页面
+├── views/        # private/ 页面（含登录页）
 └── components/   # 跨页面组件
 ```
 
-### 公开域与私有域
+### 只有一个部署域名
 
-同一份构建产物服务两种站点，**启动时按域名决定用哪套路由**：
+Haven 只有**一份构建产物、一张路由表**。前端不做任何域名感知：`createHavenRouter()`
+不带参数，直接返回 `privateRoutes`，部署在哪个域名完全由反向代理决定。
 
-```text
-GET /api/app-config → { version, private_hosts: ["note.example.com"] }
-  ├─ 当前域名在列表里 → 私有域（登录、编辑、记账）
-  └─ 否则            → 公开域（只读笔记、作品集）
-```
+早期版本曾按 hostname 分出"公开域 / 私有域"两套路由，由 `/api/app-config` 下发
+`private_hosts` 决定加载哪一套；那套逻辑已经整体删除。现在只有登录页（`/login`，`meta.public`）
+不要求登录，其余路由全部走登录守卫。
 
-这样不用打两份包，也不用维护两套部署。
+`GET /api/app-config` 保留下来只是一个返回版本号的占位端点，**不含任何域名或环境变量**。
+设置页显示的版本号来自构建期注入的 `__APP_VERSION__`，不依赖这个接口。
 
 ### 请求体命名
 

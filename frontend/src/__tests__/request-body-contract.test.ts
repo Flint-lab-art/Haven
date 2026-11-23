@@ -53,7 +53,7 @@ describe('请求体契约', () => {
     })
   })
 
-  it('多词字段用下划线表达（temp_token / clear_folder / is_public）', async () => {
+  it('多词字段用下划线表达（temp_token / clear_folder / sort_order）', async () => {
     await request('/api/auth/login/totp', {
       method: 'POST',
       body: { temp_token: 'abc', code: '123456' },
@@ -64,13 +64,8 @@ describe('请求体契约', () => {
       body: { clear_folder: true, tag_ids: [], sort_order: 1 },
     })
 
-    await request('/api/portfolio/1', {
-      method: 'PATCH',
-      body: { is_public: true, sort_order: 2 },
-    })
-
     // 最后一次请求的 body
-    expect(body).toEqual({ is_public: true, sort_order: 2 })
+    expect(body).toEqual({ clear_folder: true, tag_ids: [], sort_order: 1 })
   })
 
   it('没有 body 时不发送请求体', async () => {

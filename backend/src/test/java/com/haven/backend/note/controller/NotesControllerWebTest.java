@@ -58,8 +58,7 @@ class NotesControllerWebTest {
     @Test
     @DisplayName("GET /api/notes 返回 200 与分页结构")
     void listReturnsPage() throws Exception {
-        when(notesService.listNotes(any(), any(), any(), any(), any(), any(), any()))
-                .thenReturn(new NotePage(List.of(), 0));
+        when(notesService.listNotes(any(), any(), any(), any(), any(), any())).thenReturn(new NotePage(List.of(), 0));
 
         mockMvc.perform(get("/api/notes").with(user()))
                 .andExpect(status().isOk())
@@ -152,7 +151,7 @@ class NotesControllerWebTest {
     @Test
     @DisplayName("分页参数为负数时不会 500")
     void negativeLimitIsClamped() throws Exception {
-        when(notesService.listNotes(any(), anyInt(), any(), any(), any(), any(), any()))
+        when(notesService.listNotes(any(), anyInt(), any(), any(), any(), any()))
                 .thenReturn(new NotePage(List.of(), 0));
 
         mockMvc.perform(get("/api/notes?limit=-5&offset=-3").with(user())).andExpect(status().isOk());

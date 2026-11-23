@@ -6,11 +6,11 @@
  * 和列表里的小圆点共用同一套色阶。
  */
 import { computed } from 'vue'
-import type { LedgerCategoryRank } from '@/api/ledger'
+import type { CategorySpend } from '@/api/ledger'
 import { categoryColor, categoryTone, formatYuan } from '@/utils/ledger'
 
 const props = defineProps<{
-  items: LedgerCategoryRank[]
+  items: CategorySpend[]
   /** 圆环中心的说明，例如「支出」。 */
   label: string
 }>()
@@ -22,10 +22,10 @@ const STROKE = 14
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS
 
 const total = computed(() =>
-  props.items.reduce((sum, item) => sum + item.amount_cents, 0),
+  props.items.reduce((sum, item) => sum + item.spent_cents, 0),
 )
 
-interface Segment extends LedgerCategoryRank {
+interface Segment extends CategorySpend {
   color: string
   dash: number
   rest: number
@@ -39,12 +39,12 @@ const segments = computed<Segment[]>(() => {
   const gap = props.items.length > 1 ? 2 : 0
   let consumed = 0
   return props.items.map((item) => {
-    const fraction = item.amount_cents / total.value
+    const fraction = item.spent_cents / total.value
     const rawLength = fraction * CIRCUMFERENCE
     const dash = Math.max(rawLength - gap, 0.5)
     const segment: Segment = {
       ...item,
-      color: categoryColor(item.category),
+      color: categoryColor(item.category_name),
       dash,
       rest: CIRCUMFERENCE - dash,
       offset: -consumed,
@@ -75,7 +75,7 @@ const segments = computed<Segment[]>(() => {
       <g :transform="`rotate(-90 ${CENTER} ${CENTER})`">
         <circle
           v-for="segment in segments"
-          :key="segment.category"
+          :key="segment.category_name"
           :cx="CENTER"
           :cy="CENTER"
           :r="RADIUS"
@@ -85,7 +85,7 @@ const segments = computed<Segment[]>(() => {
           :stroke-dasharray="`${segment.dash} ${segment.rest}`"
           :stroke-dashoffset="segment.offset"
         >
-          <title>{{ segment.category }} {{ formatYuan(segment.amount_cents) }}（{{ segment.percent }}%）</title>
+          <title>{{ segment.category_name }} {{ formatYuan(segment.spent_cents) }}（{{ segment.percent }}%）</title>
         </circle>
       </g>
       <text
@@ -107,15 +107,15 @@ const segments = computed<Segment[]>(() => {
     </svg>
 
     <ul v-if="segments.length" class="ledger-donut__legend">
-      <li v-for="segment in segments" :key="segment.category" class="ledger-donut__row">
+      <li v-for="segment in segments" :key="segment.category_name" class="ledger-donut__row">
         <i
           class="ledger-dot"
-          :class="`ledger-dot--${categoryTone(segment.category)}`"
+          :class="`ledger-dot--${categoryTone(segment.category_name)}`"
           aria-hidden="true"
         ></i>
-        <span class="ledger-donut__name">{{ segment.category }}</span>
+        <span class="ledger-donut__name">{{ segment.category_name }}</span>
         <span class="ledger-donut__percent">{{ segment.percent }}%</span>
-        <span class="ledger-donut__amount">{{ formatYuan(segment.amount_cents) }}</span>
+        <span class="ledger-donut__amount">{{ formatYuan(segment.spent_cents) }}</span>
       </li>
     </ul>
     <p v-else class="ledger-muted ledger-donut__empty">暂无数据</p>

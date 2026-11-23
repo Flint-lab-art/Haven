@@ -3,12 +3,9 @@ package com.haven.backend.note.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.haven.backend.note.dto.NoteDtos.NotePage;
 import com.haven.backend.note.dto.NoteDtos.NoteSummary;
-import com.haven.backend.note.dto.NoteDtos.PublicNotePage;
-import com.haven.backend.note.dto.NoteDtos.PublicNoteSummary;
 import com.haven.backend.note.dto.NoteDtos.SearchResult;
 import com.haven.backend.note.dto.NoteDtos.TagSummary;
 import com.haven.backend.note.entity.NoteTags;
-import com.haven.backend.note.entity.NoteVisibility;
 import com.haven.backend.note.entity.Notes;
 import com.haven.backend.note.entity.Tags;
 import com.haven.backend.note.mapper.NoteTagsMapper;
@@ -71,46 +68,5 @@ public class SearchServiceImpl implements SearchService {
                 .collect(Collectors.toList());
 
         return new SearchResult(new NotePage(noteItems, noteTotal), tagItems, tagItems.size());
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public PublicNotePage searchPublic(String q, int limit, int offset) {
-        int lim = Math.clamp(limit, 1, 100);
-        int off = Math.max(offset, 0);
-
-        var countWrapper = new LambdaQueryWrapper<Notes>()
-                .eq(Notes::getVisibility, NoteVisibility.PUBLIC)
-                .isNotNull(Notes::getPublishedAt)
-                .isNull(Notes::getDeletedAt)
-                .like(Notes::getSearchText, q);
-        long total = notesMapper.selectCount(countWrapper);
-
-        var listWrapper = new LambdaQueryWrapper<Notes>()
-                .eq(Notes::getVisibility, NoteVisibility.PUBLIC)
-                .isNotNull(Notes::getPublishedAt)
-                .isNull(Notes::getDeletedAt)
-                .like(Notes::getSearchText, q)
-                .orderByDesc(Notes::getPublishedAt)
-                .last("LIMIT " + lim + " OFFSET " + off);
-        List<Notes> notes = notesMapper.selectList(listWrapper);
-
-        List<PublicNoteSummary> items = notes.stream()
-                .map(n -> new PublicNoteSummary(
-                        n.getId(),
-                        n.getTitle(),
-                        preview(n.getContent()),
-                        n.getPublishedAt(),
-                        n.getUpdatedAt(),
-                        List.of()))
-                .collect(Collectors.toList());
-        return new PublicNotePage(items, total);
-    }
-
-    private static String preview(String content) {
-        if (content == null) {
-            return "";
-        }
-        return content.length() > 200 ? content.substring(0, 200) : content;
     }
 }

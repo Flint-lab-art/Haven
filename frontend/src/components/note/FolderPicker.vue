@@ -9,6 +9,8 @@
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { Folder } from '@/api/folders'
+import { Folder as FolderIcon } from 'lucide-vue-next'
+
 
 const props = defineProps<{
   open: boolean
@@ -207,9 +209,7 @@ onBeforeUnmount(() => {
             @click="emit('select', folder.id)"
             @mouseenter="activeIndex = index"
           >
-            <svg class="folder-pick__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true">
-              <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-            </svg>
+            <FolderIcon class="folder-pick__icon" aria-hidden="true" />
             <span class="folder-pick__name">{{ folder.name }}</span>
           </button>
         </div>
@@ -220,9 +220,7 @@ onBeforeUnmount(() => {
             {{ activeFolder ? '没有子文件夹' : '' }}
           </p>
           <div v-for="folder in preview" :key="folder.id" class="folder-pick__item folder-pick__item--dim">
-            <svg class="folder-pick__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true">
-              <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-            </svg>
+            <FolderIcon class="folder-pick__icon" aria-hidden="true" />
             <span class="folder-pick__name">{{ folder.name }}</span>
           </div>
         </div>

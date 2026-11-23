@@ -42,7 +42,6 @@ haven:
   totp:
     issuer: Haven
   upload-dir: ${java.io.tmpdir}/haven-test-uploads
-  private-hosts: localhost
   auth:
     login-max-attempts: 5
     login-window-minutes: 15

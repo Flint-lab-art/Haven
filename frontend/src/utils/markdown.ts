@@ -45,8 +45,7 @@ export function renderHtml(html: string): string {
 /**
  * 把 Markdown 转成阅读态 HTML。
  *
- * 只用于作品集正文与 Issue 描述：`portfolio_items.content` 仍是 Markdown（v3 范围），
- * 不随笔记正文一起改成 HTML（docs-ai/v7/frontend/frontend.md 第四节）。
+ * 用于 Issue 描述等 Markdown 字段（笔记正文存 HTML，不走这里）。
  * Issue 描述打开 `breaks`，让普通换行也保留，符合 Bug 复现步骤的书写习惯。
  */
 export function renderMarkdown(

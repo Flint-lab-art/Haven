@@ -14,7 +14,7 @@ import lombok.ToString;
 @Getter
 @Setter
 @ToString
-@TableName("tags")
+@TableName("note.tags")
 public class Tags implements Serializable {
 
     private static final long serialVersionUID = 1L;

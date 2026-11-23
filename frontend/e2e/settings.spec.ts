@@ -62,6 +62,17 @@ test('账号安全页展示动态验证码状态，可进入绑定流程', async
   expect(await res.json()).toMatchObject({ user: { totp_enabled: false } })
 })
 
+test('登录日志页记录本次登录成功', async ({ authedPage: page }) => {
+  await page.goto('/settings/login-logs')
+
+  await expect(page.getByRole('heading', { name: '登录日志', level: 1 })).toBeVisible()
+  // 刚通过 UI 登录，至少有一条「登录成功 · 成功」
+  const firstLog = page.locator('.row-item').first()
+  await expect(firstLog).toContainText('登录成功')
+  await expect(firstLog).toContainText('成功')
+  await expect(page.getByText('还没有登录记录')).toHaveCount(0)
+})
+
 test('会话页列出当前设备，并标注「当前设备」', async ({ authedPage: page }) => {
   await page.goto('/settings/sessions')
 

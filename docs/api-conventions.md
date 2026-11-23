@@ -4,7 +4,7 @@
 
 | 项 | 约定 |
 | --- | --- |
-| 前缀 | 所有接口以 `/api` 开头；匿名可访问的都在 `/api/public/**` |
+| 前缀 | 所有接口以 `/api` 开头；除健康检查、登录两步与 `/api/app-config` 外都需要认证 |
 | 字段命名 | 对外统一 `snake_case` |
 | Content-Type | `application/json`（上传除外） |
 | 认证 | Cookie 会话 或 `Authorization: Bearer haven_ro_…` / `haven_rw_…` |
@@ -118,7 +118,7 @@ int off = Math.max(offset, 0);
 | POST | `/auth/totp/verify` | 会话 |
 | POST | `/auth/totp/disable` | 会话 |
 | POST | `/auth/password` | 会话 + TOTP |
-
+| GET | `/auth/login-logs?limit=&offset=` | 会话（API Token 403），见 [auth.md](auth.md#62-查询接口) |
 ### 身份管理
 
 | 方法 | 路径 | 权限 |
@@ -131,13 +131,12 @@ int off = Math.max(offset, 0);
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/notes` | 列表，`visibility` / `tagId` / `folderId` / `includeTrash` |
+| GET | `/notes` | 列表，`tagId` / `folderId` / `includeTrash` / `limit` / `offset`（参数名前端按 `snake_case` 发：`tag_id` / `folder_id` / `include_trash`） |
 | GET | `/notes/trash` | 回收站 |
 | GET / POST / PATCH / DELETE | `/notes/{id}` | 详情 / 新建 / 更新 / 软删除 |
 | DELETE | `/notes/trash` | 清空回收站 |
 | POST | `/notes/{id}/restore` | 还原 |
 | DELETE | `/notes/{id}/purge` | 永久删除 |
-| POST | `/notes/{id}/publish`、`/unpublish` | 发布 / 撤回 |
 | GET | `/notes/{id}/versions` | 版本列表 |
 | GET | `/notes/{id}/versions/{versionId}` | 版本详情 |
 | POST | `/notes/{id}/versions/{versionId}/restore` | 还原版本 |
@@ -156,8 +155,7 @@ int off = Math.max(offset, 0);
 
 | 方法 | 路径 | 范围 |
 | --- | --- | --- |
-| GET | `/search?q=` | 私有：笔记 + 标签 |
-| GET | `/public/search?q=` | 公开：只搜已发布笔记 |
+| GET | `/search?q=` | 笔记标题 + 正文 + 标签 |
 
 ### 记账 `/api/ledger`
 
@@ -167,13 +165,10 @@ int off = Math.max(offset, 0);
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/portfolio/{id}`、`/public/portfolio/{id}` | 作品详情 |
-| POST / PATCH / DELETE | `/portfolio`、`/portfolio/{id}` | 作品 CRUD |
-| POST / PATCH / DELETE | `/portfolio/{id}/repos[/{repoId}]` | 作品链接 |
 | GET / POST / PATCH / DELETE | `/issues[/{id}]` | Issue |
 | GET | `/stats` | 仪表盘快照 |
 | GET | `/health` | 健康检查（匿名） |
-| GET | `/app-config` | 运行时前端配置（匿名） |
+| GET | `/app-config` | 占位：只返回 `{ "version": "x.y.z" }`（匿名） |
 | POST / GET | `/uploads` | 上传 / 图标列表 |
 | GET | `/uploads/**` | 静态文件（匿名） |
 

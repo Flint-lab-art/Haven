@@ -15,7 +15,7 @@ public interface IssuesMapper extends BaseMapper<Issues> {
     /** 按状态统计用户的所有 issue，返回 [status, count]；一条 SQL 代替多次 selectCount。 */
     @Select("""
             SELECT status, COUNT(*) AS cnt
-            FROM issues
+            FROM issue.issues
             WHERE user_id = #{userId}
             GROUP BY status
             """)

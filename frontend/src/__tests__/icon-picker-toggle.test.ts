@@ -21,8 +21,6 @@ vi.mock('@/api/folders', () => ({
 vi.mock('@/api/notes', () => ({
   listNotes: vi.fn(async () => ({ items: [], total: 0 })),
   deleteNote: vi.fn(),
-  publishNote: vi.fn(),
-  unpublishNote: vi.fn(),
   updateNote: vi.fn(),
 }))
 vi.mock('@/api/uploads', () => ({

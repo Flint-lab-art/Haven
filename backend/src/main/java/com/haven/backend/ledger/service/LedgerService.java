@@ -1,18 +1,17 @@
 package com.haven.backend.ledger.service;
 
-import com.haven.backend.ledger.dto.CreateLedgerBatchRequest;
-import com.haven.backend.ledger.dto.LedgerDtos.LedgerAliasDto;
-import com.haven.backend.ledger.dto.LedgerDtos.LedgerAliasPage;
-import com.haven.backend.ledger.dto.LedgerDtos.LedgerBatchDto;
+import com.haven.backend.ledger.dto.AccountRequest;
+import com.haven.backend.ledger.dto.CreateLedgerEntryRequest;
+import com.haven.backend.ledger.dto.LedgerDtos.AccountDto;
+import com.haven.backend.ledger.dto.LedgerDtos.BudgetDto;
+import com.haven.backend.ledger.dto.LedgerDtos.CategoryDto;
 import com.haven.backend.ledger.dto.LedgerDtos.LedgerEntryDto;
 import com.haven.backend.ledger.dto.LedgerDtos.LedgerEntryPage;
-import com.haven.backend.ledger.dto.LedgerDtos.LedgerQuickCommitDto;
+import com.haven.backend.ledger.dto.LedgerDtos.LedgerRangeStatsDto;
 import com.haven.backend.ledger.dto.LedgerDtos.LedgerSummaryDto;
 import com.haven.backend.ledger.dto.LedgerDtos.LedgerTrendDto;
-import com.haven.backend.ledger.dto.QuickCommitRequest;
-import com.haven.backend.ledger.dto.QuickParseResult;
 import com.haven.backend.ledger.dto.UpdateLedgerEntryRequest;
-import com.haven.backend.ledger.dto.UpsertLedgerAliasRequest;
+import com.haven.backend.ledger.dto.UpsertBudgetRequest;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -20,54 +19,66 @@ import java.util.UUID;
 /**
  * 记账服务。
  * <p>
- * 所有返回值都是有名字的 DTO（见 {@code LedgerDtos}），不再使用 {@code Map<String,Object>}，
- * 让接口契约在编译期可校验、可演进。
+ * 所有返回值都是有名字的 DTO（见 {@code LedgerDtos}），让接口契约在编译期可校验。
  */
 public interface LedgerService {
 
-    /** 解析手机端输入，不落库。 */
-    QuickParseResult quickParse(String userId, String text);
+    // ── 账户 ──────────────────────────────────────────
 
-    /** 快捷指令一步记账：解析并直接写入；没有条目时不写库，只回传逐行 errors。 */
-    LedgerQuickCommitDto quickCommit(String userId, QuickCommitRequest req);
+    List<AccountDto> listAccounts(String userId);
 
-    /** 幂等写入一个记账批次。 */
-    LedgerBatchDto createBatch(String userId, CreateLedgerBatchRequest req);
+    AccountDto createAccount(String userId, AccountRequest req);
 
-    /** 查看批次及其条目。 */
-    LedgerBatchDto getBatch(String userId, String batchId);
+    AccountDto updateAccount(String userId, UUID accountId, AccountRequest req);
 
-    /** 按条件分页查询条目。 */
+    /** 删除账户；已有流水的账户不能删，只能归档。 */
+    void deleteAccount(String userId, UUID accountId);
+
+    // ── 分类 ──────────────────────────────────────────
+
+    /** 全部分类（两级树，只含 enabled）。 */
+    List<CategoryDto> categoryTree();
+
+    // ── 流水 ──────────────────────────────────────────
+
+    LedgerEntryDto createEntry(String userId, CreateLedgerEntryRequest req);
+
     LedgerEntryPage listEntries(
-            String userId, String type, String category, OffsetDateTime from, OffsetDateTime to, int limit, int offset);
+            String userId,
+            String type,
+            Short categoryId,
+            UUID accountId,
+            OffsetDateTime from,
+            OffsetDateTime to,
+            int limit,
+            int offset);
 
-    /** 条目详情。 */
     LedgerEntryDto getEntry(String userId, UUID entryId);
 
-    /** 事后修正分类 / 金额 / 发生时间。 */
     LedgerEntryDto updateEntry(String userId, UUID entryId, UpdateLedgerEntryRequest req);
 
-    /** 删除条目。 */
     void deleteEntry(String userId, UUID entryId);
 
-    /** 最近录入的条目（按 created_at 倒序）。 */
-    LedgerEntryPage recentEntries(String userId, int limit);
+    // ── 统计 ──────────────────────────────────────────
 
-    /** 指定月份的总额、分类排行、按天走势与最近 3 笔。 */
+    /** 指定月份的收支合计与按一级分类的拆分。转账不计入。 */
     LedgerSummaryDto summary(String userId, String month);
 
-    /** 最近 N 天的总额、分类排行与按天走势（仪表盘用）。 */
+    /**
+     * 任意区间的统计（周 / 月 / 季 / 年均走这里）。
+     *
+     * 区间由调用方按业务时区算好，后端只做区间聚合。
+     */
+    LedgerRangeStatsDto rangeStats(String userId, OffsetDateTime from, OffsetDateTime to);
+
+    /** 最近 N 天的收支与按天走势。转账不计入。 */
     LedgerTrendDto trend(String userId, int days);
 
-    /** 别名列表。 */
-    LedgerAliasPage listAliases(String userId);
+    // ── 预算 ──────────────────────────────────────────
 
-    /** 新增或更新别名。 */
-    LedgerAliasDto upsertAlias(String userId, UpsertLedgerAliasRequest req);
+    BudgetDto budget(String userId, String month);
 
-    /** 删除别名。 */
-    void deleteAlias(String userId, String alias);
+    BudgetDto upsertBudget(String userId, UpsertBudgetRequest req);
 
-    /** 支持的分类。 */
-    List<String> categories();
+    void deleteBudget(String userId, short categoryId, String month);
 }

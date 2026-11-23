@@ -22,8 +22,8 @@ public interface NoteTagsMapper extends BaseMapper<NoteTags> {
     @Select("""
             <script>
             SELECT nt.note_id, t.id AS tag_id, t.name AS tag_name
-            FROM note_tags nt
-            JOIN tags t ON t.id = nt.tag_id
+            FROM note.note_tags nt
+            JOIN note.tags t ON t.id = nt.tag_id
             WHERE t.user_id = #{userId}
               AND nt.note_id IN
               <foreach collection="noteIds" item="id" open="(" separator="," close=")">#{id}</foreach>

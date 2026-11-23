@@ -48,6 +48,9 @@ class LoginAttemptLimiterTest {
     @Mock
     private com.haven.backend.audit.AuditRecorder auditRecorder;
 
+    @Mock
+    private LoginLogRecorder loginLogRecorder;
+
     private LoginAttemptLimiter limiter;
     private AuthServiceImpl authService;
 
@@ -64,7 +67,8 @@ class LoginAttemptLimiterTest {
                 apiTokenService,
                 limiter,
                 FIXED_CLOCK,
-                auditRecorder);
+                auditRecorder,
+                loginLogRecorder);
         ReflectionTestUtils.setField(authService, "totpIssuer", "Haven");
         when(usersMapper.selectOne(any())).thenReturn(null);
     }

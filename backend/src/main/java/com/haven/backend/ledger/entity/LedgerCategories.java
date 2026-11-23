@@ -1,37 +1,54 @@
 package com.haven.backend.ledger.entity;
 
-import java.util.List;
-import java.util.Set;
-import java.util.stream.Stream;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
+import java.io.Serial;
+import java.io.Serializable;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.ToString;
+import lombok.experimental.Accessors;
 
 /**
- * 记账分类清单（与迁移 V4/V6/V10/V12/V13 的 CHECK 约束保持一致）。
+ * 两级分类。
  * <p>
- * 分类清单属于领域数据，放在这里而不是 ServiceImpl 的静态字段里，
- * 也避免手工拼接"支出+收入"导致两份清单漂移。
+ * 一级 {@code parentId} 为 null；二级指向所属一级。
+ * 统计时用 {@code coalesce(parent_id, id)} 把二级归到一级，
+ * 这样直接把流水记在一级上也不会被漏算。
  * <p>
- * 加分类时必须同时改三处，漏一处会导致写入被数据库拒绝：
- * 1. 这里（后端白名单与分类识别）
- * 2. {@code frontend/src/utils/ledger.ts}（下拉选项、色阶、图表颜色）
- * 3. 一个新的迁移脚本（放宽 CHECK 约束，并补默认别名）
+ * 删除一律软删（{@code enabled = false}）：历史流水还引用着，物理删会断。
  */
-public final class LedgerCategories {
+@Getter
+@Setter
+@ToString
+@TableName("ledger.ledger_categories")
+@Accessors(chain = true)
+public class LedgerCategories implements Serializable {
 
-    /** 支出大类。 */
-    public static final List<String> EXPENSE = List.of("餐饮", "购物", "交通", "居家", "娱乐", "医疗", "还款", "订阅", "Token", "未分类");
+    @Serial
+    private static final long serialVersionUID = 1L;
 
-    /** 收入大类：与支出共用单层 category 字段，用 type 区分方向。 */
-    public static final List<String> INCOME = List.of("工资", "奖金", "报销", "退款", "红包", "其他收入");
+    @TableId("id")
+    private Short id;
 
-    /** 所有允许的分类（由支出 + 收入派生，避免重复维护）。 */
-    public static final List<String> ALL =
-            Stream.concat(EXPENSE.stream(), INCOME.stream()).toList();
+    @TableField("parent_id")
+    private Short parentId;
 
-    /** 允许的分类集合，便于 O(1) 校验。 */
-    public static final Set<String> ALL_SET = Set.copyOf(ALL);
+    @TableField("name")
+    private String name;
 
-    /** 收入分类集合。 */
-    public static final Set<String> INCOME_SET = Set.copyOf(INCOME);
+    /** emoji 图标；空串表示没有。 */
+    @TableField("icon")
+    private String icon;
 
-    private LedgerCategories() {}
+    /** expense / income / transfer，见 {@link LedgerTypes}。 */
+    @TableField("kind")
+    private String kind;
+
+    @TableField("sort_order")
+    private Integer sortOrder;
+
+    @TableField("enabled")
+    private Boolean enabled;
 }

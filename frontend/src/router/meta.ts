@@ -8,14 +8,13 @@
  */
 import 'vue-router'
 
-/** 私有域三栏布局的当前栏目，用于侧边栏高亮。 */
+/** 三栏布局的当前栏目，用于侧边栏高亮。 */
 export type RouteSection =
   | 'home'
   | 'notes'
   | 'search'
   | 'tags'
   | 'trash'
-  | 'portfolio'
   | 'ledger'
   | 'issues'
   | 'settings'
@@ -24,7 +23,7 @@ declare module 'vue-router' {
   interface RouteMeta {
     /** 页面标题，用于 `document.title`。 */
     title?: string
-    /** 是否属于公开域（公开域不校验登录态）。 */
+    /** 是否忽略登录态校验（只有登录页需要）。 */
     public?: boolean
     /** 当前栏目，侧边栏据此高亮。 */
     section?: RouteSection
@@ -34,5 +33,7 @@ declare module 'vue-router' {
     emptyTitle?: string
     /** 右侧空态说明。 */
     emptyText?: string
+    /** 移动端底部 tab 高亮项。 */
+    mTab?: 'ledger' | 'stats' | 'accounts' | 'me'
   }
 }

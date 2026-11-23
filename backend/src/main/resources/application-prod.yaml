@@ -42,7 +42,6 @@ haven:
   totp:
     issuer: ${HAVEN_TOTP_ISSUER:Haven}
   upload-dir: ${HAVEN_UPLOAD_DIR:uploads}
-  private-hosts: ${HAVEN_PRIVATE_HOSTS:}
   auth:
     login-max-attempts: ${HAVEN_AUTH_LOGIN_MAX_ATTEMPTS:5}
     login-window-minutes: ${HAVEN_AUTH_LOGIN_WINDOW_MINUTES:15}

@@ -3,15 +3,16 @@
  * 账单导入：把银行/支付平台导出的 CSV 批量写进记账。
  *
  * 设计取舍：
- * - **不做文件上传**，纯前端解析后调现成的 `/api/ledger/entries/batch`。
+ * - **不做文件上传**，纯前端解析后逐条调用 `POST /api/ledger/entries`。
  *   导入是一次性需求，没必要为它加一个后端上传端点与存储。
  * - **导入前必须预览**：账单里常混着提现、转账、退款、交易关闭，
  *   直接写入会污染统计，所以先让用户看清「要写多少、共多少钱」。
- * - **按批号幂等**：batch_id 由文件内容哈希得出，同一个文件重复导入不会翻倍。
+ * - **逐条写入，不保证幂等**：新模型没有批次表，重复导入会重复记账，
+ *   所以导入前要确认账户与分类。
+ * - CSV 的「建议分类」只是文本提示，实际分类由用户在预览里指定。
  */
-import { computed, ref } from 'vue'
-import { createLedgerBatch, type CreateLedgerEntryInput, type LedgerCategory } from '@/api/ledger'
-import { LEDGER_CATEGORIES } from '@/utils/ledger'
+import { computed, onMounted, ref } from 'vue'
+import { createEntry, listAccounts, listCategories, type Account, type Category } from '@/api/ledger'
 
 /** 解析出来的一行，字段与导出的 CSV 一致。 */
 interface BillRow {
@@ -24,7 +25,8 @@ interface BillRow {
   status: string
   source: string
   tradeNo: string
-  category: string
+  /** 选中的分类 id；null 表示还没选。 */
+  category: number | null
 }
 
 interface ParsedRow extends BillRow {
@@ -35,6 +37,34 @@ interface ParsedRow extends BillRow {
   /** 分类是否被用户改过（改过的不会被重新推断覆盖）。 */
   edited?: boolean
 }
+
+const accounts = ref<Account[]>([])
+const categories = ref<Category[]>([])
+/** 导入到哪个账户；必选。 */
+const targetAccountId = ref<string | null>(null)
+
+/** 可选分类（一级 + 二级），值为分类 id。 */
+const categoryOptions = computed(() => {
+  const out: { id: number; label: string }[] = []
+  for (const root of categories.value) {
+    out.push({ id: root.id, label: `${root.icon} ${root.name}` })
+    for (const child of root.children) {
+      out.push({ id: child.id, label: `${root.name} · ${child.icon} ${child.name}` })
+    }
+  }
+  return out
+})
+
+onMounted(async () => {
+  try {
+    const [accs, cats] = await Promise.all([listAccounts(), listCategories()])
+    accounts.value = accs.filter((a) => !a.archived)
+    categories.value = cats
+    targetAccountId.value = accounts.value[0]?.id ?? null
+  } catch {
+    // 加载失败时保持空，导入按钮会拦住
+  }
+})
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const fileName = ref('')
@@ -154,7 +184,7 @@ async function onFile(event: Event): Promise<void> {
         status: pick('状态'),
         source: pick('来源'),
         tradeNo: pick('交易单号'),
-        category: pick('建议分类'),
+        category: null,
       }
       const reason = rejectReason(base)
       return { ...base, keep: reason === '', reason }
@@ -164,44 +194,42 @@ async function onFile(event: Event): Promise<void> {
   }
 }
 
-/** 改分类：只允许账本里已存在的分类。 */
+/** 改分类：从数据库分类里选。 */
 function setCategory(row: ParsedRow, value: string): void {
-  row.category = value
+  row.category = value ? Number(value) : null
   row.edited = true
-}
-
-/** 文件内容哈希作为 batch_id：同一个文件重复导入不会翻倍。 */
-async function batchId(): Promise<string> {
-  const payload = keptRows.value
-    .map((r) => `${r.tradeNo}|${r.date}|${r.time}|${r.type}|${r.amount}`)
-    .join('\n')
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(payload))
-  return `import-${[...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 40)}`
 }
 
 async function doImport(): Promise<void> {
   if (!keptRows.value.length || importing.value) return
+  if (!targetAccountId.value) {
+    importResult.value = '请先选择导入到哪个账户'
+    return
+  }
+  const missing = keptRows.value.filter((r) => r.category == null)
+  if (missing.length) {
+    importResult.value = `还有 ${missing.length} 行没有选分类`
+    return
+  }
+
   importing.value = true
   importResult.value = ''
   try {
-    const items: CreateLedgerEntryInput[] = keptRows.value.map((r) => ({
-      type: r.type === '收入' ? 'income' : 'expense',
-      amount_cents: Math.round(Number(r.amount) * 100),
-      category: r.category as LedgerCategory,
-      note: [r.peer, r.desc].filter(Boolean).join(' ').slice(0, 120),
-      occurred_at: `${r.date}T${r.time || '00:00:00'}+08:00`,
-    }))
-
-    const result = await createLedgerBatch({
-      batch_id: await batchId(),
-      raw_text: `导入 ${fileName.value}`,
-      items,
-    })
-    importResult.value = result.created
-      ? `已导入 ${result.total} 笔`
-      : `这批数据之前已导入过（${result.total} 笔），未重复写入`
+    let ok = 0
+    for (const r of keptRows.value) {
+      await createEntry({
+        type: r.type === '收入' ? 'income' : 'expense',
+        amount_cents: Math.round(Number(r.amount) * 100),
+        category_id: r.category,
+        account_id: targetAccountId.value,
+        note: [r.peer, r.desc].filter(Boolean).join(' ').slice(0, 120) || null,
+        occurred_at: `${r.date}T${r.time || '00:00:00'}+08:00`,
+      })
+      ok += 1
+    }
+    importResult.value = `已导入 ${ok} 笔`
   } catch (err) {
-    parseError.value = err instanceof Error ? err.message : '导入失败'
+    importResult.value = err instanceof Error ? err.message : '导入失败'
   } finally {
     importing.value = false
   }
@@ -299,7 +327,8 @@ function reset(): void {
                     :aria-label="`${row.peer} 的分类`"
                     @change="setCategory(row, ($event.target as HTMLSelectElement).value)"
                   >
-                    <option v-for="c in LEDGER_CATEGORIES" :key="c" :value="c">{{ c }}</option>
+                    <option :value="''">未选</option>
+                    <option v-for="c in categoryOptions" :key="c.id" :value="c.id">{{ c.label }}</option>
                   </select>
                   <span v-else class="muted">{{ row.reason }}</span>
                 </td>

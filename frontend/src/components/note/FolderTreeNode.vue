@@ -9,6 +9,8 @@ import { computed } from 'vue'
 import type { Folder } from '@/api/folders'
 import { folderIndent, isImageIcon } from '@/utils/tree'
 import { BRAND_ICONS, brandColor, type BrandIcon } from '@/utils/brand-icons'
+import { ChevronRight, Ellipsis, FilePlus, Folder as FolderIcon, FolderPlus } from 'lucide-vue-next'
+
 
 const props = defineProps<{
   folder: Folder
@@ -97,18 +99,11 @@ function onIconError(event: Event): void {
       :aria-label="expanded ? '折叠文件夹' : '展开文件夹'"
       @click.stop="emit('toggle')"
     >
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
+      <ChevronRight
+        class="tree-chevron"
         :class="{ 'tree-chevron--open': expanded }"
         aria-hidden="true"
-      >
-        <path d="m9 6 6 6-6 6" />
-      </svg>
+      />
     </button>
 
     <button
@@ -136,18 +131,7 @@ function onIconError(event: Event): void {
       <span v-else-if="folder.icon" class="tree-icon tree-icon--emoji" aria-hidden="true">
         {{ folder.icon }}
       </span>
-      <svg
-        v-else
-        class="tree-icon"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.7"
-        stroke-linejoin="round"
-        aria-hidden="true"
-      >
-        <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-      </svg>
+      <FolderIcon v-else class="tree-icon" aria-hidden="true" />
     </button>
 
     <input
@@ -171,19 +155,7 @@ function onIconError(event: Event): void {
       aria-label="在此文件夹新建笔记"
       @click.stop="emit('create-note')"
     >
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.7"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        aria-hidden="true"
-      >
-        <path d="M6 3h7l5 5v13H6z" />
-        <path d="M13 3v5h5" />
-        <path d="M12 12v5M9.5 14.5h5" />
-      </svg>
+      <FilePlus aria-hidden="true" />
     </button>
     <button
       class="icon-btn tree-action"
@@ -192,18 +164,7 @@ function onIconError(event: Event): void {
       aria-label="新建子文件夹"
       @click.stop="emit('create-child')"
     >
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.7"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        aria-hidden="true"
-      >
-        <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-        <path d="M12 11v5M9.5 13.5h5" />
-      </svg>
+      <FolderPlus aria-hidden="true" />
     </button>
     <button
       class="icon-btn tree-more"
@@ -212,11 +173,7 @@ function onIconError(event: Event): void {
       aria-label="更多操作"
       @click.stop="emit('menu')"
     >
-      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-        <circle cx="5" cy="12" r="1.6" />
-        <circle cx="12" cy="12" r="1.6" />
-        <circle cx="19" cy="12" r="1.6" />
-      </svg>
+      <Ellipsis aria-hidden="true" />
     </button>
 
     <!--

@@ -1,287 +1,269 @@
 package com.haven.backend.ledger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.haven.backend.ledger.dto.CreateLedgerBatchRequest;
+import com.haven.backend.auth.entity.Users;
+import com.haven.backend.auth.mapper.UsersMapper;
+import com.haven.backend.exception.BizException;
+import com.haven.backend.ledger.dto.AccountRequest;
 import com.haven.backend.ledger.dto.CreateLedgerEntryRequest;
-import com.haven.backend.ledger.dto.LedgerDtos.LedgerAliasPage;
-import com.haven.backend.ledger.dto.LedgerDtos.LedgerBatchDto;
-import com.haven.backend.ledger.dto.LedgerDtos.LedgerDailyPoint;
+import com.haven.backend.ledger.dto.LedgerDtos.AccountDto;
+import com.haven.backend.ledger.dto.LedgerDtos.BudgetDto;
+import com.haven.backend.ledger.dto.LedgerDtos.CategoryDto;
 import com.haven.backend.ledger.dto.LedgerDtos.LedgerEntryDto;
-import com.haven.backend.ledger.dto.LedgerDtos.LedgerQuickCommitDto;
 import com.haven.backend.ledger.dto.LedgerDtos.LedgerSummaryDto;
-import com.haven.backend.ledger.dto.LedgerDtos.LedgerTrendDto;
-import com.haven.backend.ledger.dto.ParsedLedgerItem;
-import com.haven.backend.ledger.dto.QuickCommitRequest;
-import com.haven.backend.ledger.dto.QuickParseResult;
-import com.haven.backend.ledger.dto.UpdateLedgerEntryRequest;
-import com.haven.backend.ledger.dto.UpsertLedgerAliasRequest;
+import com.haven.backend.ledger.dto.UpsertBudgetRequest;
 import com.haven.backend.ledger.service.LedgerService;
-import java.time.Clock;
-import java.time.LocalDate;
-import java.time.YearMonth;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 记账模块的端到端冒烟测试（service 层，跑真实数据库）。
- * <p>
- * V11 起 ledger_* 三表都有指向 users 的外键，所以每个用例必须先建一个真实用户，
- * 不能再随便用随机 UUID 当 userId。
- * <p>
- * 整个类跑在测试事务里，结束时统一回滚，不会污染数据库。
+ * 记账核心闭环：账户余额、转账不计收支、两级分类、月度预算。
  */
 @SpringBootTest
-@org.springframework.test.context.ActiveProfiles("test")
+@ActiveProfiles("test")
 @Transactional
 class LedgerSmokeTest {
+
+    /** 餐饮（一级）。 */
+    private static final short FOOD = 1;
+    /** 餐饮 · 午餐（二级）。 */
+    private static final short LUNCH = 102;
+    /** 收入（一级）。 */
+    private static final short INCOME_ROOT = 8;
+    /** 收入 · 工资（二级）。 */
+    private static final short SALARY = 801;
+    /** 其他（一级）。 */
+    private static final short OTHER = 7;
 
     @Autowired
     private LedgerService ledgerService;
 
     @Autowired
-    private Clock clock;
+    private UsersMapper usersMapper;
 
-    @Autowired
-    private org.springframework.jdbc.core.JdbcTemplate jdbc;
+    private String userId;
+    private UUID bank;
+    private UUID wallet;
 
-    @Test
-    void quickParseHandlesCategoriesAmountsAndIncome() {
-        String userId = newUser();
-        seedAliases(userId);
+    @BeforeEach
+    void setUp() {
+        Users user = new Users();
+        user.setId(UUID.randomUUID());
+        user.setUsername("ledger-" + UUID.randomUUID().toString().substring(0, 8));
+        user.setPasswordHash("x");
+        user.setTotpEnabled(false);
+        user.setCreatedAt(OffsetDateTime.now());
+        user.setUpdatedAt(OffsetDateTime.now());
+        usersMapper.insert(user);
+        userId = user.getId().toString();
 
-        QuickParseResult result = ledgerService.quickParse(userId, """
-                                午饭12
-                                晚饭 20
-                                网购 零食 100
-                                房租 水电 2200
-                                工资 10000
-                                午饭0
-                                没有金额
-                                """);
+        bank = createAccount("工资卡", "bank", 100_000L);
+        wallet = createAccount("微信", "ewallet", 0L);
+    }
 
-        assertEquals(5, result.items().size());
-        assertEquals(2, result.errors().size());
-
-        List<ParsedLedgerItem> items = result.items();
-        assertEquals(1200L, items.get(0).amountCents());
-        assertEquals("餐饮", items.get(0).category());
-        assertEquals("expense", items.get(0).type());
-        assertEquals("午饭", items.get(0).note());
-
-        assertEquals("餐饮", items.get(1).category());
-        assertEquals(2000L, items.get(1).amountCents());
-
-        assertEquals("购物", items.get(2).category());
-        assertEquals(10000L, items.get(2).amountCents());
-        assertEquals("网购 零食", items.get(2).note());
-
-        assertEquals("居家", items.get(3).category());
-        assertEquals(220000L, items.get(3).amountCents());
-
-        assertEquals("工资", items.get(4).category());
-        assertEquals("income", items.get(4).type());
-        assertEquals(1000000L, items.get(4).amountCents());
+    private UUID createAccount(String name, String type, long initial) {
+        return ledgerService
+                .createAccount(userId, new AccountRequest(name, null, type, initial, null, null, null))
+                .id();
     }
 
     @Test
-    void incomeAliasesResolveToIncomeCategories() {
-        String userId = newUser();
-        ledgerService.upsertAlias(userId, new UpsertLedgerAliasRequest("薪水", "工资"));
+    @DisplayName("分类树：7 个一级支出 + 1 个一级收入，二级挂在父下")
+    void categoryTreeIsTwoLevel() {
+        List<CategoryDto> roots = ledgerService.categoryTree();
 
-        QuickParseResult result = ledgerService.quickParse(userId, """
-                                薪水 12000
-                                报销 320
-                                退款 99
-                                红包 200
-                                """);
+        long expenseRoots =
+                roots.stream().filter(r -> "expense".equals(r.kind())).count();
+        long incomeRoots = roots.stream().filter(r -> "income".equals(r.kind())).count();
+        assertEquals(7, expenseRoots, "一级支出应是 7 个");
+        assertEquals(1, incomeRoots, "一级收入应是 1 个");
 
-        assertEquals(4, result.items().size());
-        assertEquals(0, result.errors().size());
-
-        List<ParsedLedgerItem> items = result.items();
-        assertEquals(
-                List.of("工资", "报销", "退款", "红包"),
-                items.stream().map(ParsedLedgerItem::category).toList());
-        assertTrue(items.stream().allMatch(item -> "income".equals(item.type())));
-        assertEquals("薪水", items.getFirst().note());
-        assertEquals(1200000L, items.getFirst().amountCents());
+        CategoryDto food =
+                roots.stream().filter(r -> r.id() == FOOD).findFirst().orElseThrow();
+        assertEquals("餐饮", food.name());
+        assertTrue(food.children().size() >= 5, "餐饮下应有 5 个以上二级分类");
+        assertTrue(food.children().stream().anyMatch(c -> "午餐".equals(c.name())));
     }
 
     @Test
-    void quickParseSupportsLeadingDates() {
-        String userId = newUser();
-        seedAliases(userId);
+    @DisplayName("支出让账户余额减少，二级分类正确回填一级名")
+    void expenseReducesBalance() {
+        LedgerEntryDto entry = ledgerService.createEntry(
+                userId, new CreateLedgerEntryRequest("expense", 2_500L, LUNCH, bank, null, "午饭", null));
 
-        LocalDate today = LocalDate.now(clock);
-        YearMonth thisMonth = YearMonth.from(today);
+        assertEquals("午餐", entry.categoryName());
+        assertEquals("餐饮", entry.rootCategoryName());
+        assertEquals("工资卡", entry.accountName());
 
-        QuickParseResult result = ledgerService.quickParse(userId, """
-                                11月16 午饭 16
-                                2026-01-02 午饭 20
-                                昨天 晚饭 30
-                                16号 午饭 12
-                                """);
-
-        assertEquals(4, result.items().size());
-        assertEquals(0, result.errors().size());
-
-        List<ParsedLedgerItem> items = result.items();
-        assertEquals(
-                LocalDate.of(today.getYear(), 11, 16), items.get(0).occurredAt().toLocalDate());
-        assertEquals(LocalDate.of(2026, 1, 2), items.get(1).occurredAt().toLocalDate());
-        assertEquals(today.minusDays(1), items.get(2).occurredAt().toLocalDate());
-        assertEquals(thisMonth.atDay(16), items.get(3).occurredAt().toLocalDate());
-
-        // 不写日期时沿用当前时间
-        QuickParseResult plain = ledgerService.quickParse(userId, "午饭 12");
-        assertEquals(today, plain.items().getFirst().occurredAt().toLocalDate());
+        assertEquals(97_500L, balanceOf(bank));
     }
 
     @Test
-    void quickParseSupportsAmountFormats() {
-        String userId = newUser();
-        seedAliases(userId);
-
-        QuickParseResult result = ledgerService.quickParse(userId, """
-                                午饭 12.5
-                                午饭 32元
-                                午饭 ¥32
-                                午饭 二十五块
-                                """);
-
-        assertEquals(4, result.items().size());
-        assertEquals(0, result.errors().size());
-        assertEquals(
-                List.of(1250L, 3200L, 3200L, 2500L),
-                result.items().stream().map(ParsedLedgerItem::amountCents).toList());
+    @DisplayName("收入让账户余额增加")
+    void incomeIncreasesBalance() {
+        ledgerService.createEntry(
+                userId, new CreateLedgerEntryRequest("income", 800_000L, SALARY, bank, null, "工资", null));
+        assertEquals(900_000L, balanceOf(bank));
     }
 
     @Test
-    void batchIsIdempotentSummaryAndPatchWork() {
-        String userId = newUser();
-        seedAliases(userId);
+    @DisplayName("转账：两个账户一减一增，且不计入收支统计")
+    void transferMovesMoneyWithoutTouchingStats() {
+        // 工资卡 → 微信 1000
+        LedgerEntryDto transfer = ledgerService.createEntry(
+                userId, new CreateLedgerEntryRequest("transfer", 100_000L, null, bank, wallet, "转到微信", null));
 
-        QuickParseResult parsed = ledgerService.quickParse(userId, """
-                                午饭12
-                                晚饭 20
-                                网购 零食 100
-                                张三 30
-                                工资 8000
-                                """);
-        List<CreateLedgerEntryRequest> items = parsed.items().stream()
-                .map(p ->
-                        new CreateLedgerEntryRequest(p.type(), p.amountCents(), p.category(), p.note(), p.occurredAt()))
-                .toList();
+        assertEquals("transfer", transfer.type());
+        assertNull(transfer.categoryId());
+        assertNull(transfer.categoryName());
+        assertEquals(0L, balanceOf(bank), "转出账户应清零");
+        assertEquals(100_000L, balanceOf(wallet), "转入账户应全额到账");
 
-        CreateLedgerBatchRequest batch = new CreateLedgerBatchRequest("batch-1", "raw text", items);
+        LedgerSummaryDto summary = ledgerService.summary(userId, null);
+        assertEquals(0L, summary.totalExpenseCents(), "转账不能计入支出");
+        assertEquals(0L, summary.totalIncomeCents(), "转账不能计入收入");
+        assertEquals(0L, summary.totalCount(), "转账不计入统计笔数");
+        assertEquals(1L, summary.transferCount(), "但转账笔数要单独给出");
+    }
 
-        LedgerBatchDto first = ledgerService.createBatch(userId, batch);
-        assertTrue(first.created());
-        assertEquals(5, first.total());
+    @Test
+    @DisplayName("转账两侧账户不能相同")
+    void transferRequiresDistinctAccounts() {
+        BizException ex = assertThrows(
+                BizException.class,
+                () -> ledgerService.createEntry(
+                        userId, new CreateLedgerEntryRequest("transfer", 100L, null, bank, bank, null, null)));
+        assertEquals(422, ex.getCode());
+    }
 
-        LedgerBatchDto second = ledgerService.createBatch(userId, batch);
-        assertFalse(second.created());
-        assertEquals(5, second.total());
+    @Test
+    @DisplayName("转账不能带分类，支出必须有分类")
+    void typeRequiresCorrectFields() {
+        assertThrows(
+                BizException.class,
+                () -> ledgerService.createEntry(
+                        userId, new CreateLedgerEntryRequest("transfer", 100L, LUNCH, bank, wallet, null, null)));
 
-        LedgerSummaryDto summary =
-                ledgerService.summary(userId, YearMonth.now(clock).toString());
-        assertEquals(1200L + 2000L + 10000L + 3000L, summary.totalExpenseCents());
-        assertEquals(800000L, summary.totalIncomeCents());
-        assertEquals(5, summary.totalCount());
-        assertEquals(3, summary.recent().size());
+        assertThrows(
+                BizException.class,
+                () -> ledgerService.createEntry(
+                        userId, new CreateLedgerEntryRequest("expense", 100L, null, bank, null, null, null)));
+    }
 
-        assertTrue(summary.categoryRanking().stream().anyMatch(i -> "餐饮".equals(i.category())));
-        assertTrue(summary.incomeCategoryRanking().stream()
-                .anyMatch(i -> "工资".equals(i.category()) && i.amountCents() == 800000L));
+    @Test
+    @DisplayName("分类与流水类型必须匹配：工资分类不能记支出")
+    void categoryKindMustMatchType() {
+        BizException ex = assertThrows(
+                BizException.class,
+                () -> ledgerService.createEntry(
+                        userId, new CreateLedgerEntryRequest("expense", 100L, SALARY, bank, null, null, null)));
+        assertEquals(422, ex.getCode());
+    }
 
-        // 月度走势：按天补零到整月
-        assertEquals(YearMonth.now(clock).lengthOfMonth(), summary.daily().size());
+    @Test
+    @DisplayName("月度汇总按一级分类聚合：一级与二级都能归到餐饮")
+    void summaryGroupsByRootCategory() {
+        // 直接记一级
+        ledgerService.createEntry(
+                userId, new CreateLedgerEntryRequest("expense", 1_000L, FOOD, bank, null, null, null));
+        // 记二级
+        ledgerService.createEntry(
+                userId, new CreateLedgerEntryRequest("expense", 2_000L, LUNCH, bank, null, null, null));
 
-        // 最近 7 天：总览与按天走势
-        LedgerTrendDto trend = ledgerService.trend(userId, 7);
-        assertEquals(7, trend.days());
-        assertEquals(16200L, trend.totalExpenseCents());
-        assertEquals(800000L, trend.totalIncomeCents());
-        assertEquals(5, trend.totalCount());
+        LedgerSummaryDto summary = ledgerService.summary(userId, null);
+        assertEquals(3_000L, summary.totalExpenseCents());
+        assertEquals(2L, summary.totalCount());
 
-        List<LedgerDailyPoint> trendDaily = trend.daily();
-        assertEquals(7, trendDaily.size());
-        LedgerDailyPoint today = trendDaily.getLast();
-        assertEquals(LocalDate.now(clock).toString(), today.date());
-        assertEquals(16200L, today.expenseCents());
-        assertEquals(800000L, today.incomeCents());
-        assertEquals(5L, today.count());
-        assertEquals(0L, trendDaily.getFirst().expenseCents());
-
-        LedgerEntryDto uncategorized = first.items().stream()
-                .filter(i -> "未分类".equals(i.category()))
+        var food = summary.expenseByCategory().stream()
+                .filter(c -> c.categoryId() == FOOD)
                 .findFirst()
                 .orElseThrow();
-
-        ledgerService.updateEntry(userId, uncategorized.id(), new UpdateLedgerEntryRequest("餐饮", null, null));
-
-        LedgerAliasPage aliases = ledgerService.listAliases(userId);
-        assertTrue(aliases.items().stream().anyMatch(i -> "张三".equals(i.alias()) && "餐饮".equals(i.category())));
-
-        ledgerService.deleteEntry(userId, uncategorized.id());
-        assertEquals(
-                4L,
-                ledgerService.listEntries(userId, null, null, null, null, 20, 0).total());
+        assertEquals(3_000L, food.spentCents(), "一级与二级支出都应归到「餐饮」");
+        assertEquals("餐饮", food.categoryName());
     }
 
     @Test
-    void quickCommitParsesAndWritesInOneCall() {
-        String userId = newUser();
-        seedAliases(userId);
+    @DisplayName("修改流水：从支出改成转账时清空分类")
+    void updatingToTransferClearsCategory() {
+        LedgerEntryDto entry = ledgerService.createEntry(
+                userId, new CreateLedgerEntryRequest("expense", 1_000L, LUNCH, bank, null, null, null));
 
-        LedgerQuickCommitDto result = ledgerService.quickCommit(userId, new QuickCommitRequest("""
-                                                午饭12
-                                                工资 8000
-                                                没有金额
-                                                """, null));
+        LedgerEntryDto updated = ledgerService.updateEntry(
+                userId,
+                entry.id(),
+                new com.haven.backend.ledger.dto.UpdateLedgerEntryRequest(
+                        null, null, wallet, null, null, null, null, "transfer"));
 
-        assertTrue(result.batch().created());
-        assertEquals(2, result.batch().total());
-        assertEquals(2, result.batch().items().size());
-        assertEquals(1, result.errors().size());
+        assertEquals("transfer", updated.type());
+        assertNull(updated.categoryId(), "转成转账后分类必须清空");
+        assertEquals(wallet, updated.toAccountId());
+    }
 
-        // 同一个 batch_id 重试不会重复写入
-        String batchId = result.batch().batchId();
-        LedgerQuickCommitDto replay = ledgerService.quickCommit(userId, new QuickCommitRequest("""
-                                                午饭12
-                                                工资 8000
-                                                没有金额
-                                                """, batchId));
-        assertFalse(replay.batch().created());
-        assertEquals(2, replay.batch().total());
+    @Test
+    @DisplayName("预算：总预算 = 各项之和，二级支出也能算进一级预算")
+    void budgetSumsItemsAndCountsChildCategories() {
+        ledgerService.createEntry(
+                userId, new CreateLedgerEntryRequest("expense", 1_500L, LUNCH, bank, null, null, null));
 
-        // 全部解析失败时不写空批次
-        LedgerQuickCommitDto empty = ledgerService.quickCommit(userId, new QuickCommitRequest("随便写点", null));
-        assertFalse(empty.batch().created());
-        assertEquals(0, empty.batch().total());
+        ledgerService.upsertBudget(userId, new UpsertBudgetRequest(FOOD, "2026-11", 100_000L));
+        BudgetDto budget = ledgerService.upsertBudget(userId, new UpsertBudgetRequest(OTHER, "2026-11", 50_000L));
+
         assertEquals(
-                2L,
-                ledgerService.listEntries(userId, null, null, null, null, 20, 0).total());
+                100_000L,
+                budget.items().stream()
+                        .filter(i -> i.categoryId() == FOOD)
+                        .findFirst()
+                        .orElseThrow()
+                        .amountCents());
+        assertEquals(150_000L, budget.totalBudgetCents(), "总预算 = 1000 + 500");
+        assertEquals(1_500L, budget.totalSpentCents(), "二级「午餐」的支出要算进「餐饮」预算");
     }
 
-    private void seedAliases(String userId) {
-        ledgerService.upsertAlias(userId, new UpsertLedgerAliasRequest("午饭", "餐饮"));
-        ledgerService.upsertAlias(userId, new UpsertLedgerAliasRequest("晚饭", "餐饮"));
-        ledgerService.upsertAlias(userId, new UpsertLedgerAliasRequest("网购", "购物"));
-        ledgerService.upsertAlias(userId, new UpsertLedgerAliasRequest("房租", "居家"));
+    @Test
+    @DisplayName("预算只能绑一级支出分类")
+    void budgetRequiresExpenseRootCategory() {
+        assertThrows(
+                BizException.class,
+                () -> ledgerService.upsertBudget(userId, new UpsertBudgetRequest(LUNCH, "2026-11", 100L)));
+        assertThrows(
+                BizException.class,
+                () -> ledgerService.upsertBudget(userId, new UpsertBudgetRequest(INCOME_ROOT, "2026-11", 100L)));
     }
 
-    /** 建一个真实用户并返回 id：外键要求 ledger_* 的 user_id 必须存在。 */
-    private String newUser() {
-        String id = UUID.randomUUID().toString();
-        jdbc.update("INSERT INTO users (id, username, password_hash) VALUES (?::uuid, ?, ?)", id, "smoke-" + id, "x");
-        return id;
+    @Test
+    @DisplayName("有流水的账户不能删，只能归档")
+    void accountWithEntriesCannotBeDeleted() {
+        ledgerService.createEntry(userId, new CreateLedgerEntryRequest("expense", 100L, LUNCH, bank, null, null, null));
+
+        BizException ex = assertThrows(BizException.class, () -> ledgerService.deleteAccount(userId, bank));
+        assertEquals(409, ex.getCode());
+
+        // 归档是允许的
+        ledgerService.updateAccount(userId, bank, new AccountRequest("工资卡", null, "bank", 100_000L, null, true, bank));
+        AccountDto archived = ledgerService.listAccounts(userId).stream()
+                .filter(a -> a.id().equals(bank))
+                .findFirst()
+                .orElseThrow();
+        assertTrue(archived.archived());
+    }
+
+    private long balanceOf(UUID accountId) {
+        return ledgerService.listAccounts(userId).stream()
+                .filter(a -> a.id().equals(accountId))
+                .findFirst()
+                .orElseThrow()
+                .balanceCents();
     }
 }

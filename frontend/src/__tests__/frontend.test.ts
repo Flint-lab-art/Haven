@@ -1,27 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { detectDomain } from '@/router/domain'
 import { ApiError } from '@/api/client'
 import { deviceLabel, formatRelative, formatDateTime, formatDate } from '@/utils/format'
-
-describe('detectDomain', () => {
-  it('本地地址一律视为私有域', () => {
-    expect(detectDomain('localhost')).toBe('private')
-    expect(detectDomain('127.0.0.1')).toBe('private')
-    expect(detectDomain('192.168.1.10')).toBe('private')
-  })
-
-  it('生产环境默认公开域（未配置 VITE_PRIVATE_HOST）', () => {
-    expect(detectDomain('example.com')).toBe('public')
-    expect(detectDomain('www.example.com')).toBe('public')
-    expect(detectDomain('app.example.com')).toBe('public')
-  })
-
-  it('配置了 VITE_PRIVATE_HOST 时按主机名区分', () => {
-    expect(detectDomain('app.example.com', 'app.example.com')).toBe('private')
-    expect(detectDomain('example.com', 'app.example.com')).toBe('public')
-    expect(detectDomain('www.example.com', 'app.example.com')).toBe('public')
-  })
-})
 
 describe('ApiError', () => {
   it('携带 status / code / fields', () => {

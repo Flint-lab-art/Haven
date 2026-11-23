@@ -75,7 +75,8 @@ public class AuthController {
             // API Token 没有会话可注销；Token 需走 DELETE /api/tokens/{id}
             return;
         }
-        authService.logout();
+        authService.logout(
+                AuthInterceptor.getUserId(request), request.getRemoteAddr(), request.getHeader("User-Agent"));
     }
 
     // -----------------------------------------------------------------------

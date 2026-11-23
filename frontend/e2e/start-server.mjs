@@ -7,10 +7,14 @@
  * 开发账号（dev）通常没有 CREATE DATABASE 权限，但在自己库里有 CREATE SCHEMA 权限。
  * schema 与数据库在「表、索引、外键」层面完全隔离，效果一样，且不需要管理员介入。
  *
- * 每次运行都会 DROP SCHEMA CASCADE 重建 `haven_e2e`，Flyway 在空 schema 里跑一遍全部迁移。
+ * 每次运行都会 DROP + CREATE 独立数据库 `haven_e2e_db`，Flyway 在空库里跑一遍全部迁移。
+ *
+ * 为什么不再用 schema 隔离：V16 起业务表分在 note / issue / ledger，
+ * 而 PostgreSQL schema 不能嵌套——在 `haven_e2e` schema 里跑 `CREATE SCHEMA note`
+ * 会把 module schema 建到 dev_db 顶层，污染开发库。
  *
  * 可用环境变量覆盖：
- *   E2E_DB_HOST / E2E_DB_PORT / E2E_DB_USER / E2E_DB_PASSWORD / E2E_DB_NAME / E2E_DB_SCHEMA
+ *   E2E_DB_HOST / E2E_DB_PORT / E2E_DB_USER / E2E_DB_PASSWORD / E2E_DB_NAME
  *   E2E_PORT
  */
 import { execFileSync, spawn } from 'node:child_process'
@@ -33,46 +37,40 @@ const DB_PORT = process.env.E2E_DB_PORT ?? '5432'
 const DB_USER = process.env.E2E_DB_USER ?? 'dev'
 const DB_PASSWORD = process.env.E2E_DB_PASSWORD ?? '123456'
 const DB_NAME = process.env.E2E_DB_NAME ?? 'dev_db'
-const DB_SCHEMA = process.env.E2E_DB_SCHEMA ?? 'haven_e2e'
+const E2E_DB = process.env.E2E_DB_NAME ?? 'haven_e2e_db'
 const PORT = process.env.E2E_PORT ?? '18099'
 
 /**
- * 私有域宿主名。
+ * 后端起服务前要清空的表（顺序：子表在前）。
  *
- * 前端按 hostname 在「公开域 / 私有域」两套路由表之间切换，私有域名来自后端
- * `GET /api/app-config`（dev 配置是 `private-hosts: localhost`）。
- * E2E 要同时覆盖两侧：
- * - `localhost`   → 私有域（工作台、设置）
- * - `127.0.0.1`   → 非私有域，派生出公开路由表（nginx / 本机直连 IP 的常见形态）
+ * 表名带模块 schema 前缀：V16 起业务表分到 note / issue / ledger，
+ * public 只留认证类公共表。夹具每次重置数据也复用这份清单。
  */
-const PRIVATE_HOSTS = 'localhost'
-
-/** 后端起服务前要清空的表（顺序：子表在前）。夹具每次重置数据也复用这份清单。 */
 export const E2E_TABLES = [
-  'note_tags',
-  'note_versions',
-  'notes',
-  'folders',
-  'tags',
-  'issue_status_events',
-  'issues',
-  'portfolio_repos',
-  'portfolio_items',
-  'ledger_entries',
-  'ledger_batches',
-  'ledger_aliases',
+  'note.note_tags',
+  'note.note_versions',
+  'note.notes',
+  'note.folders',
+  'note.tags',
+  'issue.issue_status_events',
+  'issue.issues',
+  'ledger.ledger_entries',
+  'ledger.ledger_batches',
+  'ledger.ledger_aliases',
   'trusted_devices',
   'pending_totp',
   'sa_token',
+  'login_logs',
   'audit_events',
   'tokens',
   'users',
 ]
 
-function psql(sql) {
+/** 在指定库里执行一段 SQL。 */
+function psql(sql, database = DB_NAME) {
   execFileSync(
     'psql',
-    ['-h', DB_HOST, '-p', DB_PORT, '-U', DB_USER, '-d', DB_NAME, '-v', 'ON_ERROR_STOP=1', '-c', sql],
+    ['-h', DB_HOST, '-p', DB_PORT, '-U', DB_USER, '-d', database, '-v', 'ON_ERROR_STOP=1', '-c', sql],
     { env: { ...process.env, PGPASSWORD: DB_PASSWORD }, stdio: 'pipe' },
   )
 }
@@ -86,16 +84,27 @@ function checkArtifacts() {
   }
 }
 
-function prepareSchema() {
-  // search_path 保留 public：pg_trgm 扩展装在 public，gin_trgm_ops 操作符类要能被解析到。
-  // 业务表仍会建在 DB_SCHEMA 里，因为 currentSchema 决定了 DDL 的默认落点。
-  psql(`DROP SCHEMA IF EXISTS ${DB_SCHEMA} CASCADE`)
-  psql(`CREATE SCHEMA ${DB_SCHEMA}`)
-  console.log(`[e2e] 已重建 schema ${DB_NAME}.${DB_SCHEMA}`)
+/**
+ * 重建独立 E2E 数据库。
+ *
+ * psql 默认连 DB_NAME（维护库），这里显式切到维护库再动目标库，
+ * 避免「数据库正在被访问」导致 DROP 失败。
+ */
+function prepareDatabase() {
+  const admin = ['-h', DB_HOST, '-p', DB_PORT, '-U', DB_USER, '-d', DB_NAME, '-v', 'ON_ERROR_STOP=1', '-c']
+  const run = (sql) =>
+    execFileSync('psql', [...admin, sql], { env: { ...process.env, PGPASSWORD: DB_PASSWORD }, stdio: 'pipe' })
+  run(`SELECT pg_terminate_backend(pid) FROM pg_stat_activity
+       WHERE datname = '${E2E_DB}' AND pid <> pg_backend_pid()`)
+  run(`DROP DATABASE IF EXISTS ${E2E_DB}`)
+  run(`CREATE DATABASE ${E2E_DB}`)
+  // 扩展要装在新库自己的 public 里，迁移里的 gin_trgm_ops 才能解析
+  psql('CREATE EXTENSION IF NOT EXISTS pg_trgm SCHEMA public', E2E_DB)
+  console.log(`[e2e] 已重建独立测试库 ${E2E_DB}`)
 }
 
 checkArtifacts()
-prepareSchema()
+prepareDatabase()
 
 const child = spawn(
   'java',
@@ -105,15 +114,12 @@ const child = spawn(
     stdio: 'inherit',
     env: {
       ...process.env,
-      // currentSchema 让 Flyway 与所有业务 SQL 都落在 e2e schema 里，开发库其它 schema 不受影响。
-      // search_path 带上 public 才能用 public 里的 pg_trgm 操作符类。
-      DB_URL: `jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}?currentSchema=${DB_SCHEMA},public`,
+      // 直接指向独立库，不再用 currentSchema / search_path 切 schema
+      DB_URL: `jdbc:postgresql://${DB_HOST}:${DB_PORT}/${E2E_DB}`,
       DB_USERNAME: DB_USER,
       DB_PASSWORD,
       // 关掉开发环境的 devtools 重启，避免测试中途进程退出
       SPRING_DEVTOOLS_RESTART_ENABLED: 'false',
-      // 让同一个实例既能测私有域（localhost）也能测公开域（127.0.0.1）
-      HAVEN_PRIVATE_HOSTS: PRIVATE_HOSTS,
     },
   },
 )

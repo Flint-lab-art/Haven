@@ -16,7 +16,7 @@ import lombok.ToString;
 @Getter
 @Setter
 @ToString(exclude = {"content"})
-@TableName("note_versions")
+@TableName("note.note_versions")
 public class NoteVersions implements Serializable {
 
     private static final long serialVersionUID = 1L;

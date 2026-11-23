@@ -14,8 +14,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
     "com.haven.backend.audit",
     "com.haven.backend.issue.mapper",
     "com.haven.backend.ledger.mapper",
-    "com.haven.backend.note.mapper",
-    "com.haven.backend.portfolio.mapper"
+    "com.haven.backend.note.mapper"
 })
 public class BackendApplication {
 

@@ -158,7 +158,7 @@ notesMapper.update(
 
 | 内部写入 | 触发条件 | 是否抛异常 |
 | --- | --- | --- |
-| `AuditRecorder.record`（登录失败审计） | 密码错误 | 否——审计是"尽力而为"，内部 `catch (RuntimeException)` 吞掉，**静默失败** |
+| `AuditRecorder.record`（登录失败直接写 `login_logs`，`REQUIRES_NEW`） | 密码错误 | 否——审计是"尽力而为"，内部 `catch (RuntimeException)` 吞掉，**静默失败** |
 | `TrustedDeviceService.isTrusted`（刷新 last_used_at） | 设备已授信 | **是**——直接 500 |
 
 判断标准：**方法体（含它调用到的所有 service）只要可能写库，就不能标 readOnly**。
@@ -177,13 +177,14 @@ notesMapper.update(
 
 ```java
 // 禁止：裸字符串散落各处
-if ("public".equals(note.getVisibility())) { ... }
+if ("done".equals(issue.getStatus())) { ... }
 
 // 必须：领域常量
-if (NoteVisibility.PUBLIC.equals(note.getVisibility())) { ... }
+if (IssueEnums.Status.DONE.equals(issue.getStatus())) { ... }
 ```
 
-现有常量类：`NoteVisibility`、`IssueEnums`、`LedgerTypes`、`LedgerCategories`。
+现有常量类：`IssueEnums`、`LedgerTypes`、`LedgerCategories`、`LoginLogEventType`、
+`AuditEventType`、`AuditTargetType`。
 
 ### 2.10 日志
 

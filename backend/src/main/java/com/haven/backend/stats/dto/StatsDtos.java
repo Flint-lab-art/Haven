@@ -12,7 +12,7 @@ public final class StatsDtos {
     private StatsDtos() {}
 
     /** 总量统计。 */
-    public record StatsTotals(long notes, long words, long publicNotes) {}
+    public record StatsTotals(long notes, long words) {}
 
     /** 本周动态。 */
     public record StatsWeek(long created, long updated) {}
@@ -21,7 +21,7 @@ public final class StatsDtos {
     public record HeatmapCell(String date, long count) {}
 
     /** 最近编辑的一项。 */
-    public record RecentNote(UUID id, String title, OffsetDateTime updatedAt, String visibility) {}
+    public record RecentNote(UUID id, String title, OffsetDateTime updatedAt) {}
 
     /** 一个文件夹及其笔记数。 */
     public record FolderStat(UUID id, String name, long count) {}

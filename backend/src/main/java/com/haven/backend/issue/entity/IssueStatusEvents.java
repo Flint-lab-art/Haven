@@ -14,7 +14,7 @@ import lombok.ToString;
 @Getter
 @Setter
 @ToString
-@TableName("issue_status_events")
+@TableName("issue.issue_status_events")
 public class IssueStatusEvents implements Serializable {
 
     private static final long serialVersionUID = 1L;

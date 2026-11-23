@@ -1,498 +1,199 @@
 <script setup lang="ts">
 /**
- * 记账页（PWA /ledger）。
+ * 记账 · 右侧详情区（PC 三栏布局）。
  *
- * 三层信息：
- * 1. 月度汇总：本月支出、收入、分类排行；
- * 2. 快速记一笔：多行文本 → 解析预览 → 确认写入（batch_id 幂等）；
- * 3. 明细：按月 / 分类筛选，改分类即自动记忆别名，可改金额与时间、删除。
+ * 明细移到中间栏（`LedgerListPanel`），这里只放「今天/本月怎么样」：
+ * 结余、账户余额、预算、分类占比。
+ *
+ * 为什么这样分：记账页最高频的动作是浏览明细，其次是看「还剩多少」。
+ * 两者放在同一列会互相挤；分到两栏后，明细能占满高度，汇总也常驻可见。
  */
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import LedgerDonutChart from '@/components/LedgerDonutChart.vue'
+import LedgerEntryDialog from '@/components/ledger/LedgerEntryDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
-import LedgerEditDialog from '@/components/ledger/LedgerEditDialog.vue'
-import LedgerQuickDialog from '@/components/ledger/LedgerQuickDialog.vue'
-import LedgerShareChart from '@/components/ledger/LedgerShareChart.vue'
-import LedgerTrendChart from '@/components/LedgerTrendChart.vue'
-import { ApiError } from '@/api/client'
-import { useLedgerData } from '@/composables/useLedgerData'
-import {
-  createLedgerBatch,
-  deleteLedgerEntry,
-  updateLedgerEntry,
-  type CreateLedgerEntryInput,
-  type LedgerCategory,
-  type LedgerEntry,
-  type QuickParseResult,
-} from '@/api/ledger'
-import { groupByDay, relativeDayLabel } from '@/utils/ledger-group'
-import {
-  EXPENSE_CATEGORIES,
-  INCOME_CATEGORIES,
-  LEDGER_CATEGORIES,
-  categoriesForType,
-  categoryTone,
-  currentMonth,
-  formatSignedYuan,
-  formatYuan,
-  shiftMonth,
-} from '@/utils/ledger'
+import AccountAvatar from '@/components/ledger/AccountAvatar.vue'
+import { useLedgerStore } from '@/stores/ledger'
+import { formatYuan } from '@/utils/ledger'
 
-const month = ref(currentMonth())
-/** 收支筛选：空串表示不限方向。 */
-const typeFilter = ref<'' | 'expense' | 'income'>('')
-const categoryFilter = ref<LedgerCategory | ''>('')
-const rankType = ref<'expense' | 'income'>('expense')
+const store = useLedgerStore()
 
-/**
- * 筛选用的分类选项。
- *
- * 选了收支方向就只列该方向的分类；不限方向时列出全部，
- * 否则用户无法在「全部收支」下按收入分类筛。
- */
-const filterCategories = computed<LedgerCategory[]>(() => {
-  if (typeFilter.value === 'income') return INCOME_CATEGORIES
-  if (typeFilter.value === 'expense') return EXPENSE_CATEGORIES
-  return LEDGER_CATEGORIES
+// 对话框状态放在 store 里：中间栏点明细行要能在右侧打开编辑
+const dialogOpen = computed({
+  get: () => store.dialogOpen,
+  set: (v: boolean) => (store.dialogOpen = v),
+})
+const editingId = computed({
+  get: () => store.editingId,
+  set: (v: string | null) => (store.editingId = v),
 })
 
-const error = ref('')
-const toast = ref('')
+/** 待确认删除的目标。 */
+const pendingDelete = ref<{ id: string; label: string } | null>(null)
 
-// 月度数据：汇总与明细，含请求竞态处理
-const {
-  summary,
-  entries,
-  total,
-  loadingSummary,
-  loadingEntries,
-  loadSummary,
-  loadEntries,
-  reload,
-  applyEntry,
-} = useLedgerData({
-  month,
-  typeFilter,
-  categoryFilter,
-  error,
-  messageOf: (err, fallback) => messageOf(err, fallback),
-})
-
-/** 明细按天分组；同一天内按时间倒序，带当日小计。 */
-const dayGroups = computed(() => groupByDay(entries.value))
-
-/** 明细行只显示时刻，日期已在分组标题里。 */
-function timeOf(value: string): string {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
-  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
-}
-
-/** 快速记账弹窗开关。 */
-const quickOpen = ref(false)
-
-const editTarget = ref<LedgerEntry | null>(null)
-/** 编辑弹窗是否打开；与 editTarget 分开，关闭时保留 target 避免退场动画期间内容闪空。 */
-const editDialogOpen = ref(false)
-
-const deleting = ref<LedgerEntry | null>(null)
-const deletingBusy = ref(false)
-
-let toastTimer: number | undefined
-
-const ranking = computed(() =>
-  rankType.value === 'income'
-    ? (summary.value?.income_category_ranking ?? [])
-    : (summary.value?.category_ranking ?? []),
+const editingEntry = computed(() =>
+  editingId.value ? (store.entries.find((e) => e.id === editingId.value) ?? null) : null,
 )
-/** 当月每日走势；后端已按天补零。 */
-const dailyPoints = computed(() => summary.value?.daily ?? [])
-const donutLabel = computed(() => (rankType.value === 'income' ? '收入' : '支出'))
-const monthLabel = computed(() => {
-  const [year, mon] = month.value.split('-')
-  return `${year} 年 ${Number(mon)} 月`
+
+/** 结余 = 收入 − 支出。 */
+const balance = computed(
+  () => (store.summary?.total_income_cents ?? 0) - (store.summary?.total_expense_cents ?? 0),
+)
+
+/** 圆环优先展示支出分类。 */
+const donut = computed(() => {
+  const s = store.summary
+  if (!s) return { items: [], label: '支出' }
+  if (s.expense_by_category.length > 0) return { items: s.expense_by_category, label: '支出' }
+  return { items: s.income_by_category, label: '收入' }
 })
-const deleteMessage = computed(() => {
-  const entry = deleting.value
-  if (!entry) return ''
-  const note = entry.note?.trim() || entry.category
-  return `删除「${note}」这笔 ${formatYuan(entry.amount_cents)} 的记录？删除后无法恢复。`
-})
 
-
-function notify(message: string): void {
-  toast.value = message
-  if (toastTimer !== undefined) window.clearTimeout(toastTimer)
-  toastTimer = window.setTimeout(() => {
-    toast.value = ''
-    toastTimer = undefined
-  }, 2600)
+function openCreate(): void {
+  store.editingId = null
+  store.dialogOpen = true
 }
 
-function messageOf(err: unknown, fallback: string): string {
-  if (err instanceof ApiError) {
-    if (err.fields) return Object.values(err.fields).join('；')
-    return err.message
+async function onSaved(): Promise<void> {
+  store.dialogOpen = false
+  store.editingId = null
+  store.flash('已保存')
+  await store.refresh()
+}
+
+function askDelete(): void {
+  const entry = editingEntry.value
+  if (!entry) return
+  pendingDelete.value = {
+    id: entry.id,
+    label: `${entry.category_name ?? '转账'} ${formatYuan(entry.amount_cents)}`,
   }
-  return fallback
-}
-
-function changeMonth(delta: number): void {
-  month.value = shiftMonth(month.value, delta)
-}
-
-/**
- * 弹窗确认写入。
- *
- * 写库留在页面里而不是弹窗内：只有页面知道当前月份、reload、toast 这些上下文。
- * 弹窗只负责收集输入与预览，通过 done(ok) 告诉它结果。
- */
-async function onQuickCommit(items: QuickParseResult['items'], done: (ok: boolean) => void): Promise<void> {
-  try {
-    const payload: CreateLedgerEntryInput[] = items.map((item) => ({
-      type: item.type,
-      amount_cents: item.amount_cents,
-      category: item.category,
-      note: item.note,
-      occurred_at: item.occurred_at,
-    }))
-    const batch = await createLedgerBatch({
-      batch_id: newBatchId(),
-      raw_text: items.map((item) => item.raw).join('\n'),
-      items: payload,
-    })
-    // 记到了别的月份时提示一下，否则用户会以为「记了但没显示」
-    const otherMonth = items.filter((item) => item.occurred_at.slice(0, 7) !== month.value).length
-    notify(
-      otherMonth > 0
-        ? `已记录 ${batch.total} 笔，其中 ${otherMonth} 笔在其他月份`
-        : `已记录 ${batch.total} 笔`,
-    )
-    await reload()
-    done(true)
-  } catch (err) {
-    error.value = messageOf(err, '写入失败')
-    done(false)
-  }
-}
-
-async function onCategoryChange(entry: LedgerEntry, event: Event): Promise<void> {
-  const select = event.target as HTMLSelectElement
-  const next = select.value as LedgerCategory
-  if (!next || next === entry.category) return
-
-  const previous = entry.category
-  entry.category = next
-  try {
-    const updated = await updateLedgerEntry(entry.id, { category: next })
-    applyEntry(updated)
-    notify('分类已更新，备注首词已记住')
-    await loadSummary()
-  } catch (err) {
-    entry.category = previous
-    select.value = previous
-    error.value = messageOf(err, '分类更新失败')
-  }
-}
-
-function openEdit(entry: LedgerEntry): void {
-  editTarget.value = entry
-  editDialogOpen.value = true
-}
-
-/** 弹窗保存成功：把服务端返回的新值同步进列表，再刷新汇总。 */
-async function onEditSaved(updated: LedgerEntry): Promise<void> {
-  applyEntry(updated)
-  notify('已保存')
-  await reload()
 }
 
 async function confirmDelete(): Promise<void> {
-  const entry = deleting.value
-  if (!entry || deletingBusy.value) return
-
-  deletingBusy.value = true
-  try {
-    await deleteLedgerEntry(entry.id)
-    entries.value = entries.value.filter((item) => item.id !== entry.id)
-    total.value = Math.max(0, total.value - 1)
-    deleting.value = null
-    notify('已删除')
-    await loadSummary()
-  } catch (err) {
-    error.value = messageOf(err, '删除失败')
-  } finally {
-    deletingBusy.value = false
-  }
+  const target = pendingDelete.value
+  if (!target) return
+  pendingDelete.value = null
+  store.dialogOpen = false
+  store.editingId = null
+  await store.remove({ id: target.id } as never)
 }
 
-function newBatchId(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID()
-  }
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
-}
-
-watch(month, () => void reload())
-
-// 方向变了，原来选中的分类可能已不在新方向的列表里，先清掉再请求，
-// 否则会把「收入 + 餐饮」这种矛盾组合发给后端
-watch(typeFilter, () => {
-  if (categoryFilter.value && !filterCategories.value.includes(categoryFilter.value)) {
-    categoryFilter.value = ''
-  }
-  void loadEntries()
-})
-
-watch(categoryFilter, () => void loadEntries())
-
-onMounted(() => void reload())
-onBeforeUnmount(() => {
-  if (toastTimer !== undefined) window.clearTimeout(toastTimer)
+onMounted(() => {
+  void store.init()
 })
 </script>
 
 <template>
-  <div class="ledger-page">
-    <header class="ledger-header">
+  <div class="detail-inner ledger-detail-pane">
+    <header class="detail-head">
       <div>
-        <h1 class="ledger-title">记账</h1>
-        <p class="ledger-sub">一行一笔，确认后写入；分类随时可改。</p>
+        <h1 class="detail-title">概览</h1>
+        <p class="detail-sub">钱从哪出、花在哪、还剩多少</p>
       </div>
-      <div class="ledger-month">
-        <button class="icon-btn" type="button" aria-label="上个月" @click="changeMonth(-1)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="m15 6-6 6 6 6" />
-          </svg>
-        </button>
-        <input v-model="month" class="input ledger-month__input" type="month" aria-label="选择月份" />
-        <button class="icon-btn" type="button" aria-label="下个月" @click="changeMonth(1)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="m9 6 6 6-6 6" />
-          </svg>
-        </button>
-      </div>
+      <button class="btn btn--primary" type="button" @click="openCreate">记一笔</button>
     </header>
 
-    <p v-if="error" class="notice notice--error ledger-notice">
-      {{ error }}
-      <span class="notice__actions">
-        <button class="btn btn--sm" type="button" @click="reload">重试</button>
-      </span>
-    </p>
-    <p v-if="toast" class="notice notice--success ledger-notice">{{ toast }}</p>
+    <p v-if="store.error" class="notice notice--error">{{ store.error }}</p>
+    <p v-if="store.toast" class="notice notice--success">{{ store.toast }}</p>
 
-    <!--
-      月度汇总只保留三个数字。
-      分类排行原本也在这里，但它与下方「分类占比」展示的是同一份数据，
-      重复且让首屏必须滚动才能看到明细，所以合并进占比卡片。
-    -->
-    <section class="ledger-summary" aria-label="月度汇总">
-      <div class="ledger-stat">
-        <span class="ledger-stat__label">{{ monthLabel }}支出</span>
-        <span v-if="loadingSummary && !summary" class="skeleton skeleton--title ledger-stat__skeleton"></span>
-        <span v-else class="ledger-stat__value">{{ formatYuan(summary?.total_expense_cents ?? 0) }}</span>
+    <!-- 结余：整页的视觉锚点 -->
+    <section class="ledger-hero" aria-label="本月结余">
+      <span class="ledger-hero__label">本月结余</span>
+      <span class="ledger-hero__value" :class="{ 'ledger-hero__value--negative': balance < 0 }">
+        {{ balance < 0 ? '−' : '' }}{{ formatYuan(Math.abs(balance)) }}
+      </span>
+      <div class="ledger-hero__split">
+        <div class="ledger-hero__item">
+          <span class="ledger-hero__item-label">支出</span>
+          <span class="ledger-hero__item-value">{{ formatYuan(store.summary?.total_expense_cents ?? 0) }}</span>
+        </div>
+        <div class="ledger-hero__item">
+          <span class="ledger-hero__item-label">收入</span>
+          <span class="ledger-hero__item-value ledger-hero__item-value--income">
+            {{ formatYuan(store.summary?.total_income_cents ?? 0) }}
+          </span>
+        </div>
+        <div class="ledger-hero__item">
+          <span class="ledger-hero__item-label">笔数</span>
+          <span class="ledger-hero__item-value">{{ store.summary?.total_count ?? 0 }}</span>
+        </div>
       </div>
-      <div class="ledger-stat">
-        <span class="ledger-stat__label">收入</span>
-        <span v-if="loadingSummary && !summary" class="skeleton skeleton--title ledger-stat__skeleton"></span>
-        <span v-else class="ledger-stat__value ledger-stat__value--income">
-          {{ formatYuan(summary?.total_income_cents ?? 0) }}
+    </section>
+
+    <!-- 账户余额：一行一个，像银行 App 的资产列表 -->
+    <section class="panel panel--pad ledger-acc-block" aria-label="账户">
+      <h2 class="ledger-block__title">账户</h2>
+      <ul v-if="store.activeAccounts.length > 0" class="ledger-acc-list">
+        <li v-for="acc in store.activeAccounts" :key="acc.id" class="ledger-acc-row">
+          <span class="ledger-acc-row__name">
+            <AccountAvatar :name="acc.name" :icon="acc.icon" />
+            {{ acc.name }}
+          </span>
+          <span
+            class="ledger-acc-row__balance"
+            :class="{ 'ledger-acc-row__balance--debt': acc.balance_cents < 0 }"
+          >
+            {{ formatYuan(acc.balance_cents) }}
+          </span>
+        </li>
+      </ul>
+      <p v-else class="field__hint">
+        还没有账户，先到「设置 · 账户」里建一个。
+      </p>
+    </section>
+
+    <!-- 预算 -->
+    <section v-if="store.budget && store.budget.total_budget_cents > 0" class="panel panel--pad ledger-block" aria-label="预算">
+      <div class="ledger-block__head">
+        <h2 class="ledger-block__title">本月预算</h2>
+        <span class="ledger-block__meta" :class="{ 'is-over': store.budgetOver }">
+          {{ formatYuan(store.budget.total_spent_cents) }} / {{ formatYuan(store.budget.total_budget_cents) }}
         </span>
       </div>
-      <div class="ledger-stat">
-        <span class="ledger-stat__label">笔数</span>
-        <span v-if="loadingSummary && !summary" class="skeleton skeleton--title ledger-stat__skeleton"></span>
-        <span v-else class="ledger-stat__value">{{ summary?.total_count ?? 0 }}</span>
+      <div class="ledger-budget__bar">
+        <div
+          class="ledger-budget__fill"
+          :class="{ 'ledger-budget__fill--over': store.budgetOver }"
+          :style="{ width: store.budgetPercent + '%' }"
+        ></div>
       </div>
+      <ul class="ledger-budget__items">
+        <li
+          v-for="item in store.budget.items"
+          :key="item.category_id"
+          class="ledger-budget__item"
+        >
+          <span>{{ item.category_name }}</span>
+          <span :class="{ 'is-over': item.remaining_cents < 0 }">
+            {{ formatYuan(item.spent_cents) }} / {{ formatYuan(item.amount_cents) }}
+          </span>
+        </li>
+      </ul>
     </section>
 
-    <!-- 统计图表：与上方汇总共用同一份数据，不再额外请求 -->
-    <section class="ledger-charts" aria-label="记账统计">
-      <div class="ledger-card">
-        <div class="ledger-card-head">
-          <h2 class="ledger-card__title">每日走势</h2>
-          <span class="muted">{{ monthLabel }}</span>
-        </div>
-        <p v-if="!dailyPoints.length" class="ledger-muted">这个月还没有记录。</p>
-        <LedgerTrendChart v-else :points="dailyPoints" />
-      </div>
-
-      <div class="ledger-card">
-        <div class="ledger-card-head">
-          <h2 class="ledger-card__title">分类占比</h2>
-          <div class="ledger-rank-toggle" role="tablist" aria-label="占比方向">
-            <button
-              type="button"
-              class="ledger-rank-toggle__btn"
-              :class="{ 'is-active': rankType === 'expense' }"
-              role="tab"
-              :aria-selected="rankType === 'expense'"
-              @click="rankType = 'expense'"
-            >
-              支出
-            </button>
-            <button
-              type="button"
-              class="ledger-rank-toggle__btn"
-              :class="{ 'is-active': rankType === 'income' }"
-              role="tab"
-              :aria-selected="rankType === 'income'"
-              @click="rankType = 'income'"
-            >
-              收入
-            </button>
-          </div>
-        </div>
-        <LedgerShareChart :items="ranking" :label="donutLabel" />
-      </div>
+    <!-- 分类占比 -->
+    <section v-if="donut.items.length > 0" class="panel panel--pad ledger-block" aria-label="分类占比">
+      <h2 class="ledger-block__title">钱花在哪</h2>
+      <LedgerDonutChart :items="donut.items" :label="donut.label" />
     </section>
 
-    <section class="ledger-entries" aria-label="记账明细">
-      <div class="ledger-card-head ledger-entries__head">
-        <div>
-          <h2 class="ledger-card__title">明细</h2>
-          <p class="field__hint">{{ monthLabel }} · 共 {{ total }} 笔</p>
-        </div>
-      <div class="ledger-entries__filters">
-        <!-- 两级筛选：先定收支方向，再选该方向下的分类 -->
-        <label class="ledger-filter">
-          <select
-            v-model="typeFilter"
-            class="select ledger-filter__select"
-            aria-label="按收支筛选"
-          >
-            <option value="">全部收支</option>
-            <option value="expense">支出</option>
-            <option value="income">收入</option>
-          </select>
-        </label>
-        <label class="ledger-filter">
-          <select
-            v-model="categoryFilter"
-            class="select ledger-filter__select"
-            aria-label="按分类筛选"
-          >
-            <option value="">全部分类</option>
-            <option v-for="category in filterCategories" :key="category" :value="category">
-              {{ category }}
-            </option>
-          </select>
-        </label>
-      </div>
-    </div>
-
-      <div v-if="loadingEntries && entries.length === 0" class="ledger-day-list" aria-busy="true">
-        <div v-for="i in 3" :key="i" class="ledger-day">
-          <div class="ledger-day__head">
-            <span class="skeleton skeleton--title" style="width: 96px"></span>
-          </div>
-          <div v-for="j in 2" :key="j" class="ledger-entry">
-            <span class="skeleton" style="width: 46px; height: 14px"></span>
-            <span class="skeleton" style="width: 64px; height: 24px"></span>
-            <span class="skeleton" style="width: 34%; height: 14px"></span>
-            <span class="skeleton" style="width: 56px; height: 14px"></span>
-          </div>
-        </div>
-      </div>
-
-      <div v-else-if="dayGroups.length === 0" class="ledger-empty">
-        <p class="ledger-empty__title">这个月还没有记录</p>
-        <p class="ledger-empty__text">
-          {{ categoryFilter ? '换个分类看看，或者点右下角记一笔。' : '点右下角的按钮，输入「午饭12」试试。' }}
-        </p>
-      </div>
-
-      <!-- 按天分组：同一天的小计让「这天花了多少」一眼可见 -->
-      <div v-else class="ledger-day-list">
-        <section v-for="group in dayGroups" :key="group.date" class="ledger-day">
-          <header class="ledger-day__head">
-            <span class="ledger-day__date">{{ relativeDayLabel(group.label, group.date) }}</span>
-            <span class="ledger-day__weekday">{{ group.weekday }}</span>
-            <span class="ledger-day__sum">
-              <span v-if="group.expenseCents" class="ledger-day__sum-item">
-                支出 <strong>{{ formatYuan(group.expenseCents) }}</strong>
-              </span>
-              <span v-if="group.incomeCents" class="ledger-day__sum-item ledger-day__sum-item--income">
-                收入 <strong>{{ formatYuan(group.incomeCents) }}</strong>
-              </span>
-            </span>
-          </header>
-
-          <div class="ledger-entry-list">
-            <div v-for="entry in group.items" :key="entry.id" class="ledger-entry">
-              <span class="ledger-entry__time">{{ timeOf(entry.occurred_at) }}</span>
-              <select
-                class="select ledger-entry__cat"
-                :class="`ledger-entry__cat--${categoryTone(entry.category)}`"
-                :value="entry.category"
-                :aria-label="`修改分类：${entry.note || entry.category}`"
-                @change="onCategoryChange(entry, $event)"
-              >
-                <option
-                  v-for="category in categoriesForType(entry.type, entry.category)"
-                  :key="category"
-                  :value="category"
-                >
-                  {{ category }}
-                </option>
-              </select>
-              <span class="ledger-entry__note" :title="entry.note">{{ entry.note || '—' }}</span>
-              <span class="ledger-entry__amount" :class="{ 'is-income': entry.type === 'income' }">
-                {{ formatSignedYuan(entry.type, entry.amount_cents) }}
-              </span>
-              <button class="icon-btn ledger-entry__action" type="button" aria-label="编辑金额与时间" @click="openEdit(entry)">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="M4 20h4L19 9l-4-4L4 16z" />
-                  <path d="m13 7 4 4" />
-                </svg>
-              </button>
-              <button
-                class="icon-btn ledger-entry__action ledger-entry__action--danger"
-                type="button"
-                aria-label="删除这笔记录"
-                @click="deleting = entry"
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" />
-                </svg>
-              </button>
-            </div>
-          </div>
-        </section>
-      </div>
-    </section>
-
-    <!-- 记账是低频动作，收进悬浮按钮，把版面留给明细 -->
-    <button
-      class="ledger-fab"
-      type="button"
-      aria-label="快速记一笔"
-      @click="quickOpen = true"
-    >
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-        <path d="M12 5v14M5 12h14" />
-      </svg>
-      <span>记一笔</span>
-    </button>
-
-    <LedgerQuickDialog
-      v-model:open="quickOpen"
-      @commit="onQuickCommit"
-    />
-
-    <LedgerEditDialog
-      v-model:open="editDialogOpen"
-      :entry="editTarget"
-      @saved="onEditSaved"
+    <LedgerEntryDialog
+      v-if="dialogOpen"
+      :entry="editingEntry"
+      :accounts="store.accounts"
+      :categories="store.categories"
+      @close="store.dialogOpen = false; store.editingId = null"
+      @saved="onSaved"
+      @delete="askDelete"
     />
 
     <ConfirmDialog
-      :open="deleting !== null"
+      v-if="pendingDelete"
+      :open="true"
       title="删除这笔记录？"
-      :message="deleteMessage"
-      :busy="deletingBusy"
-      @cancel="deleting = null"
+      :message="`「${pendingDelete.label}」删除后不可恢复。`"
       @confirm="confirmDelete"
+      @cancel="pendingDelete = null"
     />
   </div>
 </template>

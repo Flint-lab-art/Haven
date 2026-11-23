@@ -2,11 +2,11 @@
 /** 设置概览。 */
 import { computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { getRuntimeConfig } from '@/config'
 
 const auth = useAuthStore()
 
-const appVersion = computed(() => getRuntimeConfig().version)
+/** 版本号来自构建期注入，不需要再请求后端。 */
+const appVersion = __APP_VERSION__
 const authLabel = computed(() => (auth.authType === 'token' ? 'API Token' : '浏览器会话'))
 </script>
 
@@ -22,7 +22,7 @@ const authLabel = computed(() => (auth.authType === 'token' ? 'API Token' : '浏
         <dt>用户名</dt>
         <dd>{{ auth.username }}</dd>
         <dt>版本</dt>
-        <dd>Haven{{ appVersion ? ` v${appVersion}` : '（版本未知）' }}</dd>
+        <dd>Haven v{{ appVersion }}</dd>
         <dt>登录方式</dt>
         <dd>{{ authLabel }}</dd>
         <dt>双重验证</dt>
@@ -35,7 +35,7 @@ const authLabel = computed(() => (auth.authType === 'token' ? 'API Token' : '浏
     </section>
 
     <p class="field__hint" style="margin-top: 16px">
-      左侧列表可进入账号安全、会话、授信设备与 API Token 管理。
+      左侧列表可进入账号安全、登录日志、会话、授信设备与 API Token 管理。
     </p>
   </div>
 </template>

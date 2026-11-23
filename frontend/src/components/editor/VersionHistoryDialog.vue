@@ -16,6 +16,8 @@ import {
   type VersionDetail,
   type VersionSummary,
 } from '@/api/notes'
+import { X } from 'lucide-vue-next'
+
 import { diffLines, diffStats } from '@/utils/diff'
 import { stripHtml } from '@/utils/html'
 import { formatDateTime } from '@/utils/format'
@@ -189,9 +191,7 @@ onBeforeUnmount(() => {
           <span class="diff-count diff-count--del">−{{ stats.removed }}</span>
         </span>
         <button class="icon-btn" type="button" aria-label="关闭" @click="emit('close')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
-            <path d="M6 6l12 12M18 6 6 18" />
-          </svg>
+          <X aria-hidden="true" />
         </button>
       </header>
 

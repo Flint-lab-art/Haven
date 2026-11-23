@@ -6,8 +6,6 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
-import java.util.UUID;
-import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,11 +18,16 @@ import org.slf4j.LoggerFactory;
  *   <li>误执行 {@code flyway:clean} 会清掉本地开发数据。</li>
  * </ul>
  * <p>
- * 为什么默认不直接上 Testcontainers：很多开发机没有 Docker 守护进程，
- * 让单元测试因此跑不起来是很差的体验。这里的策略是：
+ * 为什么用<b>独立测试库</b>而不是临时 schema：
+ * V16 起业务表按模块分在 {@code note} / {@code issue} / {@code ledger} 三个 schema，
+ * 而 PostgreSQL 的 schema 不能嵌套——临时 schema 里无法再建 module schema，
+ * 迁移里的 {@code CREATE SCHEMA note} 会直接落到库顶层、污染开发库。
+ * 因此改成每轮重建一个独立数据库，迁移路径与生产完全一致。
+ * <p>
+ * 策略：
  * <ol>
  *   <li>显式要求容器（{@code -Dhaven.test.mode=container}）且容器可用 → 启容器；</li>
- *   <li>否则在同一 PostgreSQL 实例里创建一个<b>临时 schema</b>，测试结束不清理也无妨（schema 名带随机后缀）；</li>
+ *   <li>否则连同一 PostgreSQL 实例，<b>DROP + CREATE</b> 一个独立数据库（默认 {@code haven_test_db}）；</li>
  *   <li>两者都不可用 → 抛带修复指引的异常，而不是静默回落到开发库。</li>
  * </ol>
  * 系统属性 {@link #URL_PROPERTY} / {@link #USERNAME_PROPERTY} / {@link #PASSWORD_PROPERTY}
@@ -43,11 +46,23 @@ public final class TestDatabaseSupport {
     private static final String MODE_CONTAINER = "container";
 
     private static final Logger log = LoggerFactory.getLogger(TestDatabaseSupport.class);
-    private static final AtomicBoolean INITIALIZED = new AtomicBoolean(false);
-    /** 本轮创建出来的临时 schema，JVM 退出时统一清理。 */
-    private static final List<String> CREATED_SCHEMAS = new java.util.concurrent.CopyOnWriteArrayList<>();
-    /** 临时 schema 的前缀，用于清理历史残留。 */
-    private static final String SCHEMA_PREFIX = "haven_test_";
+    /**
+     * 是否已经有线程在做初始化。
+     *
+     * 不能用「init 完就返回」的做法：别的 Spring 上下文会立刻用这份连接信息去查表，
+     * 而此时 Flyway 可能还没把这个上下文需要的表建完，表现为偶发的
+     * 「relation "users" does not exist」。
+     * 所以这里只在第一个线程里建库，其余线程等它完成后直接复用。
+     */
+    private static volatile boolean initialized = false;
+
+    /** 初始化完成后的连接信息（供后来者直接复用）。 */
+    private static volatile String preparedUrl;
+
+    private static volatile String preparedUser;
+    private static volatile String preparedPassword;
+    /** 测试专用数据库名，每轮重建。 */
+    private static final String TEST_DB = System.getenv().getOrDefault("TEST_DB_NAME", "haven_test_db");
 
     private TestDatabaseSupport() {}
 
@@ -56,19 +71,33 @@ public final class TestDatabaseSupport {
      * <p>
      * 由 {@code TestDatabaseInitializer} 在 Spring 上下文启动前调用。
      */
-    public static void ensurePrepared() {
-        if (!INITIALIZED.compareAndSet(false, true)) {
+    public static synchronized void ensurePrepared() {
+        if (initialized) {
+            // 后来者：把已有的连接信息重新写回系统属性（可能被别的上下文覆盖过）
+            republish();
             return;
         }
         if (MODE_CONTAINER.equalsIgnoreCase(System.getProperty(MODE_PROPERTY, ""))) {
             try {
                 prepareTestcontainers();
+                initialized = true;
                 return;
             } catch (RuntimeException e) {
-                log.warn("Testcontainers 不可用，回退到临时 schema：{}", e.getMessage());
+                log.warn("Testcontainers 不可用，改用独立测试库：{}", e.getMessage());
             }
         }
-        prepareIsolatedSchema();
+        prepareIsolatedDatabase();
+        initialized = true;
+    }
+
+    /** 把已准备好的连接信息写回系统属性。 */
+    private static void republish() {
+        if (preparedUrl == null) {
+            return;
+        }
+        System.setProperty(URL_PROPERTY, preparedUrl);
+        System.setProperty(USERNAME_PROPERTY, preparedUser);
+        System.setProperty(PASSWORD_PROPERTY, preparedPassword);
     }
 
     /** 用 Testcontainers 启动一次性 PostgreSQL。 */
@@ -84,111 +113,124 @@ public final class TestDatabaseSupport {
     }
 
     /**
-     * 在同一 PostgreSQL 实例里开一个临时 schema。
+     * 在同一 PostgreSQL 实例里重建一个独立测试数据库。
      * <p>
-     * 依次尝试候选数据库（默认 {@code dev_db}，其次 {@code postgres}），
-     * 只要当前账号能建 schema 即可，无需额外准备实例。
+     * 先连维护库（{@code postgres}，回退到 {@code dev_db}）执行 DROP / CREATE，
+     * 再用新库跑迁移。数据库名固定，避免遗留库越攒越多。
      */
-    private static void prepareIsolatedSchema() {
+    private static void prepareIsolatedDatabase() {
         String user = System.getenv().getOrDefault("TEST_DB_USERNAME", System.getProperty(USERNAME_PROPERTY, "dev"));
         String password =
                 System.getenv().getOrDefault("TEST_DB_PASSWORD", System.getProperty(PASSWORD_PROPERTY, "123456"));
-        List<String> candidates = candidateUrls();
+
+        String targetUrl = databaseUrl(TEST_DB);
         SQLException lastError = null;
 
-        for (String baseUrl : candidates) {
-            String schema = "haven_test_"
-                    + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
-            try (Connection connection = DriverManager.getConnection(baseUrl, user, password);
+        for (String adminUrl : adminUrls()) {
+            try (Connection connection = DriverManager.getConnection(adminUrl, user, password);
                     Statement statement = connection.createStatement()) {
-                dropStaleSchemas(statement, schema);
-                statement.execute("CREATE SCHEMA " + schema);
-                // 扩展装在 public，迁移里的 CREATE EXTENSION IF NOT EXISTS 才会是幂等的空操作；
-                // 同时把 search_path 指到临时 schema，保证建表落在隔离空间里。
-                statement.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm SCHEMA public");
-                CREATED_SCHEMAS.add(schema);
-                publish(withSchema(baseUrl, schema), user, password, "临时 schema " + schema);
-                return;
+                /*
+                 * 已经建好并且迁移过的库直接复用，不重建。
+                 *
+                 * 重建时必须先 pg_terminate_backend，这会掐断所有在用连接；
+                 * 如果某个测试上下文已经连着这个库，就会看到
+                 * 「terminating connection due to administrator command」并整片失败。
+                 * 同一轮测试里库只需建一次，之后的调用一律复用。
+                 */
+                if (hasMigratedTables(statement)) {
+                    log.debug("测试库 {} 已就绪，复用", TEST_DB);
+                    ensureExtension(targetUrl, user, password);
+                    publish(targetUrl, user, password, "独立测试库 " + TEST_DB + "（复用）");
+                    return;
+                }
+                statement.execute("SELECT pg_terminate_backend(pid) FROM pg_stat_activity " + "WHERE datname = '"
+                        + TEST_DB + "' AND pid <> pg_backend_pid()");
+                statement.execute("DROP DATABASE IF EXISTS " + TEST_DB);
+                statement.execute("CREATE DATABASE " + TEST_DB);
             } catch (SQLException e) {
                 lastError = e;
-                log.debug("跳过候选测试库 {}：{}", baseUrl, e.getMessage());
+                log.debug("跳过维护库 {}：{}", adminUrl, e.getMessage());
+                continue;
             }
+            // 扩展要装在测试库自己的 public 里，迁移里的 CREATE EXTENSION 才会是幂等空操作
+            try {
+                ensureExtension(targetUrl, user, password);
+            } catch (SQLException e) {
+                lastError = e;
+                log.debug("初始化测试库扩展失败：{}", e.getMessage());
+                continue;
+            }
+            publish(targetUrl, user, password, "独立测试库 " + TEST_DB);
+            return;
         }
+
         throw new IllegalStateException(
                 "无法准备测试数据库。请二选一："
                         + "\n  1) 启动 Docker 后用 -Dhaven.test.mode=container 跑容器化 PostgreSQL；"
-                        + "\n  2) 用 TEST_DB_URL/TEST_DB_USERNAME/TEST_DB_PASSWORD 指定一个当前账号有建 schema 权限的库。"
-                        + "\n已尝试：" + candidates,
+                        + "\n  2) 让测试账号拥有 CREATEDB 权限（ALTER ROLE <user> CREATEDB），"
+                        + "或用 TEST_DB_URL/TEST_DB_USERNAME/TEST_DB_PASSWORD 指向可建库的实例。"
+                        + "\n维护库已尝试：" + adminUrls(),
                 lastError);
     }
 
-    /** 清理上一次异常退出遗留的临时 schema，避免实例里越攒越多。 */
-    private static void dropStaleSchemas(Statement statement, String keep) {
-        try (ResultSet rs = statement.executeQuery(
-                "SELECT nspname FROM pg_namespace WHERE nspname LIKE '" + SCHEMA_PREFIX + "%'")) {
-            List<String> stale = new java.util.ArrayList<>();
-            while (rs.next()) {
-                String name = rs.getString(1);
-                if (!name.equals(keep)) {
-                    stale.add(name);
-                }
-            }
-            for (String name : stale) {
-                statement.execute("DROP SCHEMA IF EXISTS " + name + " CASCADE");
-                log.debug("清理遗留测试 schema：{}", name);
-            }
-        } catch (SQLException e) {
-            // 没有权限清理也无所谓，不影响本轮测试
-            log.debug("清理遗留测试 schema 失败：{}", e.getMessage());
-        }
-    }
-
-    /** JVM 退出时删除本轮创建的 schema。 */
-    private static void registerCleanup(String url, String user, String password) {
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            if (CREATED_SCHEMAS.isEmpty()) {
-                return;
-            }
-            try (Connection connection = DriverManager.getConnection(url, user, password);
-                    Statement statement = connection.createStatement()) {
-                for (String schema : CREATED_SCHEMAS) {
-                    statement.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
-                }
-                log.info("已清理 {} 个临时测试 schema", CREATED_SCHEMAS.size());
-            } catch (SQLException e) {
-                log.warn("清理临时测试 schema 失败：{}", e.getMessage());
-            }
-        }));
-    }
-
-    /** 候选数据库：显式配置优先，其余为本地常见默认库。 */
-    private static List<String> candidateUrls() {
-        String explicitUrl = System.getenv("TEST_DB_URL");
-        if (explicitUrl == null || explicitUrl.isBlank()) {
-            explicitUrl = System.getProperty(URL_PROPERTY);
-        }
-        if (explicitUrl != null && !explicitUrl.isBlank()) {
-            return List.of(explicitUrl);
-        }
-        return List.of("jdbc:postgresql://127.0.0.1:5432/dev_db", "jdbc:postgresql://127.0.0.1:5432/postgres");
-    }
-
     /**
-     * 把 schema 编码进 JDBC URL。
-     * <p>
-     * {@code currentSchema} 决定建表位置；{@code search_path} 额外带上 public，
-     * 让 {@code gin_trgm_ops} 等扩展提供的 operator class 可被解析。
+     * 测试库是否已经建好并跑过迁移。
+     *
+     * 看 {@code public.users}：V1 建的第一张表，它在就说明 Flyway 至少跑到了 V1。
      */
-    private static String withSchema(String url, String schema) {
-        String separator = url.contains("?") ? "&" : "?";
-        // 只设置 search_path，不用 currentSchema：pgjdbc 会把 currentSchema 写进 options，
-        // 从而覆盖 search_path 并丢掉 public，导致 gin_trgm_ops 等扩展 operator class 解析失败。
-        // search_path 首项就是临时 schema，建表仍然落在隔离空间里。
-        return url + separator + "options=-c%20search_path%3D" + schema + "%2Cpublic";
+    private static boolean hasMigratedTables(Statement admin) throws SQLException {
+        try (ResultSet rs = admin.executeQuery("SELECT 1 FROM pg_database WHERE datname = '" + TEST_DB + "'")) {
+            if (!rs.next()) {
+                return false;
+            }
+        }
+        // 再连到目标库确认 users 表在（库存在但没迁移过时它不在）
+        String user = System.getenv().getOrDefault("TEST_DB_USERNAME", System.getProperty(USERNAME_PROPERTY, "dev"));
+        String password =
+                System.getenv().getOrDefault("TEST_DB_PASSWORD", System.getProperty(PASSWORD_PROPERTY, "123456"));
+        try (Connection connection = DriverManager.getConnection(databaseUrl(TEST_DB), user, password);
+                Statement statement = connection.createStatement();
+                ResultSet rs = statement.executeQuery("SELECT 1 FROM information_schema.tables "
+                        + "WHERE table_schema = 'public' AND table_name = 'users'")) {
+            return rs.next();
+        } catch (SQLException e) {
+            // 库不存在或连不上：当作没准备好
+            return false;
+        }
+    }
+
+    /** 确保 pg_trgm 装在测试库的 public 里。 */
+    private static void ensureExtension(String url, String user, String password) throws SQLException {
+        try (Connection connection = DriverManager.getConnection(url, user, password);
+                Statement statement = connection.createStatement()) {
+            statement.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm SCHEMA public");
+        }
+    }
+
+    /** 维护连接：优先 postgres 库，其次 dev_db。 */
+    private static List<String> adminUrls() {
+        String host = System.getenv().getOrDefault("TEST_DB_HOST", "127.0.0.1");
+        String port = System.getenv().getOrDefault("TEST_DB_PORT", "5432");
+        return List.of(
+                "jdbc:postgresql://" + host + ":" + port + "/postgres",
+                "jdbc:postgresql://" + host + ":" + port + "/dev_db");
+    }
+
+    /** 目标测试库的 JDBC URL，可由 TEST_DB_URL 整体覆盖。 */
+    private static String databaseUrl(String database) {
+        String explicit = System.getenv("TEST_DB_URL");
+        if (explicit != null && !explicit.isBlank()) {
+            return explicit;
+        }
+        String host = System.getenv().getOrDefault("TEST_DB_HOST", "127.0.0.1");
+        String port = System.getenv().getOrDefault("TEST_DB_PORT", "5432");
+        return "jdbc:postgresql://" + host + ":" + port + "/" + database;
     }
 
     private static void publish(String url, String user, String password, String mode) {
-        registerCleanup(url, user, password);
+        preparedUrl = url;
+        preparedUser = user;
+        preparedPassword = password;
         System.setProperty(URL_PROPERTY, url);
         System.setProperty(USERNAME_PROPERTY, user);
         System.setProperty(PASSWORD_PROPERTY, password);

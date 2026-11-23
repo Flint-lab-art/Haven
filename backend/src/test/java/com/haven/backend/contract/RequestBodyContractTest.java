@@ -2,6 +2,7 @@ package com.haven.backend.contract;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 import com.haven.backend.auth.dto.CreateTokenRequest;
 import com.haven.backend.auth.dto.LoginRequest;
@@ -11,21 +12,15 @@ import com.haven.backend.auth.dto.TotpDisableRequest;
 import com.haven.backend.auth.dto.TotpVerifyRequest;
 import com.haven.backend.issue.dto.CreateIssueRequest;
 import com.haven.backend.issue.dto.UpdateIssueRequest;
-import com.haven.backend.ledger.dto.CreateLedgerBatchRequest;
+import com.haven.backend.ledger.dto.AccountRequest;
 import com.haven.backend.ledger.dto.CreateLedgerEntryRequest;
-import com.haven.backend.ledger.dto.QuickCommitRequest;
-import com.haven.backend.ledger.dto.QuickParseRequest;
 import com.haven.backend.ledger.dto.UpdateLedgerEntryRequest;
-import com.haven.backend.ledger.dto.UpsertLedgerAliasRequest;
+import com.haven.backend.ledger.dto.UpsertBudgetRequest;
 import com.haven.backend.note.dto.CreateFolderRequest;
 import com.haven.backend.note.dto.CreateNoteRequest;
 import com.haven.backend.note.dto.CreateTagRequest;
 import com.haven.backend.note.dto.UpdateFolderRequest;
 import com.haven.backend.note.dto.UpdateNoteRequest;
-import com.haven.backend.portfolio.dto.AddRepoRequest;
-import com.haven.backend.portfolio.dto.CreatePortfolioItemRequest;
-import com.haven.backend.portfolio.dto.UpdatePortfolioItemRequest;
-import com.haven.backend.portfolio.dto.UpdateRepoRequest;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -219,68 +214,70 @@ class RequestBodyContractTest {
     // -----------------------------------------------------------------------
 
     @Test
-    @DisplayName("快捷解析：text")
-    void quickParseRequest() throws Exception {
-        assertEquals("午饭 12", mapper.readValue("""
-                {"text":"午饭 12"}
-                """, QuickParseRequest.class).text());
+    @DisplayName("新建流水：type / amount_cents / category_id / account_id / to_account_id")
+    void createLedgerEntryRequest() throws Exception {
+        CreateLedgerEntryRequest req = mapper.readValue("""
+                {"type":"expense","amount_cents":1200,"category_id":102,"account_id":"11111111-1111-1111-1111-111111111111",
+                 "note":"午饭","occurred_at":"2026-01-02T03:00:00Z"}
+                """, CreateLedgerEntryRequest.class);
+
+        assertEquals("expense", req.type());
+        assertEquals(1200L, req.amountCents());
+        assertEquals((short) 102, req.categoryId());
+        assertNotNull(req.accountId());
+        assertNull(req.toAccountId());
+        assertNotNull(req.occurredAt());
     }
 
     @Test
-    @DisplayName("快捷记账：batch_id / text")
-    void quickCommitRequest() throws Exception {
-        QuickCommitRequest req = mapper.readValue("""
-                {"batch_id":"b-1","text":"午饭 12"}
-                """, QuickCommitRequest.class);
+    @DisplayName("转账：account_id 与 to_account_id 同时出现，不带 category_id")
+    void createTransferRequest() throws Exception {
+        CreateLedgerEntryRequest req = mapper.readValue("""
+                {"type":"transfer","amount_cents":100000,"account_id":"11111111-1111-1111-1111-111111111111",
+                 "to_account_id":"22222222-2222-2222-2222-222222222222"}
+                """, CreateLedgerEntryRequest.class);
 
-        assertEquals("b-1", req.batchId());
-        assertEquals("午饭 12", req.text());
+        assertEquals("transfer", req.type());
+        assertNotNull(req.toAccountId());
+        assertNull(req.categoryId());
     }
 
     @Test
-    @DisplayName("批次写入：batch_id / raw_text / items[amount_cents]")
-    void createLedgerBatchRequest() throws Exception {
-        String json = """
-                {
-                  "batch_id":"b-2",
-                  "raw_text":"午饭 12",
-                  "items":[{"type":"expense","amount_cents":1200,"category":"餐饮","note":"午饭","occurred_at":"2026-01-02T03:00:00Z"}]
-                }
-                """;
-
-        CreateLedgerBatchRequest req = mapper.readValue(json, CreateLedgerBatchRequest.class);
-
-        assertEquals("b-2", req.batchId());
-        assertEquals("午饭 12", req.rawText());
-        assertEquals(1, req.items().size());
-
-        CreateLedgerEntryRequest item = req.items().getFirst();
-        assertEquals(1200L, item.amountCents());
-        assertEquals("expense", item.type());
-        assertNotNull(item.occurredAt());
-    }
-
-    @Test
-    @DisplayName("修改条目：amount_cents / occurred_at / category")
+    @DisplayName("修改流水：可只传要改的字段")
     void updateLedgerEntryRequest() throws Exception {
         UpdateLedgerEntryRequest req = mapper.readValue("""
-                {"amount_cents":2500,"occurred_at":"2026-01-03T00:00:00Z","category":"餐饮"}
+                {"amount_cents":2500,"category_id":102,"note":"改过"}
                 """, UpdateLedgerEntryRequest.class);
 
         assertEquals(2500L, req.amountCents());
-        assertNotNull(req.occurredAt());
-        assertEquals("餐饮", req.category());
+        assertEquals((short) 102, req.categoryId());
+        assertEquals("改过", req.note());
+        assertNull(req.toAccountId());
     }
 
     @Test
-    @DisplayName("别名：alias / category")
-    void upsertLedgerAliasRequest() throws Exception {
-        UpsertLedgerAliasRequest req = mapper.readValue("""
-                {"alias":"午饭","category":"餐饮"}
-                """, UpsertLedgerAliasRequest.class);
+    @DisplayName("账户：name / type / initial_balance_cents / sort_order")
+    void accountRequest() throws Exception {
+        AccountRequest req = mapper.readValue("""
+                {"name":"工资卡","type":"bank","initial_balance_cents":100000,"sort_order":1}
+                """, AccountRequest.class);
 
-        assertEquals("午饭", req.alias());
-        assertEquals("餐饮", req.category());
+        assertEquals("工资卡", req.name());
+        assertEquals("bank", req.type());
+        assertEquals(100000L, req.initialBalanceCents());
+        assertEquals(1, req.sortOrder());
+    }
+
+    @Test
+    @DisplayName("预算：category_id / month / amount_cents")
+    void upsertBudgetRequest() throws Exception {
+        UpsertBudgetRequest req = mapper.readValue("""
+                {"category_id":1,"month":"2026-11","amount_cents":100000}
+                """, UpsertBudgetRequest.class);
+
+        assertEquals((short) 1, req.categoryId());
+        assertEquals("2026-11", req.month());
+        assertEquals(100000L, req.amountCents());
     }
 
     // -----------------------------------------------------------------------
@@ -310,53 +307,5 @@ class RequestBodyContractTest {
         assertEquals("done", req.status());
         assertEquals("low", req.priority());
         assertEquals(null, req.title());
-    }
-
-    // -----------------------------------------------------------------------
-    // 作品集
-    // -----------------------------------------------------------------------
-
-    @Test
-    @DisplayName("创建作品：sort_order / is_public")
-    void createPortfolioItemRequest() throws Exception {
-        CreatePortfolioItemRequest req = mapper.readValue("""
-                {"title":"Haven","description":"笔记","content":"正文","sort_order":1,"is_public":true}
-                """, CreatePortfolioItemRequest.class);
-
-        assertEquals("Haven", req.title());
-        assertEquals(1, req.sortOrder());
-        assertEquals(Boolean.TRUE, req.isPublic());
-    }
-
-    @Test
-    @DisplayName("更新作品：is_public / sort_order")
-    void updatePortfolioItemRequest() throws Exception {
-        UpdatePortfolioItemRequest req = mapper.readValue("""
-                {"is_public":false,"sort_order":9}
-                """, UpdatePortfolioItemRequest.class);
-
-        assertEquals(Boolean.FALSE, req.isPublic());
-        assertEquals(9, req.sortOrder());
-    }
-
-    @Test
-    @DisplayName("添加链接：url / is_primary")
-    void addRepoRequest() throws Exception {
-        AddRepoRequest req = mapper.readValue("""
-                {"url":"https://github.com/x/y","title":"repo","is_primary":true}
-                """, AddRepoRequest.class);
-
-        assertEquals("https://github.com/x/y", req.url());
-        assertEquals(Boolean.TRUE, req.isPrimary());
-    }
-
-    @Test
-    @DisplayName("更新链接：is_primary")
-    void updateRepoRequest() throws Exception {
-        UpdateRepoRequest req = mapper.readValue("""
-                {"is_primary":false}
-                """, UpdateRepoRequest.class);
-
-        assertEquals(Boolean.FALSE, req.isPrimary());
     }
 }

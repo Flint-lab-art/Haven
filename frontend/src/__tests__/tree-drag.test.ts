@@ -29,8 +29,6 @@ function note(id: string): NoteSummary {
     sort_order: 0,
     title: id,
     content_preview: '',
-    visibility: 'private',
-    published_at: null,
     created_at: '',
     updated_at: '',
     tags: [],

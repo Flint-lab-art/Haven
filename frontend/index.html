@@ -3,6 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- 移动端 PWA（/m/）：添加到主屏后独立窗口运行 -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <!--
+      iOS 主屏图标：iOS 不读 manifest 的 icons，只认 apple-touch-icon。
+      必须是 PNG（SVG 不支持），180×180（Retina），且不能有透明背景——
+      透明区域在 iOS 上会显示成黑色。
+    -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Haven" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Haven</title>
   </head>

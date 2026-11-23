@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.haven.backend.audit.AuditEventType;
 import com.haven.backend.audit.AuditRecorder;
 import com.haven.backend.audit.AuditTargetType;
+import com.haven.backend.auth.LoginLogEventType;
 import com.haven.backend.auth.dto.AuthDtos.LoginResponse;
 import com.haven.backend.auth.dto.AuthDtos.MeResponse;
 import com.haven.backend.auth.dto.AuthDtos.MeUser;
@@ -26,6 +27,7 @@ import com.haven.backend.auth.mapper.UsersMapper;
 import com.haven.backend.auth.service.ApiTokenService;
 import com.haven.backend.auth.service.AuthService;
 import com.haven.backend.auth.service.LoginAttemptLimiter;
+import com.haven.backend.auth.service.LoginLogRecorder;
 import com.haven.backend.auth.service.TrustedDeviceService;
 import com.haven.backend.auth.util.ApiTokenUtil;
 import com.haven.backend.auth.util.TotpUtil;
@@ -56,6 +58,7 @@ public class AuthServiceImpl implements AuthService {
     private final LoginAttemptLimiter attemptLimiter;
     private final Clock clock;
     private final AuditRecorder auditRecorder;
+    private final LoginLogRecorder loginLogRecorder;
 
     /** 显式构造器：类中存在 {@code @Value} 字段，不能再依赖 Lombok 生成构造器。 */
     public AuthServiceImpl(
@@ -65,7 +68,8 @@ public class AuthServiceImpl implements AuthService {
             ApiTokenService apiTokenService,
             LoginAttemptLimiter attemptLimiter,
             Clock clock,
-            AuditRecorder auditRecorder) {
+            AuditRecorder auditRecorder,
+            LoginLogRecorder loginLogRecorder) {
         this.usersMapper = usersMapper;
         this.pendingTotpMapper = pendingTotpMapper;
         this.trustedDeviceService = trustedDeviceService;
@@ -73,6 +77,7 @@ public class AuthServiceImpl implements AuthService {
         this.attemptLimiter = attemptLimiter;
         this.clock = clock;
         this.auditRecorder = auditRecorder;
+        this.loginLogRecorder = loginLogRecorder;
     }
 
     @Value("${haven.totp.issuer:Haven}")
@@ -125,21 +130,37 @@ public class AuthServiceImpl implements AuthService {
      */
     @Transactional
     public LoginPrecheck loginPrecheck(LoginRequest req, String ip, String ua, String trustedDeviceToken) {
-        String attemptKey =
-                LoginAttemptLimiter.LOGIN_PREFIX + req.username().trim().toLowerCase(Locale.ROOT);
-        attemptLimiter.requireLeft(attemptKey);
+        String username = req.username() != null ? req.username() : "";
+        String attemptKey = LoginAttemptLimiter.LOGIN_PREFIX + username.trim().toLowerCase(Locale.ROOT);
+        try {
+            attemptLimiter.requireLeft(attemptKey);
+        } catch (BizException e) {
+            loginLogRecorder.record(
+                    LoginLogEventType.LOGIN_FAILURE,
+                    null,
+                    username,
+                    "password",
+                    false,
+                    "too_many_attempts",
+                    ip,
+                    ua,
+                    null);
+            throw e;
+        }
 
-        Users user = findUserByUsername(req.username());
+        Users user = findUserByUsername(username);
         if (user == null || !BCrypt.verifyer().verify(req.password().toCharArray(), user.getPasswordHash()).verified) {
             attemptLimiter.recordFailure(attemptKey);
-            auditRecorder.record(
+            loginLogRecorder.record(
+                    LoginLogEventType.LOGIN_FAILURE,
                     user != null ? user.getId() : null,
-                    req.username(),
-                    AuditEventType.LOGIN_FAILURE,
-                    null,
-                    null,
+                    username,
+                    "password",
+                    false,
+                    user == null ? "unknown_user" : "bad_password",
                     ip,
-                    ua);
+                    ua,
+                    null);
             throw BizException.unauthorized("用户名或密码错误");
         }
         attemptLimiter.clear(attemptKey);
@@ -178,31 +199,66 @@ public class AuthServiceImpl implements AuthService {
      */
     @Override
     public LoginOutcome loginTotp(LoginTotpRequest req, String ip, String ua) {
-        TotpPrecheck precheck = totpPrecheck(req);
+        TotpPrecheck precheck = totpPrecheck(req, ip, ua);
         consumePendingTotp(precheck.pendingId());
         return new LoginOutcome(precheck.body(), null);
     }
 
     /** 第二步校验动态码；失败会计数，达到上限时作废临时令牌。 */
-    public TotpPrecheck totpPrecheck(LoginTotpRequest req) {
+    public TotpPrecheck totpPrecheck(LoginTotpRequest req, String ip, String ua) {
         String tokenHash = ApiTokenUtil.hash(req.tempToken());
         PendingTotp pending = pendingTotpMapper.selectOne(new LambdaQueryWrapper<PendingTotp>()
                 .eq(PendingTotp::getToken, tokenHash)
                 .gt(PendingTotp::getExpiresAt, OffsetDateTime.now(clock)));
         if (pending == null) {
+            loginLogRecorder.record(LoginLogEventType.TOTP_FAILURE, null, "", "totp", false, "expired", ip, ua, null);
             throw BizException.unauthorized("登录已超时，请重新登录");
         }
 
         Users user = usersMapper.selectById(pending.getUserId());
         if (user == null || !Boolean.TRUE.equals(user.getTotpEnabled())) {
+            loginLogRecorder.record(
+                    LoginLogEventType.TOTP_FAILURE,
+                    pending.getUserId(),
+                    user != null ? user.getUsername() : "",
+                    "totp",
+                    false,
+                    "unknown_user",
+                    ip,
+                    ua,
+                    null);
             throw BizException.unauthorized("动态码错误");
         }
         String attemptKey = LoginAttemptLimiter.TOTP_PREFIX + user.getId();
-        attemptLimiter.requireLeft(attemptKey);
+        try {
+            attemptLimiter.requireLeft(attemptKey);
+        } catch (BizException e) {
+            loginLogRecorder.record(
+                    LoginLogEventType.TOTP_FAILURE,
+                    user.getId(),
+                    user.getUsername(),
+                    "totp",
+                    false,
+                    "too_many_attempts",
+                    ip,
+                    ua,
+                    null);
+            throw e;
+        }
         if (!TotpUtil.verify(user.getTotpSecret(), req.code(), clock)) {
             if (attemptLimiter.recordFailure(attemptKey) >= attemptLimiter.totpMaxAttempts()) {
                 pendingTotpMapper.deleteById(pending.getId());
             }
+            loginLogRecorder.record(
+                    LoginLogEventType.TOTP_FAILURE,
+                    user.getId(),
+                    user.getUsername(),
+                    "totp",
+                    false,
+                    "bad_code",
+                    ip,
+                    ua,
+                    null);
             throw BizException.unauthorized("动态码错误");
         }
         attemptLimiter.clear(attemptKey);
@@ -228,7 +284,23 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
-    public void logout() {
+    public void logout(String userId, String ip, String userAgent) {
+        Users user = userId != null && !userId.isBlank() ? usersMapper.selectById(UUID.fromString(userId)) : null;
+        String sessionHash = null;
+        String token = StpUtil.getTokenValue();
+        if (token != null && !token.isBlank()) {
+            sessionHash = ApiTokenUtil.hash(token);
+        }
+        loginLogRecorder.record(
+                LoginLogEventType.LOGOUT,
+                user != null ? user.getId() : null,
+                user != null ? user.getUsername() : "",
+                "session",
+                true,
+                null,
+                ip,
+                userAgent,
+                sessionHash);
         StpUtil.logout();
     }
 

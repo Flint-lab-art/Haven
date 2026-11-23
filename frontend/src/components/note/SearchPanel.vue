@@ -116,7 +116,6 @@ watch(
           :title="hit.title"
           :preview="hit.content_preview"
           :meta="`更新于 ${formatRelative(hit.updated_at)}`"
-          :visibility="hit.visibility ?? 'private'"
         />
       </div>
     </template>

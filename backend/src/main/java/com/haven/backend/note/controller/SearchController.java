@@ -1,7 +1,6 @@
 package com.haven.backend.note.controller;
 
 import com.haven.backend.auth.interceptor.AuthInterceptor;
-import com.haven.backend.note.dto.NoteDtos.PublicNotePage;
 import com.haven.backend.note.dto.NoteDtos.SearchResult;
 import com.haven.backend.note.service.SearchService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -25,13 +24,5 @@ public class SearchController {
             HttpServletRequest request) {
         String userId = AuthInterceptor.requireUserId(request);
         return searchService.searchPrivate(userId, q, limit, offset, type);
-    }
-
-    @GetMapping("/api/public/search")
-    public PublicNotePage searchPublic(
-            @RequestParam String q,
-            @RequestParam(defaultValue = "20") int limit,
-            @RequestParam(defaultValue = "0") int offset) {
-        return searchService.searchPublic(q, limit, offset);
     }
 }
