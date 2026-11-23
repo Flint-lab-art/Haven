@@ -6,6 +6,7 @@ import { ApiError } from '@/api/client'
 import { createIssue, type IssuePriority, type IssueType } from '@/api/issues'
 import { ISSUE_TYPE_LABEL } from '@/utils/issues'
 import { ChevronLeft } from 'lucide-vue-next'
+import MobilePageHeader from '@/components/mobile/MobilePageHeader.vue'
 
 const router = useRouter()
 

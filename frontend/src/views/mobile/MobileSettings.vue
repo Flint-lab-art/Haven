@@ -9,6 +9,7 @@
 import { computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { ChevronRight, ExternalLink } from 'lucide-vue-next'
+import MobilePageHeader from '@/components/mobile/MobilePageHeader.vue'
 
 const auth = useAuthStore()
 

@@ -13,6 +13,7 @@ import { getSummary, type LedgerSummary } from '@/api/ledger'
 import { useAuthStore } from '@/stores/auth'
 import { formatYuan } from '@/utils/ledger'
 import { ChevronRight } from 'lucide-vue-next'
+import MobilePageHeader from '@/components/mobile/MobilePageHeader.vue'
 
 const auth = useAuthStore()
 const router = useRouter()

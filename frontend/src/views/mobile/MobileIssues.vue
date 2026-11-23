@@ -9,6 +9,7 @@ import { computed, onMounted, ref } from 'vue'
 import { ApiError } from '@/api/client'
 import { listIssues, type Issue, type IssueStatus } from '@/api/issues'
 import { ISSUE_TYPE_LABEL, priorityTone } from '@/utils/issues'
+import MobilePageHeader from '@/components/mobile/MobilePageHeader.vue'
 
 const issues = ref<Issue[]>([])
 const loading = ref(true)

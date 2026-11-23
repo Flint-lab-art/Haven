@@ -11,6 +11,14 @@
  * 共同部分：区间结余 + 收支细字 + 预算明细。
  */
 import { computed, onMounted, ref, watch } from 'vue'
+import {
+  DialogContent,
+  DialogDescription,
+  DialogOverlay,
+  DialogPortal,
+  DialogRoot,
+  DialogTitle,
+} from 'reka-ui'
 import LedgerDonutChart from '@/components/LedgerDonutChart.vue'
 import MobileStatsChart from '@/components/mobile/MobileStatsChart.vue'
 import { ApiError } from '@/api/client'
@@ -25,6 +33,7 @@ import {
   type StatsGranularity,
 } from '@/utils/statsRange'
 import { Check, ChevronLeft, ChevronRight } from 'lucide-vue-next'
+import MobilePageHeader from '@/components/mobile/MobilePageHeader.vue'
 
 
 const granularity = ref<StatsGranularity>('week')

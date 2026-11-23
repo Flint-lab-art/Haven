@@ -20,6 +20,7 @@ import {
 import { ISSUE_TYPE_LABEL, priorityTone } from '@/utils/issues'
 import { formatRelative } from '@/utils/format'
 import { ChevronLeft } from 'lucide-vue-next'
+import MobilePageHeader from '@/components/mobile/MobilePageHeader.vue'
 
 const route = useRoute()
 const router = useRouter()

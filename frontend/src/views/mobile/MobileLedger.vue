@@ -41,6 +41,7 @@ import {
   fromLocalDateTimeInput,
 } from '@/utils/ledger'
 import { AlignLeft, ChevronLeft, ChevronRight, History, Plus } from 'lucide-vue-next'
+import MobilePageHeader from '@/components/mobile/MobilePageHeader.vue'
 
 
 const month = ref(currentMonth())

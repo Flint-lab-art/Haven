@@ -19,6 +19,7 @@ import {
 } from '@/api/ledger'
 import { currentMonth, formatYuan, monthLabel, parseYuanToCents, shiftMonth } from '@/utils/ledger'
 import { ChevronLeft, ChevronRight } from 'lucide-vue-next'
+import MobilePageHeader from '@/components/mobile/MobilePageHeader.vue'
 
 const month = ref(currentMonth())
 const loading = ref(true)

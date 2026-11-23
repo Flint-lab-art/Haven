@@ -91,6 +91,11 @@ run_frontend() {
     pnpm install || { err "依赖安装失败"; return 1; }
   fi
 
+  # vue-tsc 不检查模板里的未知标签：组件漏 import 会被当成原生标签静默渲染
+  # （踩过：MobileStats 的 DialogOverlay 变成常驻遮罩，整页变灰点不动）。
+  info "组件导入检查（模板里的 PascalCase 标签必须有 import）"
+  node scripts/check-component-imports.mjs || { err "有组件在模板里使用但没有 import"; EXIT_CODE=1; }
+
   info "类型检查（vue-tsc）"
   pnpm exec vue-tsc -b || { err "类型检查失败"; EXIT_CODE=1; }
 

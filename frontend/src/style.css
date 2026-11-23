@@ -2670,6 +2670,13 @@ ul[data-type='taskList'] li[data-checked='true'] > div {
  *
  * 节奏约定：进 180ms（--dur-base），出 120ms（--dur-fast），退出永远比进入快。
  */
+/*
+ * 遮罩只负责铺满并压住页面。
+ *
+ * Reka 把 Overlay 和 Content 平级挂在 body 下（不是父子），
+ * 所以这里不能再用 grid/place-items 给内容居中——内容不在它里面。
+ * 居中由 .modal 自己的 fixed 定位完成。
+ */
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -2677,9 +2684,6 @@ ul[data-type='taskList'] li[data-checked='true'] > div {
   background: var(--overlay);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
-  display: grid;
-  place-items: center;
-  padding: var(--sp-6);
 }
 
 .modal-backdrop[data-state='open'] {
@@ -2702,8 +2706,20 @@ ul[data-type='taskList'] li[data-checked='true'] > div {
   }
 }
 
+/*
+ * 内容自己居中：fixed + inset + margin:auto，比 flex 父容器更稳，
+ * 也不受 overlay / content 是兄弟节点的影响。
+ *
+ * height: fit-content 不能省：inset: 0 配上 height: auto 会让高度撑满视口，
+ * 短小的确认框就会变成一个 90svh 的空盒子。
+ */
 .modal {
-  width: 100%;
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  margin: auto;
+  height: fit-content;
+  width: calc(100% - 2 * var(--sp-6));
   max-width: 440px;
   max-height: 90svh;
   overflow-y: auto;
@@ -4928,13 +4944,13 @@ ul[data-type='taskList'] li[data-checked='true'] > div {
   position: fixed;
   inset: 0;
   z-index: 40;
-  display: flex;
-  align-items: stretch;
-  justify-content: flex-end;
   background: var(--overlay);
 }
 
 .version-dialog {
+  position: fixed;
+  inset: 0 0 0 auto;
+  z-index: 40;
   display: flex;
   flex-direction: column;
   width: min(760px, 100%);
@@ -5901,15 +5917,16 @@ ul[data-type='taskList'] li[data-checked='true'] > div {
   position: fixed;
   inset: 0;
   z-index: 90;
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
-  padding-top: 15vh;
   background: var(--overlay);
 }
 
 /* 竖排三段：标题 / 树 / 快捷键提示 */
 .folder-pick {
+  position: fixed;
+  top: 15vh;
+  left: 50%;
+  z-index: 90;
+  transform: translateX(-50%);
   width: min(480px, calc(100vw - 32px));
   max-height: min(420px, calc(100svh - 160px));
   display: flex;
@@ -9119,12 +9136,13 @@ ul[data-type='taskList'] li[data-checked='true'] > div {
   inset: 0;
   /* 盖在记账抽屉（40）之上 */
   z-index: 50;
-  display: flex;
-  align-items: flex-end;
   background: rgb(0 0 0 / 0.32);
 }
 
 .m-picker {
+  position: fixed;
+  inset: auto 0 0 0;
+  z-index: 50;
   width: 100%;
   display: flex;
   flex-direction: column;
@@ -9442,9 +9460,8 @@ ul[data-type='taskList'] li[data-checked='true'] > div {
 .m-sheet-backdrop {
   position: fixed;
   inset: 0;
+  /* 与 .m-sheet 同级挂在 body 下，只负责铺满；贴底由抽屉自己定位 */
   z-index: 40;
-  display: flex;
-  align-items: flex-end;
   background: rgb(0 0 0 / 0.32);
 }
 
@@ -9463,6 +9480,9 @@ ul[data-type='taskList'] li[data-checked='true'] > div {
  * 内容超出时只让分类区自己滚（见 .m-cats__grid）。
  */
 .m-sheet {
+  position: fixed;
+  inset: auto 0 0 0;
+  z-index: 40;
   width: 100%;
   max-height: 92dvh;
   display: flex;
@@ -10200,6 +10220,9 @@ ul[data-type='taskList'] li[data-checked='true'] > div {
 
 /* 粒度选择弹层 */
 .m-granularity-sheet {
+  position: fixed;
+  inset: auto 0 0 0;
+  z-index: 50;
   width: 100%;
   display: flex;
   flex-direction: column;
@@ -10769,17 +10792,6 @@ ul[data-type='taskList'] li[data-checked='true'] > div {
   font: var(--text-footnote-med);
   color: var(--label);
   font-variant-numeric: tabular-nums;
-}
-
-/* 粒度选择弹层 */
-.m-granularity-sheet {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-  padding: var(--sp-2) var(--sp-4) calc(var(--sp-4) + env(safe-area-inset-bottom, 0px));
-  border-radius: var(--r-xl) var(--r-xl) 0 0;
-  background: var(--bg-grouped);
 }
 
 .m-granularity-list {

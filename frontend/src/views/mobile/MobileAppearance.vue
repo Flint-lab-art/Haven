@@ -9,6 +9,7 @@
  */
 import { useThemeStore } from '@/stores/theme'
 import { Check } from 'lucide-vue-next'
+import MobilePageHeader from '@/components/mobile/MobilePageHeader.vue'
 
 const theme = useThemeStore()
 </script>

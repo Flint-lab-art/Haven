@@ -12,6 +12,7 @@ import { computed, onMounted, ref } from 'vue'
 import { ApiError } from '@/api/client'
 import { listLoginLogs, type LoginLogEventType, type LoginLogItem } from '@/api/login-logs'
 import { deviceLabel, formatRelative } from '@/utils/format'
+import MobilePageHeader from '@/components/mobile/MobilePageHeader.vue'
 
 const PAGE_SIZE = 50
 
