@@ -49,8 +49,20 @@ export const PAY_ICONS: AccountIconOption[] = [
   { key: 'applepay', label: 'Apple Pay', scale: 0.86 },
 ]
 
+/**
+ * 现金与储值：不绑定具体机构，给「钱包里的现金」「存起来的钱」这类账户用。
+ *
+ * 钱袋的内容高度占满 1024 画布（银行 logo 只占约 80%），
+ * 不缩的话会比同排的银行图标高出一截；存钱罐则是偏宽偏矮。
+ * 各缩到 0.88 后与银行圆标的视觉直径基本一致。
+ */
+export const CASH_ICONS: AccountIconOption[] = [
+  { key: 'cash', label: '现金', scale: 0.88 },
+  { key: 'piggybank', label: '存钱罐', scale: 0.88 },
+]
+
 /** 全部可选图标，选择面板按这个顺序展示。 */
-export const ACCOUNT_ICONS: AccountIconOption[] = [...BANK_ICONS, ...PAY_ICONS]
+export const ACCOUNT_ICONS: AccountIconOption[] = [...BANK_ICONS, ...PAY_ICONS, ...CASH_ICONS]
 
 /** key → 图标；未知 key 返回 undefined，调用方回退到默认样式。 */
 export const ACCOUNT_ICON_MAP = new Map(ACCOUNT_ICONS.map((i) => [i.key, i]))
