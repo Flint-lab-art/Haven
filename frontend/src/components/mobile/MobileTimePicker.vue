@@ -174,6 +174,7 @@ function confirm(): void {
             </button>
           </div>
         </div>
+      </div>
       </DialogContent>
     </DialogPortal>
   </DialogRoot>

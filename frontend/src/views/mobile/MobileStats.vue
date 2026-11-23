@@ -282,9 +282,8 @@ onMounted(load)
               <Check v-if="granularity === g" aria-hidden="true" />
             </button>
           </div>
-        </div>
-      </DialogContent>
-    </DialogPortal>
+        </DialogContent>
+      </DialogPortal>
     </DialogRoot>
 
     <p v-if="error" class="m-notice m-notice--error">{{ error }}</p>
