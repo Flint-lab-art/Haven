@@ -9,7 +9,7 @@ import { defineConfig, devices } from '@playwright/test'
  *
  * 运行前提：
  * - 一个可写的 PostgreSQL（默认 127.0.0.1:5432，账号 dev / 123456，可用 E2E_DB_* 覆盖）
- * - 首次运行会创建独立数据库 `haven_e2e`，不会碰 dev_db
+ * - 每次运行都会重建独立数据库 `haven_e2e_db`，不会碰 dev_db
  *
  * 命令：
  *   pnpm e2e           # 无头
